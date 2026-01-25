@@ -154,11 +154,15 @@ def log_message(
     if not sender_username or sender_username == "-":
         return None
 
+    chat_id = msg.chat_id
+    chat_url = f"https://funpay.com/chat/?node={chat_id}" if chat_id is not None else "-"
+
     logger.info(
-        "user=%s chat=%s author=%s: %s",
+        "user=%s chat=%s author=%s url=%s: %s",
         site_username or "-",
         msg.chat_name or msg.author or "-",
         sender_username,
+        chat_url,
         message_text,
     )
     return None
