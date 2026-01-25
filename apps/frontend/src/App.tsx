@@ -138,7 +138,7 @@ const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="dashboard" element={<DashboardPage onToast={showToast} />} />
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
           <Route path="rentals" element={<ActiveRentalsPage onToast={showToast} />} />
           <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
