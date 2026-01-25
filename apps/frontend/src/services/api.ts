@@ -11,12 +11,14 @@ type AuthResponse = {
   token_type: "bearer";
 };
 
+const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
 const buildUrl = (path: string) => {
+  const base = API_BASE.replace(/\/$/, "");
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  if (path.startsWith("/")) return `${API_PREFIX}${path}`;
-  return `${API_PREFIX}/${path}`;
+  if (path.startsWith("/")) return `${base}${API_PREFIX}${path}`;
+  return `${base}${API_PREFIX}/${path}`;
 };
 
 const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
