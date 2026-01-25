@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import base64
+import hmac
+import json
 import logging
 import os
+import re
+import struct
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
+from hashlib import sha1
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -16,6 +23,7 @@ if str(ROOT) not in sys.path:
 import mysql.connector  # noqa: E402
 from FunPayAPI.account import Account  # noqa: E402
 from FunPayAPI.common.enums import EventTypes, MessageTypes  # noqa: E402
+from FunPayAPI.common.utils import RegularExpressions  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
@@ -38,6 +46,35 @@ STOCK_EMPTY = "\u0421\u0432\u043e\u0431\u043e\u0434\u043d\u044b\u0445 \u043b\u04
 STOCK_DB_MISSING = (
     "\u0418\u043d\u0432\u0435\u043d\u0442\u0430\u0440\u044c \u043f\u043e\u043a\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d."
 )
+RENTALS_EMPTY = "\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u0430\u0440\u0435\u043d\u0434 \u043d\u0435\u0442."
+ORDER_LOT_MISSING = (
+    "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c \u043b\u043e\u0442. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d."
+)
+ORDER_LOT_UNMAPPED = (
+    "\u041b\u043e\u0442 \u043d\u0435 \u043f\u0440\u0438\u0432\u044f\u0437\u0430\u043d \u043a \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0443. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d."
+)
+ORDER_ACCOUNT_BUSY = (
+    "\u041b\u043e\u0442 \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442 \u0434\u0440\u0443\u0433\u0438\u043c \u043f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u0435\u043c. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d."
+)
+ACCOUNT_HEADER = "\u0412\u0430\u0448 \u0430\u043a\u043a\u0430\u0443\u043d\u0442:"
+ACCOUNT_TIMER_NOTE = (
+    "\u23f1\ufe0f \u041e\u0442\u0441\u0447\u0435\u0442 \u0430\u0440\u0435\u043d\u0434\u044b \u043d\u0430\u0447\u043d\u0435\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u043a\u043e\u0434\u0430 (!\u043a\u043e\u0434)."
+)
+COMMANDS_RU = (
+    "\u041a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
+    "!\u0430\u043a\u043a \u2014 \u0434\u0430\u043d\u043d\u044b\u0435 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430\n"
+    "!\u043a\u043e\u0434 \u2014 \u043a\u043e\u0434 Steam Guard\n"
+    "!\u0441\u0442\u043e\u043a \u2014 \u043d\u0430\u043b\u0438\u0447\u0438\u0435 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432\n"
+    "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c <\u0447\u0430\u0441\u044b> <ID_\u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430> \u2014 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443\n"
+    "!\u0430\u0434\u043c\u0438\u043d \u2014 \u0432\u044b\u0437\u0432\u0430\u0442\u044c \u043f\u0440\u043e\u0434\u0430\u0432\u0446\u0430\n"
+    "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430 <ID> \u2014 \u0437\u0430\u043c\u0435\u043d\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 (10 \u043c\u0438\u043d\u0443\u0442 \u043f\u043e\u0441\u043b\u0435 !\u043a\u043e\u0434)\n"
+    "!\u043e\u0442\u043c\u0435\u043d\u0430 <ID> \u2014 \u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443"
+)
+ORDER_ID_RE = RegularExpressions().ORDER_ID
+LOT_NUMBER_RE = re.compile(r"(?:\u2116|#)\s*(\d+)")
+
+_processed_orders: dict[str, set[str]] = {}
+_processed_orders_lock = threading.Lock()
 
 
 def detect_command(text: str | None) -> str | None:
@@ -64,6 +101,187 @@ def parse_command(text: str | None) -> tuple[str | None, str]:
         return None, ""
     args = parts[1].strip() if len(parts) > 1 else ""
     return command, args
+
+
+def normalize_username(name: str | None) -> str:
+    return (name or "").strip().lower()
+
+
+def _orders_key(site_username: str | None, site_user_id: int | None) -> str:
+    if site_user_id is not None:
+        return str(site_user_id)
+    return site_username or "single"
+
+
+def is_order_processed(site_username: str | None, site_user_id: int | None, order_id: str) -> bool:
+    key = _orders_key(site_username, site_user_id)
+    with _processed_orders_lock:
+        return order_id in _processed_orders.get(key, set())
+
+
+def mark_order_processed(site_username: str | None, site_user_id: int | None, order_id: str) -> None:
+    key = _orders_key(site_username, site_user_id)
+    with _processed_orders_lock:
+        bucket = _processed_orders.setdefault(key, set())
+        bucket.add(order_id)
+        if len(bucket) > 5000:
+            _processed_orders[key] = set(list(bucket)[-1000:])
+
+
+def format_duration_minutes(total_minutes: int | None) -> str:
+    minutes = int(total_minutes or 0)
+    if minutes <= 0:
+        return "0 \u043c\u0438\u043d"
+    hours = minutes // 60
+    mins = minutes % 60
+    if hours and mins:
+        return f"{hours} \u0447 {mins} \u043c\u0438\u043d"
+    if hours:
+        return f"{hours} \u0447"
+    return f"{mins} \u043c\u0438\u043d"
+
+
+def parse_lot_number(text: str | None) -> int | None:
+    if not text:
+        return None
+    match = LOT_NUMBER_RE.search(text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def extract_order_id(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = ORDER_ID_RE.search(text)
+    if not match:
+        return None
+    return match.group(0).lstrip("#")
+
+
+def get_unit_minutes(account: dict) -> int:
+    minutes = account.get("rental_duration_minutes")
+    if minutes is not None:
+        try:
+            val = int(minutes)
+            if val > 0:
+                return val
+        except Exception:
+            pass
+    hours = account.get("rental_duration")
+    try:
+        hours_val = int(hours or 0)
+    except Exception:
+        hours_val = 0
+    return max(hours_val * 60, 60)
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
+def get_remaining_label(account: dict, now: datetime) -> tuple[str | None, str]:
+    rental_start = _parse_datetime(account.get("rental_start"))
+    total_minutes = account.get("rental_duration_minutes")
+    try:
+        total_minutes_int = int(total_minutes or 0)
+    except Exception:
+        total_minutes_int = 0
+    if not rental_start or total_minutes_int <= 0:
+        return None, "\u043e\u0436\u0438\u0434\u0430\u0435\u043c !\u043a\u043e\u0434"
+    expiry_time = rental_start + timedelta(minutes=total_minutes_int)
+    remaining = expiry_time - now
+    if remaining.total_seconds() < 0:
+        remaining = timedelta(0)
+    hours = int(remaining.total_seconds() // 3600)
+    mins = int((remaining.total_seconds() % 3600) // 60)
+    remaining_label = f"{hours} \u0447 {mins} \u043c\u0438\u043d"
+    return expiry_time.strftime("%H:%M:%S"), remaining_label
+
+
+def build_display_name(account: dict) -> str:
+    name = (account.get("account_name") or account.get("login") or "").strip()
+    lot_number = account.get("lot_number")
+    if lot_number and not name.startswith("\u2116"):
+        prefix = f"\u2116{lot_number} "
+        name = f"{prefix}{name}" if name else prefix.strip()
+    return name or "\u0410\u043a\u043a\u0430\u0443\u043d\u0442"
+
+
+def build_account_message(account: dict, duration_minutes: int, include_timer_note: bool) -> str:
+    display_name = build_display_name(account)
+    now = datetime.utcnow()
+    expiry_str, remaining_str = get_remaining_label(account, now)
+    lines = [
+        ACCOUNT_HEADER,
+        f"ID: {account.get('id')}",
+        f"\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435: {display_name}",
+        f"\u041b\u043e\u0433\u0438\u043d: {account.get('login')}",
+        f"\u041f\u0430\u0440\u043e\u043b\u044c: {account.get('password')}",
+    ]
+    if expiry_str:
+        lines.append(f"\u0418\u0441\u0442\u0435\u043a\u0430\u0435\u0442: {expiry_str} \u041c\u0421\u041a | \u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {remaining_str}")
+    else:
+        lines.append(f"\u0410\u0440\u0435\u043d\u0434\u0430: {format_duration_minutes(duration_minutes)}")
+        if include_timer_note:
+            lines.extend(["", ACCOUNT_TIMER_NOTE])
+    lines.extend(["", COMMANDS_RU])
+    return "\n".join(lines)
+
+
+def get_query_time() -> int:
+    try:
+        import requests
+
+        request = requests.post(
+            "https://api.steampowered.com/ITwoFactorService/QueryTime/v0001",
+            timeout=15,
+        )
+        json_data = request.json()
+        server_time = int(json_data["response"]["server_time"]) - time.time()
+        return int(server_time)
+    except Exception:
+        return 0
+
+
+def get_guard_code(shared_secret: str) -> str:
+    symbols = "23456789BCDFGHJKMNPQRTVWXY"
+    timestamp = time.time() + get_query_time()
+    digest = hmac.new(
+        base64.b64decode(shared_secret),
+        struct.pack(">Q", int(timestamp / 30)),
+        sha1,
+    ).digest()
+    start = digest[19] & 0x0F
+    value = struct.unpack(">I", digest[start : start + 4])[0] & 0x7FFFFFFF
+    code = ""
+    for _ in range(5):
+        code += symbols[value % len(symbols)]
+        value //= len(symbols)
+    return code
+
+
+def get_steam_guard_code(mafile_json: str | dict | None) -> tuple[bool, str]:
+    if not mafile_json:
+        return False, "\u041d\u0435\u0442 maFile"
+    try:
+        data = mafile_json if isinstance(mafile_json, dict) else json.loads(mafile_json)
+        shared_secret = data.get("shared_secret")
+        if not shared_secret:
+            return False, "\u041d\u0435\u0442 shared_secret"
+        return True, get_guard_code(shared_secret)
+    except Exception as exc:
+        return False, str(exc)
 
 
 def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, text: str) -> bool:
@@ -174,6 +392,171 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
         conn.close()
 
 
+def fetch_lot_account(mysql_cfg: dict, user_id: int, lot_number: int) -> dict | None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
+                   a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   a.account_frozen, a.rental_frozen,
+                   l.lot_number, l.lot_url
+            FROM lots l
+            JOIN accounts a ON a.id = l.account_id
+            WHERE l.user_id = %s AND l.lot_number = %s
+            LIMIT 1
+            """,
+            (user_id, lot_number),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def assign_account_to_buyer(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    user_id: int,
+    buyer: str,
+    units: int,
+    total_minutes: int,
+) -> None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE accounts
+            SET owner = %s,
+                rental_duration = %s,
+                rental_duration_minutes = %s,
+                rental_start = NULL
+            WHERE id = %s AND user_id = %s
+            """,
+            (buyer, int(units), int(total_minutes), int(account_id), int(user_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def extend_rental_for_buyer(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    user_id: int,
+    buyer: str,
+    add_units: int,
+    add_minutes: int,
+) -> dict | None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, account_name, login, password, mafile_json,
+                   owner, rental_start, rental_duration, rental_duration_minutes,
+                   account_frozen, rental_frozen,
+                   (SELECT lot_number FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_number,
+                   (SELECT lot_url FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_url
+            FROM accounts
+            WHERE id = %s AND user_id = %s AND LOWER(owner) = %s
+            LIMIT 1
+            """,
+            (account_id, user_id, normalize_username(buyer)),
+        )
+        current = cursor.fetchone()
+        if not current:
+            return None
+
+        base_minutes = current.get("rental_duration_minutes")
+        if base_minutes is None:
+            base_minutes = int(current.get("rental_duration") or 0) * 60
+        try:
+            base_minutes_int = int(base_minutes or 0)
+        except Exception:
+            base_minutes_int = 0
+
+        new_minutes = base_minutes_int + int(add_minutes)
+        try:
+            base_units = int(current.get("rental_duration") or 0)
+        except Exception:
+            base_units = 0
+        new_units = base_units + int(add_units)
+
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE accounts
+            SET rental_duration = %s,
+                rental_duration_minutes = %s
+            WHERE id = %s AND user_id = %s
+            """,
+            (new_units, new_minutes, account_id, user_id),
+        )
+        conn.commit()
+
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
+                   a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   a.account_frozen, a.rental_frozen,
+                   l.lot_number, l.lot_url
+            FROM accounts a
+            LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
+            WHERE a.id = %s AND a.user_id = %s
+            LIMIT 1
+            """,
+            (account_id, user_id),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def fetch_owner_accounts(mysql_cfg: dict, user_id: int, owner: str) -> list[dict]:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
+                   a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   a.account_frozen, a.rental_frozen,
+                   l.lot_number, l.lot_url
+            FROM accounts a
+            LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
+            WHERE a.user_id = %s AND LOWER(a.owner) = %s
+            ORDER BY a.id
+            """,
+            (user_id, normalize_username(owner)),
+        )
+        return list(cursor.fetchall() or [])
+    finally:
+        conn.close()
+
+
+def start_rental_for_owner(mysql_cfg: dict, user_id: int, owner: str) -> int:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE accounts
+            SET rental_start = NOW()
+            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL
+            """,
+            (user_id, normalize_username(owner)),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
 def build_stock_messages(accounts: list[dict]) -> list[str]:
     if not accounts:
         return [STOCK_EMPTY]
@@ -244,6 +627,244 @@ def handle_stock_command(
     return True
 
 
+def handle_account_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Account command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Account command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username)
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    for acc in accounts:
+        total_minutes = acc.get("rental_duration_minutes")
+        if total_minutes is None:
+            total_minutes = get_unit_minutes(acc)
+        message = build_account_message(acc, int(total_minutes or 0), include_timer_note=True)
+        send_chat_message(logger, account, chat_id, message)
+    return True
+
+
+def handle_code_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Code command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Code command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username)
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    lines = ["\u041a\u043e\u0434\u044b Steam Guard:"]
+    started_now = False
+    for acc in accounts:
+        display_name = build_display_name(acc)
+        ok, code = get_steam_guard_code(acc.get("mafile_json"))
+        login = acc.get("login") or "-"
+        if ok:
+            lines.append(f"{display_name} ({login}): {code}")
+        else:
+            lines.append(f"{display_name} ({login}): \u043e\u0448\u0438\u0431\u043a\u0430 {code}")
+        if acc.get("rental_start") is None:
+            started_now = True
+
+    if started_now:
+        start_rental_for_owner(mysql_cfg, user_id, sender_username)
+        lines.extend(
+            [
+                "",
+                "\u23f1\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0430\u0447\u0430\u043b\u0430\u0441\u044c \u0441\u0435\u0439\u0447\u0430\u0441 (\u0441 \u043c\u043e\u043c\u0435\u043d\u0442\u0430 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u043a\u043e\u0434\u0430).",
+            ]
+        )
+
+    send_chat_message(logger, account, chat_id, "\n".join(lines))
+    return True
+
+
+def handle_order_purchased(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    msg: object,
+) -> None:
+    order_id = extract_order_id(getattr(msg, "text", None) or "")
+    if not order_id:
+        return
+    if is_order_processed(site_username, site_user_id, order_id):
+        return
+
+    try:
+        order = account.get_order(order_id)
+    except Exception as exc:
+        logger.warning("Failed to fetch order %s: %s", order_id, exc)
+        return
+
+    buyer = str(getattr(order, "buyer_username", "") or "")
+    if not buyer:
+        return
+
+    chat_id = getattr(order, "chat_id", None) or getattr(msg, "chat_id", None)
+    if isinstance(chat_id, str) and chat_id.isdigit():
+        chat_id = int(chat_id)
+    if chat_id is None:
+        try:
+            chat = account.get_chat_by_name(buyer, True)
+            chat_id = getattr(chat, "id", None)
+        except Exception:
+            chat_id = None
+    if chat_id is None:
+        logger.warning("Skipping order %s: chat id not found.", order_id)
+        return
+
+    description = (
+        getattr(order, "full_description", None)
+        or getattr(order, "short_description", None)
+        or getattr(order, "title", None)
+        or getattr(msg, "text", None)
+        or ""
+    )
+    lot_number = parse_lot_number(description)
+    if lot_number is None:
+        send_chat_message(logger, account, chat_id, ORDER_LOT_MISSING)
+        mark_order_processed(site_username, site_user_id, order_id)
+        return
+
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Order %s skipped: %s", order_id, exc)
+        return
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            return
+
+    if user_id is None:
+        logger.warning("Order %s skipped: user id missing.", order_id)
+        return
+
+    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number)
+    if not mapping:
+        send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
+        mark_order_processed(site_username, site_user_id, order_id)
+        return
+
+    if mapping.get("account_frozen") or mapping.get("rental_frozen"):
+        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+        mark_order_processed(site_username, site_user_id, order_id)
+        return
+
+    owner = mapping.get("owner")
+    if owner and normalize_username(owner) != normalize_username(buyer):
+        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+        mark_order_processed(site_username, site_user_id, order_id)
+        return
+
+    try:
+        amount = int(getattr(order, "amount", None) or 1)
+    except Exception:
+        amount = 1
+    if amount <= 0:
+        amount = 1
+
+    unit_minutes = get_unit_minutes(mapping)
+    total_minutes = unit_minutes * amount
+
+    updated_account = mapping
+    if not owner:
+        assign_account_to_buyer(
+            mysql_cfg,
+            account_id=int(mapping["id"]),
+            user_id=user_id,
+            buyer=buyer,
+            units=amount,
+            total_minutes=total_minutes,
+        )
+    else:
+        updated_account = extend_rental_for_buyer(
+            mysql_cfg,
+            account_id=int(mapping["id"]),
+            user_id=user_id,
+            buyer=buyer,
+            add_units=amount,
+            add_minutes=total_minutes,
+        )
+        if not updated_account:
+            send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+            mark_order_processed(site_username, site_user_id, order_id)
+            return
+
+    message = build_account_message(updated_account or mapping, total_minutes, include_timer_note=True)
+    send_chat_message(logger, account, chat_id, message)
+    mark_order_processed(site_username, site_user_id, order_id)
+
+
 def _log_command_stub(
     logger: logging.Logger,
     account: Account,
@@ -284,8 +905,8 @@ def handle_command(
 ) -> bool:
     handlers = {
         "!\u0441\u0442\u043e\u043a": handle_stock_command,
-        "!\u0430\u043a\u043a": lambda *a: _log_command_stub(*a, action="account"),
-        "!\u043a\u043e\u0434": lambda *a: _log_command_stub(*a, action="code"),
+        "!\u0430\u043a\u043a": handle_account_command,
+        "!\u043a\u043e\u0434": handle_code_command,
         "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c": lambda *a: _log_command_stub(*a, action="extend"),
         "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(
             *a, action="lp_replace"
@@ -500,6 +1121,8 @@ def log_message(
             chat_url,
             (msg.text or "").strip(),
         )
+        if msg.type == MessageTypes.ORDER_PURCHASED:
+            handle_order_purchased(logger, account, site_username, site_user_id, msg)
     return None
 
 

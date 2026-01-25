@@ -47,6 +47,17 @@ export type LotCreatePayload = {
   lot_url: string;
 };
 
+export type ActiveRentalItem = {
+  id: number;
+  account: string;
+  buyer: string;
+  started: string;
+  time_left: string;
+  match_time?: string;
+  hero?: string;
+  status?: string;
+};
+
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
@@ -104,4 +115,5 @@ export const api = {
   listLots: () => request<{ items: LotItem[] }>("/lots", { method: "GET" }),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
   deleteLot: (lotNumber: number) => request<{ ok: boolean }>(`/lots/${lotNumber}`, { method: "DELETE" }),
+  listActiveRentals: () => request<{ items: ActiveRentalItem[] }>("/rentals/active", { method: "GET" }),
 };

@@ -37,6 +37,18 @@ class AccountSteamRecord:
     mafile_json: Optional[str]
 
 
+@dataclass
+class ActiveRentalRecord:
+    id: int
+    account_name: str
+    login: str
+    owner: str
+    rental_start: Optional[str]
+    rental_duration: int
+    rental_duration_minutes: Optional[int]
+    lot_number: Optional[int]
+
+
 class MySQLAccountRepo:
     def _column_exists(self, cursor: mysql.connector.cursor.MySQLCursor, column: str) -> bool:
         cursor.execute(
@@ -203,5 +215,38 @@ class MySQLAccountRepo:
                 password=row["password"],
                 mafile_json=row.get("mafile_json"),
             )
+        finally:
+            conn.close()
+
+    def list_active_rentals(self, user_id: int) -> List[ActiveRentalRecord]:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT a.id, a.account_name, a.login, a.owner,
+                       a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       l.lot_number
+                FROM accounts a
+                LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
+                WHERE a.user_id = %s AND a.owner IS NOT NULL AND a.owner != ''
+                ORDER BY a.rental_start DESC, a.id DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall() or []
+            return [
+                ActiveRentalRecord(
+                    id=int(row["id"]),
+                    account_name=row["account_name"],
+                    login=row["login"],
+                    owner=row["owner"],
+                    rental_start=row.get("rental_start"),
+                    rental_duration=int(row.get("rental_duration") or 0),
+                    rental_duration_minutes=row.get("rental_duration_minutes"),
+                    lot_number=row.get("lot_number"),
+                )
+                for row in rows
+            ]
         finally:
             conn.close()
