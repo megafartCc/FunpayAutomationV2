@@ -219,16 +219,23 @@ const Sidebar: React.FC = () => {
                     const nextPath = navIdToPath[item.id] || "/dashboard";
                     navigate(nextPath, { replace: false });
                   }}
-                  className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none"
-                  whileHover={{ scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                  className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none hover:bg-neutral-50"
+                  whileHover={{ x: 2 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 26 }}
                 >
                   {isActive && (
-                    <motion.span
-                      layoutId="navHighlight"
-                      className="absolute inset-0 rounded-md bg-neutral-900 text-white shadow-[0_10px_25px_-15px_rgba(0,0,0,0.45)]"
-                      transition={{ type: "spring", stiffness: 280, damping: 26 }}
-                    />
+                    <>
+                      <motion.span
+                        layoutId="navActiveBg"
+                        className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                      />
+                      <motion.span
+                        layoutId="navActiveIndicator"
+                        className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-white"
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                      />
+                    </>
                   )}
                   <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
                     <item.Icon />
@@ -262,16 +269,23 @@ const Sidebar: React.FC = () => {
                     const nextPath = navIdToPath[item.id] || "/dashboard";
                     navigate(nextPath, { replace: false });
                   }}
-                  className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none"
-                  whileHover={{ scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                  className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none hover:bg-neutral-50"
+                  whileHover={{ x: 2 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 26 }}
                 >
                   {isActive && (
-                    <motion.span
-                      layoutId="navHighlight"
-                      className="absolute inset-0 rounded-md bg-neutral-900 text-white shadow-[0_10px_25px_-15px_rgba(0,0,0,0.45)]"
-                      transition={{ type: "spring", stiffness: 280, damping: 26 }}
-                    />
+                    <>
+                      <motion.span
+                        layoutId="navActiveBg"
+                        className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                      />
+                      <motion.span
+                        layoutId="navActiveIndicator"
+                        className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-white"
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                      />
+                    </>
                   )}
                   <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
                     <item.Icon />
