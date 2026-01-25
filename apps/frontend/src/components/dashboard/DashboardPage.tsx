@@ -16,6 +16,22 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta }) => (
   </div>
 );
 
+const PlaceholderPanel: React.FC<{ minHeight: number }> = ({ minHeight }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm" style={{ minHeight }} />
+);
+
+const ShortPanel: React.FC<{ title: string; helper?: string }> = ({ title, helper }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <div className="mb-3 flex items-center justify-between text-sm font-semibold text-neutral-900">
+      <span>{title}</span>
+      {helper ? <span className="text-[11px] font-semibold text-neutral-500">{helper}</span> : null}
+    </div>
+    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-4 text-center text-xs text-neutral-400">
+      {/* placeholder area */}
+    </div>
+  </div>
+);
+
 const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
@@ -27,8 +43,13 @@ const DashboardPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[720px]"></div>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[720px]"></div>
+        <PlaceholderPanel minHeight={720} />
+        <PlaceholderPanel minHeight={720} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ShortPanel title="Account actions" helper="Select an account" />
+        <ShortPanel title="Rental actions" helper="Select a rental" />
       </div>
     </div>
   );

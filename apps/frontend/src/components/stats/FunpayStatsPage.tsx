@@ -11,6 +11,13 @@ const StatCard: React.FC<StatCardProps> = ({ label, value }) => (
   </div>
 );
 
+const blankCard = (className = "", minHeight = 260) => (
+  <div
+    className={`rounded-2xl border border-neutral-200 bg-white shadow-sm ${className}`}
+    style={{ minHeight }}
+  />
+);
+
 const FunpayStatsPage: React.FC = () => {
   const stats: Stat[] = [
     { label: "Total accounts", value: 128 },
@@ -29,9 +36,14 @@ const FunpayStatsPage: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[620px]"></div>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[620px]"></div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">{blankCard("p-0", 320)}</div>
+        <div>{blankCard("p-0", 320)}</div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">{blankCard("p-0", 240)}</div>
+        <div>{blankCard("p-0", 240)}</div>
       </div>
     </div>
   );
