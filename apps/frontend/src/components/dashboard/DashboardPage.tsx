@@ -16,17 +16,19 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta }) => (
   </div>
 );
 
-const PlaceholderPanel: React.FC<{ minHeight: number }> = ({ minHeight }) => (
-  <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm" style={{ minHeight }} />
+const PlaceholderPanel: React.FC<{ minHeight: number; title: string }> = ({ minHeight, title }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm" style={{ minHeight }}>
+    <div className="text-sm font-semibold text-neutral-900">{title}</div>
+  </div>
 );
 
-const ShortPanel: React.FC<{ title: string; helper?: string }> = ({ title, helper }) => (
-  <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+const ShortPanel: React.FC<{ title: string; helper?: string; minHeight?: number }> = ({ title, helper, minHeight = 140 }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm" style={{ minHeight }}>
     <div className="mb-3 flex items-center justify-between text-sm font-semibold text-neutral-900">
       <span>{title}</span>
       {helper ? <span className="text-[11px] font-semibold text-neutral-500">{helper}</span> : null}
     </div>
-    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-4 text-center text-xs text-neutral-400">
+    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-xs text-neutral-400">
       {/* placeholder area */}
     </div>
   </div>
@@ -43,13 +45,13 @@ const DashboardPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <PlaceholderPanel minHeight={720} />
-        <PlaceholderPanel minHeight={720} />
+        <PlaceholderPanel minHeight={880} title="Inventory" />
+        <PlaceholderPanel minHeight={880} title="Active rentals" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ShortPanel title="Account actions" helper="Select an account" />
-        <ShortPanel title="Rental actions" helper="Select a rental" />
+        <ShortPanel title="Account actions" helper="Select an account" minHeight={180} />
+        <ShortPanel title="Rental actions" helper="Select a rental" minHeight={180} />
       </div>
     </div>
   );
