@@ -141,19 +141,6 @@ const SettingsIcon = () => (
   </svg>
 );
 
-const AutomationsIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="2" />
-  </svg>
-);
-
 type NavItem = { id: string; label: string; Icon: React.FC };
 
 const NAV_ITEMS: NavItem[] = [
@@ -167,7 +154,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "lots", label: "Lots", Icon: LotsIcon },
   { id: "chats", label: "Chats", Icon: ChatsIcon },
   { id: "add", label: "Add Account", Icon: AddIcon },
-  { id: "automations", label: "Automations", Icon: AutomationsIcon },
   { id: "notifications", label: "Notifications", Icon: NotificationsIcon },
   { id: "settings", label: "Settings", Icon: SettingsIcon },
 ];
@@ -185,7 +171,6 @@ const navIdToPath: Record<string, string> = {
   lots: "/lots",
   chats: "/chats",
   add: "/add-account",
-  automations: "/automations",
   notifications: "/notifications",
   settings: "/settings",
 };
@@ -200,7 +185,7 @@ const Sidebar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const activeNav = pathToNavId(location.pathname);
-  const totalBlacklisted = 3;
+  const totalBlacklisted = 0;
 
   return (
     <aside className="relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)]">
@@ -224,18 +209,11 @@ const Sidebar: React.FC = () => {
                   transition={{ type: "spring", stiffness: 320, damping: 26 }}
                 >
                   {isActive && (
-                    <>
-                      <motion.span
-                        layoutId="navActiveBg"
-                        className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                      />
-                      <motion.span
-                        layoutId="navActiveIndicator"
-                        className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-white"
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                      />
-                    </>
+                    <motion.span
+                      layoutId="navActiveBg"
+                      className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
+                      transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                    />
                   )}
                   <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
                     <item.Icon />
@@ -274,18 +252,11 @@ const Sidebar: React.FC = () => {
                   transition={{ type: "spring", stiffness: 320, damping: 26 }}
                 >
                   {isActive && (
-                    <>
-                      <motion.span
-                        layoutId="navActiveBg"
-                        className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                      />
-                      <motion.span
-                        layoutId="navActiveIndicator"
-                        className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-white"
-                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-                      />
-                    </>
+                    <motion.span
+                      layoutId="navActiveBg"
+                      className="absolute inset-0 rounded-xl bg-neutral-900 text-white shadow-[0_12px_25px_-18px_rgba(0,0,0,0.45)]"
+                      transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                    />
                   )}
                   <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
                     <item.Icon />
