@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 import mysql.connector  # noqa: E402
 from FunPayAPI.account import Account  # noqa: E402
-from FunPayAPI.common.enums import EventTypes  # noqa: E402
+from FunPayAPI.common.enums import EventTypes, MessageTypes  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
@@ -157,11 +157,14 @@ def log_message(
     chat_id = msg.chat_id
     chat_url = f"https://funpay.com/chat/?node={chat_id}" if chat_id is not None else "-"
 
+    is_system = bool(msg.type and msg.type is not MessageTypes.NON_SYSTEM)
+
     logger.info(
-        "user=%s chat=%s author=%s url=%s: %s",
+        "user=%s chat=%s author=%s system=%s url=%s: %s",
         site_username or "-",
         msg.chat_name or msg.author or "-",
         sender_username,
+        is_system,
         chat_url,
         message_text,
     )
