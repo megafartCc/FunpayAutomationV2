@@ -34,7 +34,24 @@ const ProtectedRoute: React.FC<{ user: User | null; loading: boolean; children: 
   loading,
   children,
 }) => {
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+          <div className="h-8 w-40 animate-pulse rounded-full bg-neutral-200" />
+          <div className="h-9 w-24 animate-pulse rounded-full bg-neutral-200" />
+        </div>
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="h-28 animate-pulse rounded-2xl border border-neutral-200 bg-neutral-50" />
+            <div className="h-28 animate-pulse rounded-2xl border border-neutral-200 bg-neutral-50" />
+            <div className="h-28 animate-pulse rounded-2xl border border-neutral-200 bg-neutral-50" />
+          </div>
+          <div className="mt-6 h-56 animate-pulse rounded-2xl border border-neutral-200 bg-neutral-50" />
+        </div>
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
