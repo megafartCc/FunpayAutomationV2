@@ -125,28 +125,34 @@ def log_message(
     if msg.author_id and account.id and msg.author_id == account.id:
         return None
 
-    # Prefer author when it's not us; else chat name when it's not us; else IDs.
-    if msg.author and msg.author != my_name:
-        sender_username = msg.author
-    elif msg.chat_name and msg.chat_name != my_name:
-        sender_username = msg.chat_name
-    elif msg.author_id and account.id and msg.author_id != account.id:
-        sender_username = f"user_{msg.author_id}"
-    elif msg.interlocutor_id and msg.interlocutor_id != account.id:
-        sender_username = f"user_{msg.interlocutor_id}"
-    else:
-        sender_username = f"chat_{msg.chat_id}"
+    sender_username = None
 
-    # If still resolved to our own name, try to extract from message HTML.
-    if sender_username == my_name and getattr(msg, "html", None):
+    # 1) Try to parse explicit author from message HTML (matches FunPay UI).
+    if getattr(msg, "html", None):
         try:
             soup = BeautifulSoup(msg.html, "lxml")
             link = soup.find("a", {"class": "chat-msg-author-link"})
-            if link and link.text.strip() and link.text.strip() != my_name:
+            if link and link.text:
                 sender_username = link.text.strip()
         except Exception:
-            pass
+            sender_username = None
 
+    # 2) Use API-provided author when it's not us.
+    if not sender_username and msg.author and msg.author != my_name:
+        sender_username = msg.author
+    # 3) Use chat_name when it's not us.
+    if not sender_username and msg.chat_name and msg.chat_name != my_name:
+        sender_username = msg.chat_name
+    # 4) Use IDs if available and not ours.
+    if not sender_username and msg.author_id and account.id and msg.author_id != account.id:
+        sender_username = f"user_{msg.author_id}"
+    if not sender_username and msg.interlocutor_id and msg.interlocutor_id != account.id:
+        sender_username = f"user_{msg.interlocutor_id}"
+    # 5) Last resort: chat id placeholder.
+    if not sender_username:
+        sender_username = f"chat_{msg.chat_id}"
+
+    # Skip if still ourselves.
     if sender_username == my_name:
         return None
 
