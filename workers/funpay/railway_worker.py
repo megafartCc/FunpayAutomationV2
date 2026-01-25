@@ -118,7 +118,13 @@ def log_message(
         return None
 
     msg = event.message
-    sender_username = msg.chat_name or msg.author or "-"
+    # Prefer the actual author; fall back to chat name; avoid logging ourselves as the sender.
+    sender_username = msg.author or msg.chat_name or "-"
+    my_name = (account.username or "").strip()
+    if sender_username == my_name and msg.chat_name and msg.chat_name != my_name:
+        sender_username = msg.chat_name
+    if sender_username == my_name and msg.author_id and msg.author_id != account.id:
+        sender_username = f"user_{msg.author_id}"
     message_text = msg.text
 
     # If we don't have a chat name, it's likely not a private chat.
