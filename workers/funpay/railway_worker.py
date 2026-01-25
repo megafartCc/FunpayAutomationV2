@@ -120,11 +120,17 @@ def log_message(
     msg = event.message
     my_name = (account.username or "").strip()
 
-    # Prefer the true author; avoid logging ourselves; fall back safely.
-    if msg.author and msg.author != my_name:
-        sender_username = msg.author
+    # If the author_id matches us, it's our outgoing message — skip logging.
+    if msg.author_id and account.id and msg.author_id == account.id:
+        return None
+
+    # Prefer author when it's not us; else fall back to interlocutor/chat.
+    if msg.author_id and account.id and msg.author_id != account.id:
+        sender_username = msg.author or msg.chat_name or f"user_{msg.author_id}"
     elif msg.interlocutor_id and msg.interlocutor_id != account.id:
         sender_username = msg.chat_name or f"user_{msg.interlocutor_id}"
+    elif msg.author and msg.author != my_name:
+        sender_username = msg.author
     elif msg.chat_name and msg.chat_name != my_name:
         sender_username = msg.chat_name
     else:
