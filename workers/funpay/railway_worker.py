@@ -162,15 +162,6 @@ def extract_order_id(text: str | None) -> str | None:
     return match.group(0).lstrip("#")
 
 
-def extract_buyer_from_text(text: str | None) -> str | None:
-    if not text:
-        return None
-    match = re.search(r"\b\u041f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u044c\s+([A-Za-z0-9_\-]+)", text)
-    if match:
-        return match.group(1)
-    return None
-
-
 def get_unit_minutes(account: dict) -> int:
     minutes = account.get("rental_duration_minutes")
     if minutes is not None:
@@ -764,23 +755,18 @@ def handle_order_purchased(
     if is_order_processed(site_username, site_user_id, order_id):
         return
 
-    order = None
     try:
         order = account.get_order(order_id)
     except Exception as exc:
-        logger.warning("Failed to fetch order %s: %s. Using message fallback.", order_id, exc)
+        logger.warning("Failed to fetch order %s: %s", order_id, exc)
+        return
 
     buyer = str(getattr(order, "buyer_username", "") or "")
     if not buyer:
-        buyer = str(getattr(msg, "chat_name", "") or "") or str(getattr(msg, "chat_id", "") or "")
-    if not buyer:
-        buyer = extract_buyer_from_text(getattr(msg, "text", None))
-    if not buyer:
+        logger.warning("Order %s missing buyer username.", order_id)
         return
 
-    chat_id = getattr(order, "chat_id", None) if order else None
-    if chat_id is None:
-        chat_id = getattr(msg, "chat_id", None)
+    chat_id = getattr(order, "chat_id", None)
     if isinstance(chat_id, str) and chat_id.isdigit():
         chat_id = int(chat_id)
     if chat_id is None:
@@ -797,7 +783,6 @@ def handle_order_purchased(
         getattr(order, "full_description", None)
         or getattr(order, "short_description", None)
         or getattr(order, "title", None)
-        or getattr(msg, "text", None)
         or ""
     )
     lot_number = parse_lot_number(description)
