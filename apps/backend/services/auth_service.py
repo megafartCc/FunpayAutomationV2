@@ -34,10 +34,17 @@ class AuthService:
         return self._issue_token(record.username)
 
     def register(self, username: str, password: str, golden_key: str) -> Optional[str]:
-        if self._repo.get_by_username(username):
+        login = username.strip().lower()
+        email = login if "@" in login else None
+        if self._repo.get_by_username(login):
             return None
         password_hash = _password_context.hash(password)
-        record = UserRecord(username=username, password_hash=password_hash, golden_key=golden_key)
+        record = UserRecord(
+            username=login,
+            password_hash=password_hash,
+            golden_key=golden_key,
+            email=email,
+        )
         if not self._repo.create(record):
             return None
         return self._issue_token(record.username)

@@ -46,12 +46,18 @@ def ensure_schema() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(128) NOT NULL UNIQUE,
+                email VARCHAR(255) NULL UNIQUE,
                 password_hash VARCHAR(255) NOT NULL,
                 golden_key TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL UNIQUE;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
         conn.commit()
     finally:
         conn.close()
@@ -63,8 +69,9 @@ class MySQLUserRepo:
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                "SELECT username, password_hash, golden_key FROM users WHERE username = %s",
-                (username.lower().strip(),),
+                "SELECT username, password_hash, golden_key, email "
+                "FROM users WHERE username = %s OR email = %s LIMIT 1",
+                (username.lower().strip(), username.lower().strip()),
             )
             row = cursor.fetchone()
             if not row:
@@ -73,6 +80,7 @@ class MySQLUserRepo:
                 username=row["username"],
                 password_hash=row["password_hash"],
                 golden_key=row["golden_key"],
+                email=row.get("email"),
             )
         finally:
             conn.close()
@@ -83,9 +91,10 @@ class MySQLUserRepo:
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    "INSERT INTO users (username, password_hash, golden_key) VALUES (%s, %s, %s)",
+                    "INSERT INTO users (username, email, password_hash, golden_key) VALUES (%s, %s, %s, %s)",
                     (
                         record.username.lower().strip(),
+                        (record.email.lower().strip() if record.email else None),
                         record.password_hash,
                         record.golden_key,
                     ),

@@ -9,6 +9,7 @@ class UserRecord:
     username: str
     password_hash: str
     golden_key: str
+    email: Optional[str] = None
 
 
 class InMemoryUserRepo:
@@ -16,7 +17,14 @@ class InMemoryUserRepo:
         self._users: Dict[str, UserRecord] = {}
 
     def get_by_username(self, username: str) -> Optional[UserRecord]:
-        return self._users.get(username.lower())
+        key = username.lower()
+        record = self._users.get(key)
+        if record is not None:
+            return record
+        for existing in self._users.values():
+            if existing.email and existing.email.lower() == key:
+                return existing
+        return None
 
     def create(self, record: UserRecord) -> bool:
         key = record.username.lower()
