@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from db.mysql import ensure_schema
 from api.auth import router as auth_router
 from settings.config import settings
 
@@ -24,3 +25,8 @@ else:
     )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+
+
+@app.on_event("startup")
+def startup() -> None:
+    ensure_schema()

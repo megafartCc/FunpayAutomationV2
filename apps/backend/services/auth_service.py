@@ -1,20 +1,29 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Optional, Protocol
 
 from jose import jwt
 from passlib.context import CryptContext
 
 from db.user_repo import InMemoryUserRepo, UserRecord
+from db.mysql import MySQLUserRepo
 from settings.config import settings
 
 _password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+class UserRepo(Protocol):
+    def get_by_username(self, username: str) -> Optional[UserRecord]:
+        ...
+
+    def create(self, record: UserRecord) -> bool:
+        ...
+
+
 class AuthService:
-    def __init__(self, repo: Optional[InMemoryUserRepo] = None) -> None:
-        self._repo = repo or InMemoryUserRepo()
+    def __init__(self, repo: Optional[UserRepo] = None) -> None:
+        self._repo = repo or MySQLUserRepo()
 
     def login(self, username: str, password: str) -> Optional[str]:
         record = self._repo.get_by_username(username)
