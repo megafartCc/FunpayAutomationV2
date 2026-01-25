@@ -30,6 +30,7 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
   const res = await fetch(buildUrl(path), {
     ...options,
     headers,
+    credentials: "include",
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 

@@ -79,6 +79,24 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS remember_tokens (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                token_hash CHAR(64) NOT NULL UNIQUE,
+                user_agent VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used TIMESTAMP NULL,
+                expires_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP NULL,
+                INDEX idx_remember_user (user_id),
+                INDEX idx_remember_expires (expires_at),
+                CONSTRAINT fk_remember_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()
@@ -90,7 +108,7 @@ class MySQLUserRepo:
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                "SELECT username, password_hash, golden_key, email "
+                "SELECT id, username, password_hash, golden_key, email "
                 "FROM users WHERE username = %s OR email = %s LIMIT 1",
                 (username.lower().strip(), username.lower().strip()),
             )
@@ -98,6 +116,7 @@ class MySQLUserRepo:
             if not row:
                 return None
             return UserRecord(
+                id=row["id"],
                 username=row["username"],
                 password_hash=row["password_hash"],
                 golden_key=row["golden_key"],
@@ -106,7 +125,28 @@ class MySQLUserRepo:
         finally:
             conn.close()
 
-    def create(self, record: UserRecord) -> bool:
+    def get_by_id(self, user_id: int) -> Optional[UserRecord]:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT id, username, password_hash, golden_key, email FROM users WHERE id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return UserRecord(
+                id=row["id"],
+                username=row["username"],
+                password_hash=row["password_hash"],
+                golden_key=row["golden_key"],
+                email=row.get("email"),
+            )
+        finally:
+            conn.close()
+
+    def create(self, record: UserRecord) -> Optional[UserRecord]:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor()
@@ -121,10 +161,67 @@ class MySQLUserRepo:
                     ),
                 )
                 conn.commit()
-                return True
+                record.id = cursor.lastrowid
+                return record
             except mysql.connector.Error as exc:
                 if exc.errno == errorcode.ER_DUP_ENTRY:
-                    return False
+                    return None
                 raise
+        finally:
+            conn.close()
+
+
+class MySQLRememberTokenRepo:
+    def create(self, user_id: int, token_hash: str, user_agent: str | None, expires_at: str) -> None:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO remember_tokens (user_id, token_hash, user_agent, expires_at) "
+                "VALUES (%s, %s, %s, %s)",
+                (user_id, token_hash, user_agent, expires_at),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def find_valid(self, token_hash: str) -> tuple[int, int] | None:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT id, user_id FROM remember_tokens "
+                "WHERE token_hash = %s AND revoked_at IS NULL AND expires_at > NOW()",
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return int(row["id"]), int(row["user_id"])
+        finally:
+            conn.close()
+
+    def rotate(self, token_id: int, new_hash: str, new_expires_at: str, user_agent: str | None) -> None:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE remember_tokens SET token_hash=%s, expires_at=%s, last_used=NOW(), user_agent=%s "
+                "WHERE id=%s",
+                (new_hash, new_expires_at, user_agent, token_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def revoke(self, token_hash: str) -> None:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE remember_tokens SET revoked_at=NOW() WHERE token_hash=%s",
+                (token_hash,),
+            )
+            conn.commit()
         finally:
             conn.close()

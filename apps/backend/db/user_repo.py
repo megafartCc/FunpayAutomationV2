@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 @dataclass
 class UserRecord:
+    id: Optional[int]
     username: str
     password_hash: str
     golden_key: str
@@ -15,6 +16,7 @@ class UserRecord:
 class InMemoryUserRepo:
     def __init__(self) -> None:
         self._users: Dict[str, UserRecord] = {}
+        self._next_id = 1
 
     def get_by_username(self, username: str) -> Optional[UserRecord]:
         key = username.lower()
@@ -26,9 +28,17 @@ class InMemoryUserRepo:
                 return existing
         return None
 
-    def create(self, record: UserRecord) -> bool:
+    def get_by_id(self, user_id: int) -> Optional[UserRecord]:
+        for existing in self._users.values():
+            if existing.id == user_id:
+                return existing
+        return None
+
+    def create(self, record: UserRecord) -> Optional[UserRecord]:
         key = record.username.lower()
         if key in self._users:
-            return False
+            return None
+        record.id = self._next_id
+        self._next_id += 1
         self._users[key] = record
-        return True
+        return record
