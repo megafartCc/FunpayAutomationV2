@@ -51,11 +51,15 @@ const LotsPage: React.FC = () => {
       setStatus({ message: "Provide lot number and account.", isError: true });
       return;
     }
+    if (!lotUrl.trim()) {
+      setStatus({ message: "Lot URL is required.", isError: true });
+      return;
+    }
     try {
       const created = await api.createLot({
         lot_number: number,
         account_id: account,
-        lot_url: lotUrl.trim() ? lotUrl.trim() : undefined,
+        lot_url: lotUrl.trim(),
       });
       setLots((prev) => {
         const next = prev.filter((item) => item.lot_number !== created.lot_number);
@@ -139,13 +143,14 @@ const LotsPage: React.FC = () => {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Lot URL (optional)</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Lot URL</label>
             <input
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               type="url"
               value={lotUrl}
               onChange={(event) => setLotUrl(event.target.value)}
               placeholder="https://funpay.com/lots/offer?id=..."
+              required
             />
           </div>
           <div className="flex items-end">

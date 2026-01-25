@@ -43,7 +43,7 @@ export type LotItem = {
 export type LotCreatePayload = {
   lot_number: number;
   account_id: number;
-  lot_url?: string | null;
+  lot_url: string;
 };
 
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";

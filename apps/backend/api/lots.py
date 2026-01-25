@@ -14,7 +14,7 @@ lots_repo = MySQLLotRepo()
 class LotCreate(BaseModel):
     lot_number: int = Field(..., ge=1)
     account_id: int = Field(..., ge=1)
-    lot_url: str | None = None
+    lot_url: str = Field(..., min_length=5)
 
 
 class LotItem(BaseModel):
@@ -45,11 +45,13 @@ def list_lots(user=Depends(get_current_user)) -> LotListResponse:
 
 @router.post("/lots", response_model=LotItem, status_code=status.HTTP_201_CREATED)
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
+    if not payload.lot_url.strip():
+        raise HTTPException(status_code=400, detail="Lot URL is required")
     created = lots_repo.create(
         user_id=int(user.id),
         lot_number=payload.lot_number,
         account_id=payload.account_id,
-        lot_url=payload.lot_url.strip() if payload.lot_url else None,
+        lot_url=payload.lot_url.strip(),
     )
     if not created:
         raise HTTPException(status_code=400, detail="Failed to create lot")
