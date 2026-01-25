@@ -17,60 +17,60 @@ const INVENTORY_GRID =
 const accounts: AccountRow[] = [
   {
     id: 24,
-    name: "№1 dwqbvfjw0u2j",
+    name: "No1 dwqbvfjw0u2j",
     login: "dwqbvfjw0u2j",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
   },
   {
     id: 25,
-    name: "№2 lxbvgvusku1186",
+    name: "No2 lxbvgvusku1186",
     login: "lxbvgvusku1186",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
   },
   {
     id: 26,
-    name: "№3 xucrlkdm44fsvi",
+    name: "No3 xucrlkdm44fsvi",
     login: "xucrlkdm44fsvi",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
   },
   {
     id: 27,
-    name: "№4 cexkwtmz648938",
+    name: "No4 cexkwtmz648938",
     login: "cexkwtmz648938",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
   },
   {
     id: 28,
-    name: "№5 hbqc49licejn",
+    name: "No5 hbqc49licejn",
     login: "hbqc49licejn",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
   },
   {
     id: 29,
-    name: "№6 zvshenrq450551",
+    name: "No6 zvshenrq450551",
     login: "zvshenrq450551",
     password: "********",
-    steamId: "—",
+    steamId: "-",
     mmr: 900,
     state: "Available",
     label: "DEFAULT",
@@ -80,9 +80,7 @@ const accounts: AccountRow[] = [
 const InventoryPage: React.FC = () => {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-neutral-900">Inventory</h1>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] items-stretch">
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -151,8 +149,8 @@ const InventoryPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
+        <div className="grid h-full gap-6 lg:grid-cols-2" style={{ gridAutoRows: "1fr" }}>
+          <div className="h-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
             <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
               <span>Account actions</span>
               <span className="text-[12px] font-semibold text-neutral-500">Select an account</span>
@@ -161,7 +159,7 @@ const InventoryPage: React.FC = () => {
               Select an account to unlock account actions.
             </div>
           </div>
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
+          <div className="h-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
             <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
               <span>Account controls</span>
               <span className="text-[12px] font-semibold text-neutral-500">Select an account</span>
