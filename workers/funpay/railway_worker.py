@@ -158,6 +158,8 @@ def log_message(
     chat_url = f"https://funpay.com/chat/?node={chat_id}" if chat_id is not None else "-"
 
     is_system = bool(msg.type and msg.type is not MessageTypes.NON_SYSTEM)
+    if msg.author_id == 0 or (sender_username and sender_username.lower() == "funpay"):
+        is_system = True
 
     logger.info(
         "user=%s chat=%s author=%s system=%s url=%s: %s",
