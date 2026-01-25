@@ -49,9 +49,16 @@ def _set_cookie(response: Response, name: str, value: str, max_age: int) -> None
 def _clear_cookie(response: Response, name: str) -> None:
     response.delete_cookie(name, path="/")
 
+def _validate_password(password: str) -> None:
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be 72 bytes or fewer.",
+        )
 
 @router.post("/login", response_model=AuthResponse)
 async def login(payload: LoginRequest, request: Request, response: Response) -> AuthResponse:
+    _validate_password(payload.password)
     user = auth_service.login(payload.username, payload.password)
     if user is None or user.id is None:
         raise HTTPException(
@@ -73,6 +80,7 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, request: Request, response: Response) -> AuthResponse:
+    _validate_password(payload.password)
     user = auth_service.register(payload.username, payload.password, payload.golden_key)
     if user is None or user.id is None:
         raise HTTPException(
