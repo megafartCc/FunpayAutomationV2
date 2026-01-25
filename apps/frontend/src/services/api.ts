@@ -28,10 +28,22 @@ export type AccountCreatePayload = {
   login: string;
   password: string;
   mafile_json: string;
-  lot_url?: string | null;
   mmr?: number | null;
   rental_duration?: number;
   rental_minutes?: number;
+};
+
+export type LotItem = {
+  lot_number: number;
+  account_id: number;
+  account_name: string;
+  lot_url?: string | null;
+};
+
+export type LotCreatePayload = {
+  lot_number: number;
+  account_id: number;
+  lot_url?: string | null;
 };
 
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
@@ -86,4 +98,7 @@ export const api = {
   listAccounts: () => request<{ items: AccountItem[] }>("/accounts", { method: "GET" }),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
+  listLots: () => request<{ items: LotItem[] }>("/lots", { method: "GET" }),
+  createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
+  deleteLot: (lotNumber: number) => request<{ ok: boolean }>(`/lots/${lotNumber}`, { method: "DELETE" }),
 };

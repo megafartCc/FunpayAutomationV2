@@ -18,7 +18,6 @@ const AddAccountPage: React.FC = () => {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [mmr, setMmr] = useState("");
-  const [lotUrl, setLotUrl] = useState("");
   const [mafileJson, setMafileJson] = useState("");
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +59,6 @@ const AddAccountPage: React.FC = () => {
       login: login.trim(),
       password,
       mafile_json: mafileJson.trim(),
-      lot_url: lotUrl.trim() ? lotUrl.trim() : undefined,
       mmr: mmrNumber,
       rental_duration: 1,
       rental_minutes: 0,
@@ -74,7 +72,6 @@ const AddAccountPage: React.FC = () => {
       setLogin("");
       setPassword("");
       setMmr("");
-      setLotUrl("");
       setMafileJson("");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -152,15 +149,6 @@ const AddAccountPage: React.FC = () => {
                 value={mmr}
                 onChange={(event) => setMmr(event.target.value)}
                 min={0}
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Lot URL (optional)</label>
-              <input
-                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
-                value={lotUrl}
-                onChange={(event) => setLotUrl(event.target.value)}
-                placeholder="https://funpay.com/lots/offer?id=..."
               />
             </div>
             <div className="space-y-2 md:col-span-2">

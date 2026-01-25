@@ -147,6 +147,8 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
             where_clauses.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
         if has_rental_frozen:
             where_clauses.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
+        if has_lots:
+            where_clauses.append("l.lot_number IS NOT NULL")
 
         params: list = []
         if user_id is not None:

@@ -124,6 +124,25 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lots (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                lot_number INT NOT NULL,
+                account_id BIGINT NOT NULL,
+                lot_url TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_lot_user (user_id, lot_number),
+                UNIQUE KEY uniq_account_user (user_id, account_id),
+                INDEX idx_lots_account (account_id),
+                CONSTRAINT fk_lots_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE,
+                CONSTRAINT fk_lots_account FOREIGN KEY (account_id)
+                    REFERENCES accounts(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()
