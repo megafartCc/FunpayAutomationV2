@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# Environments
+.env
+.env.*
+venv/
+.venv/
+
+# Node / frontend
+node_modules/
+apps/frontend/node_modules/
+apps/frontend/dist/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+application.log
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
