@@ -27,6 +27,14 @@ class AccountRecord:
 
 
 class MySQLAccountRepo:
+    def _column_exists(self, cursor: mysql.connector.cursor.MySQLCursor, column: str) -> bool:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = %s LIMIT 1",
+            (column,),
+        )
+        return cursor.fetchone() is not None
+
     def list_by_user(self, user_id: int) -> List[AccountRecord]:
         conn = _pool.get_connection()
         try:
@@ -80,26 +88,44 @@ class MySQLAccountRepo:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor()
+            has_mafile_json = self._column_exists(cursor, "mafile_json")
+            has_path = self._column_exists(cursor, "path_to_maFile")
+            has_lot_url = self._column_exists(cursor, "lot_url")
+
+            columns = [
+                "user_id",
+                "account_name",
+                "login",
+                "password",
+                "mmr",
+                "rental_duration",
+                "rental_duration_minutes",
+            ]
+            values: list = [
+                user_id,
+                account_name,
+                login,
+                password,
+                mmr,
+                rental_duration,
+                rental_duration_minutes,
+            ]
+            if has_mafile_json:
+                columns.append("mafile_json")
+                values.append(mafile_json)
+            if has_path:
+                columns.append("path_to_maFile")
+                values.append("")
+            if has_lot_url:
+                columns.append("lot_url")
+                values.append(lot_url)
+
+            placeholders = ", ".join(["%s"] * len(columns))
+            columns_sql = ", ".join(columns)
             try:
                 cursor.execute(
-                    """
-                    INSERT INTO accounts (
-                        user_id, account_name, login, password, mafile_json, lot_url,
-                        mmr, rental_duration, rental_duration_minutes
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        user_id,
-                        account_name,
-                        login,
-                        password,
-                        mafile_json,
-                        lot_url,
-                        mmr,
-                        rental_duration,
-                        rental_duration_minutes,
-                    ),
+                    f"INSERT INTO accounts ({columns_sql}) VALUES ({placeholders})",
+                    tuple(values),
                 )
                 conn.commit()
                 account_id = cursor.lastrowid

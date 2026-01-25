@@ -126,6 +126,21 @@ def ensure_schema() -> None:
         )
         # Ensure legacy tables get new columns without manual migrations.
         try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN mafile_json LONGTEXT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN path_to_maFile TEXT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
+        try:
+            cursor.execute("ALTER TABLE accounts MODIFY path_to_maFile TEXT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_BAD_FIELD_ERROR:
+                raise
+        try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN lot_url TEXT NULL;")
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
