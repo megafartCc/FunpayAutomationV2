@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, ActiveRentalRecord
+from services.rentals_cache import RentalsCache
+from services.steam_service import deauthorize_sessions, SteamWorkerError
 
 
 router = APIRouter()
 accounts_repo = MySQLAccountRepo()
+rentals_cache = RentalsCache()
 
 
 class ActiveRentalItem(BaseModel):
@@ -26,6 +29,10 @@ class ActiveRentalItem(BaseModel):
 
 class ActiveRentalResponse(BaseModel):
     items: list[ActiveRentalItem]
+
+
+class FreezeRequest(BaseModel):
+    frozen: bool
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -64,7 +71,12 @@ def _account_label(record: ActiveRentalRecord) -> str:
 
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
-    records = accounts_repo.list_active_rentals(int(user.id))
+    user_id = int(user.id)
+    cached_items = rentals_cache.get(user_id)
+    if cached_items is not None:
+        return ActiveRentalResponse(items=[ActiveRentalItem(**item) for item in cached_items])
+
+    records = accounts_repo.list_active_rentals(user_id)
     items: list[ActiveRentalItem] = []
     for record in records:
         total_minutes = (
@@ -86,4 +98,68 @@ def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
                 status="",
             )
         )
+    rentals_cache.set(user_id, [item.model_dump() for item in items])
     return ActiveRentalResponse(items=items)
+
+
+@router.post("/rentals/{account_id}/freeze")
+def freeze_rental(account_id: int, payload: FreezeRequest, user=Depends(get_current_user)) -> dict:
+    account = accounts_repo.get_by_id(account_id, int(user.id))
+    if not account or not account.get("owner"):
+        raise HTTPException(status_code=404, detail="Rental not found")
+
+    if payload.frozen:
+        if int(account.get("rental_frozen") or 0):
+            return {"success": True, "frozen": True}
+        now = datetime.utcnow()
+        ok = accounts_repo.set_rental_freeze_state(
+            account_id,
+            int(user.id),
+            True,
+            frozen_at=now.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        if not ok:
+            raise HTTPException(status_code=400, detail="Failed to freeze rental")
+        mafile_json = account.get("mafile_json")
+        if mafile_json:
+            try:
+                deauthorize_sessions(
+                    steam_login=account.get("login") or account.get("account_name"),
+                    steam_password=account.get("password") or "",
+                    mafile_json=mafile_json,
+                )
+            except SteamWorkerError:
+                pass
+        return {"success": True, "frozen": True}
+
+    if not int(account.get("rental_frozen") or 0):
+        return {"success": True, "frozen": False}
+
+    frozen_at = account.get("rental_frozen_at")
+    rental_start = account.get("rental_start")
+    new_start = None
+    if rental_start and frozen_at:
+        try:
+            start_dt = rental_start if isinstance(rental_start, datetime) else datetime.strptime(
+                str(rental_start), "%Y-%m-%d %H:%M:%S"
+            )
+            frozen_dt = frozen_at if isinstance(frozen_at, datetime) else datetime.strptime(
+                str(frozen_at), "%Y-%m-%d %H:%M:%S"
+            )
+            delta = datetime.utcnow() - frozen_dt
+            if delta.total_seconds() < 0:
+                delta = timedelta(0)
+            new_start = start_dt + delta
+        except Exception:
+            new_start = None
+
+    ok = accounts_repo.set_rental_freeze_state(
+        account_id,
+        int(user.id),
+        False,
+        rental_start=new_start.strftime("%Y-%m-%d %H:%M:%S") if new_start else None,
+        frozen_at=None,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to unfreeze rental")
+    return {"success": True, "frozen": False}

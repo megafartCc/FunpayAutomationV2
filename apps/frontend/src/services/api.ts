@@ -20,6 +20,11 @@ export type AccountItem = {
   lot_url?: string | null;
   mmr?: number | null;
   owner?: string | null;
+  rental_start?: string | null;
+  rental_duration?: number;
+  rental_duration_minutes?: number | null;
+  account_frozen?: number;
+  rental_frozen?: number;
   state?: string;
   steam_id?: string | null;
 };
@@ -29,6 +34,15 @@ export type AccountCreatePayload = {
   login: string;
   password: string;
   mafile_json: string;
+  mmr?: number | null;
+  rental_duration?: number;
+  rental_minutes?: number;
+};
+
+export type AccountUpdatePayload = {
+  account_name?: string;
+  login?: string;
+  password?: string;
   mmr?: number | null;
   rental_duration?: number;
   rental_minutes?: number;
@@ -110,6 +124,29 @@ export const api = {
   listAccounts: () => request<{ items: AccountItem[] }>("/accounts", { method: "GET" }),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
+  updateAccount: (accountId: number, payload: AccountUpdatePayload) =>
+    request<AccountItem>(`/accounts/${accountId}`, { method: "PATCH", body: payload }),
+  deleteAccount: (accountId: number) =>
+    request<{ status: string }>(`/accounts/${accountId}`, { method: "DELETE" }),
+  assignAccount: (accountId: number, owner: string) =>
+    request<{ status: string }>(`/accounts/${accountId}/assign`, { method: "POST", body: { owner } }),
+  releaseAccount: (accountId: number) =>
+    request<{ status: string }>(`/accounts/${accountId}/release`, { method: "POST" }),
+  extendAccount: (accountId: number, hours: number, minutes: number) =>
+    request<{ status: string }>(`/accounts/${accountId}/extend`, {
+      method: "POST",
+      body: { hours, minutes },
+    }),
+  freezeAccount: (accountId: number, frozen: boolean) =>
+    request<{ success: boolean; frozen: boolean }>(`/accounts/${accountId}/freeze`, {
+      method: "POST",
+      body: { frozen },
+    }),
+  freezeRental: (accountId: number, frozen: boolean) =>
+    request<{ success: boolean; frozen: boolean }>(`/rentals/${accountId}/freeze`, {
+      method: "POST",
+      body: { frozen },
+    }),
   deauthorizeSteam: (accountId: number) =>
     request<{ success: boolean }>(`/accounts/${accountId}/steam/deauthorize`, { method: "POST" }),
   listLots: () => request<{ items: LotItem[] }>("/lots", { method: "GET" }),

@@ -24,6 +24,28 @@ class AccountCreate(BaseModel):
     rental_minutes: int = Field(0, ge=0, le=59)
 
 
+class AccountUpdate(BaseModel):
+    account_name: str | None = Field(None, min_length=1, max_length=255)
+    login: str | None = Field(None, min_length=1, max_length=255)
+    password: str | None = Field(None, min_length=1, max_length=255)
+    mmr: int | None = Field(None, ge=0)
+    rental_duration: int | None = Field(None, ge=1, le=9999)
+    rental_minutes: int | None = Field(None, ge=0, le=59)
+
+
+class AssignRequest(BaseModel):
+    owner: str = Field(..., min_length=1, max_length=255)
+
+
+class FreezeRequest(BaseModel):
+    frozen: bool
+
+
+class ExtendRequest(BaseModel):
+    hours: int = Field(0, ge=0, le=9999)
+    minutes: int = Field(0, ge=0, le=59)
+
+
 class AccountItem(BaseModel):
     id: int
     account_name: str
@@ -32,6 +54,7 @@ class AccountItem(BaseModel):
     lot_url: str | None = None
     mmr: int | None = None
     owner: str | None = None
+    rental_start: str | None = None
     rental_duration: int
     rental_duration_minutes: int | None = None
     account_frozen: int
@@ -65,6 +88,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         lot_url=record.lot_url,
         mmr=record.mmr,
         owner=record.owner,
+        rental_start=record.rental_start,
         rental_duration=record.rental_duration,
         rental_duration_minutes=record.rental_duration_minutes,
         account_frozen=record.account_frozen,
@@ -103,6 +127,111 @@ def create_account(payload: AccountCreate, user=Depends(get_current_user)) -> Ac
             detail="Account already exists",
         )
     return _to_item(created)
+
+
+@router.patch("/accounts/{account_id}", response_model=AccountItem)
+def update_account(account_id: int, payload: AccountUpdate, user=Depends(get_current_user)) -> AccountItem:
+    current = accounts_repo.get_by_id(account_id, int(user.id))
+    if not current:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    fields: dict = {}
+    if payload.account_name:
+        fields["account_name"] = payload.account_name.strip()
+    if payload.login:
+        fields["login"] = payload.login.strip()
+    if payload.password:
+        fields["password"] = payload.password
+    if payload.mmr is not None:
+        fields["mmr"] = payload.mmr
+
+    if payload.rental_duration is not None or payload.rental_minutes is not None:
+        current_hours = int(current.get("rental_duration") or 0)
+        current_minutes_total = current.get("rental_duration_minutes")
+        if current_minutes_total is None:
+            current_minutes_total = current_hours * 60
+        try:
+            current_minutes_total = int(current_minutes_total)
+        except Exception:
+            current_minutes_total = current_hours * 60
+        current_minutes = current_minutes_total % 60
+        hours = payload.rental_duration if payload.rental_duration is not None else current_hours
+        minutes = payload.rental_minutes if payload.rental_minutes is not None else current_minutes
+        total_minutes = hours * 60 + minutes
+        if total_minutes <= 0:
+            raise HTTPException(status_code=400, detail="Rental duration must be greater than 0")
+        fields["rental_duration"] = hours
+        fields["rental_duration_minutes"] = total_minutes
+
+    if not fields:
+        raise HTTPException(status_code=400, detail="No changes provided")
+
+    success = accounts_repo.update_account(account_id, int(user.id), fields)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update account")
+
+    updated = accounts_repo.get_by_id(account_id, int(user.id))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return _to_item(AccountRecord(
+        id=int(updated["id"]),
+        user_id=int(updated["user_id"]),
+        account_name=updated["account_name"],
+        login=updated["login"],
+        password=updated["password"],
+        lot_url=updated.get("lot_url"),
+        mmr=updated.get("mmr"),
+        owner=updated.get("owner"),
+        rental_start=updated.get("rental_start"),
+        rental_duration=int(updated.get("rental_duration") or 0),
+        rental_duration_minutes=updated.get("rental_duration_minutes"),
+        account_frozen=int(updated.get("account_frozen") or 0),
+        rental_frozen=int(updated.get("rental_frozen") or 0),
+        mafile_json=updated.get("mafile_json"),
+    ))
+
+
+@router.delete("/accounts/{account_id}")
+def delete_account(account_id: int, user=Depends(get_current_user)) -> dict:
+    success = accounts_repo.delete_account_by_id(account_id, int(user.id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"status": "ok"}
+
+
+@router.post("/accounts/{account_id}/assign")
+def assign_account(account_id: int, payload: AssignRequest, user=Depends(get_current_user)) -> dict:
+    success = accounts_repo.set_account_owner(account_id, int(user.id), payload.owner.strip())
+    if not success:
+        raise HTTPException(status_code=400, detail="Account already assigned")
+    return {"status": "ok"}
+
+
+@router.post("/accounts/{account_id}/release")
+def release_account(account_id: int, user=Depends(get_current_user)) -> dict:
+    success = accounts_repo.release_account(account_id, int(user.id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"status": "ok"}
+
+
+@router.post("/accounts/{account_id}/extend")
+def extend_account(account_id: int, payload: ExtendRequest, user=Depends(get_current_user)) -> dict:
+    total_minutes = payload.hours * 60 + payload.minutes
+    if total_minutes <= 0:
+        raise HTTPException(status_code=400, detail="Extension must be greater than 0")
+    success = accounts_repo.extend_rental_duration(account_id, int(user.id), payload.hours, payload.minutes)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to extend rental")
+    return {"status": "ok"}
+
+
+@router.post("/accounts/{account_id}/freeze")
+def freeze_account(account_id: int, payload: FreezeRequest, user=Depends(get_current_user)) -> dict:
+    success = accounts_repo.set_account_frozen(account_id, int(user.id), payload.frozen)
+    if not success:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"success": True, "frozen": payload.frozen}
 
 
 @router.post("/accounts/{account_id}/steam/deauthorize")

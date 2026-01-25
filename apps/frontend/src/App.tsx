@@ -140,7 +140,7 @@ const AppRoutes: React.FC = () => {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
-          <Route path="rentals" element={<ActiveRentalsPage />} />
+          <Route path="rentals" element={<ActiveRentalsPage onToast={showToast} />} />
           <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
           <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
           <Route path="blacklist" element={<DashboardPlaceholder title="Blacklist" />} />
