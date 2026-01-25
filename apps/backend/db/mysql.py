@@ -124,6 +124,12 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        # Ensure legacy tables get new columns without manual migrations.
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN lot_url TEXT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS lots (
