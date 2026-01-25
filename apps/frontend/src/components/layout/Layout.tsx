@@ -10,7 +10,8 @@ type LayoutProps = {
 };
 
 const titles: Record<string, string> = {
-  "/dashboard": "Funpay Statistics",
+  "/dashboard": "Dashboard",
+  "/funpay-stats": "Funpay Statistics",
   "/rentals": "Active Rentals",
   "/orders": "Orders History",
   "/tickets": "Tickets (FunPay)",

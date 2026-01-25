@@ -161,7 +161,7 @@ const NAV_ITEMS: NavItem[] = [
 const BOTTOM_NAV_IDS = new Set(["notifications", "settings"]);
 
 const navIdToPath: Record<string, string> = {
-  "funpay-stats": "/dashboard",
+  "funpay-stats": "/funpay-stats",
   overview: "/dashboard",
   rentals: "/rentals",
   orders: "/orders",

@@ -132,7 +132,8 @@ const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPlaceholder title="Funpay Statistics" />} />
+          <Route path="dashboard" element={<DashboardPlaceholder title="Dashboard" />} />
+          <Route path="funpay-stats" element={<DashboardPlaceholder title="Funpay Statistics" />} />
           <Route path="rentals" element={<DashboardPlaceholder title="Active Rentals" />} />
           <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
           <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
