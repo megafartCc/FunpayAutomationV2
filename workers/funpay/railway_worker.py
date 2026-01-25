@@ -124,17 +124,17 @@ def log_message(
     if msg.author_id and account.id and msg.author_id == account.id:
         return None
 
-    # Prefer author when it's not us; else fall back to interlocutor/chat.
-    if msg.author_id and account.id and msg.author_id != account.id:
-        sender_username = msg.author or msg.chat_name or f"user_{msg.author_id}"
-    elif msg.interlocutor_id and msg.interlocutor_id != account.id:
-        sender_username = msg.chat_name or f"user_{msg.interlocutor_id}"
-    elif msg.author and msg.author != my_name:
+    # Prefer author when it's not us; else chat name when it's not us; else IDs.
+    if msg.author and msg.author != my_name:
         sender_username = msg.author
     elif msg.chat_name and msg.chat_name != my_name:
         sender_username = msg.chat_name
+    elif msg.author_id and account.id and msg.author_id != account.id:
+        sender_username = f"user_{msg.author_id}"
+    elif msg.interlocutor_id and msg.interlocutor_id != account.id:
+        sender_username = f"user_{msg.interlocutor_id}"
     else:
-        sender_username = msg.author or msg.chat_name or "-"
+        sender_username = f"chat_{msg.chat_id}"
 
     message_text = msg.text
 
