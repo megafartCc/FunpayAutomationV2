@@ -162,6 +162,20 @@ def extract_order_id(text: str | None) -> str | None:
     return match.group(0).lstrip("#")
 
 
+def extract_lot_number_from_order(order: object) -> int | None:
+    candidates = [
+        getattr(order, "full_description", None),
+        getattr(order, "short_description", None),
+        getattr(order, "title", None),
+        getattr(order, "html", None),
+    ]
+    for item in candidates:
+        lot_number = parse_lot_number(item if isinstance(item, str) else None)
+        if lot_number is not None:
+            return lot_number
+    return None
+
+
 def get_unit_minutes(account: dict) -> int:
     minutes = account.get("rental_duration_minutes")
     if minutes is not None:
@@ -779,13 +793,7 @@ def handle_order_purchased(
         logger.warning("Skipping order %s: chat id not found.", order_id)
         return
 
-    description = (
-        getattr(order, "full_description", None)
-        or getattr(order, "short_description", None)
-        or getattr(order, "title", None)
-        or ""
-    )
-    lot_number = parse_lot_number(description)
+    lot_number = extract_lot_number_from_order(order)
     if lot_number is None:
         send_chat_message(logger, account, chat_id, ORDER_LOT_MISSING)
         mark_order_processed(site_username, site_user_id, order_id)
