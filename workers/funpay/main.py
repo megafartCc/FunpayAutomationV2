@@ -1,3 +1,16 @@
+import os
+import sys
+
+# Default to the clean Railway worker to avoid Cardinal's noisy CLI startup.
+# Set FUNPAY_ALLOW_CARDINAL_MAIN=1 if you really want the original Cardinal CLI.
+if os.getenv("FUNPAY_ALLOW_CARDINAL_MAIN", "").strip().lower() not in {"1", "true", "yes", "y", "on"}:
+    try:
+        from railway_worker import main as worker_main
+    except Exception:
+        sys.exit(0)
+    worker_main()
+    sys.exit(0)
+
 import time
 from pip._internal.cli.main import main
 
