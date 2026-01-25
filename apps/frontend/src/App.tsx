@@ -2,29 +2,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import { api, AuthResponse } from "./services/api";
+import Layout from "./components/layout/Layout";
 
 type Toast = { message: string; isError?: boolean } | null;
 
 type User = AuthResponse;
 
-const Dashboard: React.FC<{ onLogout: () => Promise<void> }> = ({ onLogout }) => {
+const DashboardPlaceholder: React.FC<{ title: string }> = ({ title }) => {
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <h1 className="text-2xl font-semibold text-neutral-900">Dashboard</h1>
-        <button
-          type="button"
-          className="rounded-full border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-900"
-          onClick={onLogout}
-        >
-          Log out
-        </button>
-      </div>
-      <div className="mx-auto max-w-5xl px-6">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-sm text-neutral-500 shadow-sm">
-          Protected content will live here.
-        </div>
-      </div>
+    <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-sm text-neutral-500 shadow-sm">
+      <div className="text-lg font-semibold text-neutral-900">{title}</div>
+      <p className="mt-2">Protected content will live here.</p>
     </div>
   );
 };
@@ -136,14 +124,27 @@ const AppRoutes: React.FC = () => {
           }
         />
         <Route
-          path="/dashboard"
+          path="/"
           element={
             <ProtectedRoute user={user} loading={loading}>
-              <Dashboard onLogout={onLogout} />
+              {user ? <Layout user={user} onLogout={onLogout} /> : null}
             </ProtectedRoute>
           }
-        />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        >
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPlaceholder title="Funpay Statistics" />} />
+          <Route path="rentals" element={<DashboardPlaceholder title="Active Rentals" />} />
+          <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
+          <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
+          <Route path="blacklist" element={<DashboardPlaceholder title="Blacklist" />} />
+          <Route path="inventory" element={<DashboardPlaceholder title="Inventory" />} />
+          <Route path="lots" element={<DashboardPlaceholder title="Lots" />} />
+          <Route path="chats" element={<DashboardPlaceholder title="Chats" />} />
+          <Route path="add-account" element={<DashboardPlaceholder title="Add Account" />} />
+          <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
+          <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />
+          <Route path="settings" element={<DashboardPlaceholder title="Settings" />} />
+        </Route>
       </Routes>
       {toast ? (
         <div className="toast">
