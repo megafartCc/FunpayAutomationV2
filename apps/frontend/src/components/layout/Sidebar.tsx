@@ -1,199 +1,290 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { useLocation, useNavigate } from "react-router-dom";
 
-type NavItem = {
-  label: string;
-  to: string;
-  icon: React.ReactNode;
-  badge?: string;
+const DashboardIcon = () => (
+  <svg width="18" height="19" viewBox="0 0 18 19" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M17 14.3425V8.79451C17 8.26017 16.9995 7.99286 16.9346 7.74422C16.877 7.52387 16.7825 7.31535 16.6546 7.12693C16.5102 6.9143 16.3096 6.73797 15.9074 6.38611L11.1074 2.18611C10.3608 1.53283 9.98751 1.20635 9.56738 1.08211C9.19719 0.972631 8.80261 0.972631 8.43242 1.08211C8.01261 1.20626 7.63985 1.53242 6.89436 2.18472L2.09277 6.38611C1.69064 6.73798 1.49004 6.9143 1.3457 7.12693C1.21779 7.31536 1.12255 7.52387 1.06497 7.74422C1 7.99286 1 8.26017 1 8.79451V14.3425C1 15.2743 1 15.7401 1.15224 16.1076C1.35523 16.5977 1.74432 16.9875 2.23438 17.1905C2.60192 17.3427 3.06786 17.3427 3.99974 17.3427C4.93163 17.3427 5.39808 17.3427 5.76562 17.1905C6.25568 16.9875 6.64467 16.5978 6.84766 16.1077C6.9999 15.7402 7 15.2742 7 14.3424V13.3424C7 12.2378 7.89543 11.3424 9 11.3424C10.1046 11.3424 11 12.2378 11 13.3424V14.3424C11 15.2742 11 15.7402 11.1522 16.1077C11.3552 16.5978 11.7443 16.9875 12.2344 17.1905C12.6019 17.3427 13.0679 17.3427 13.9997 17.3427C14.9316 17.3427 15.3981 17.3427 15.7656 17.1905C16.2557 16.9875 16.6447 16.5977 16.8477 16.1076C16.9999 15.7401 17 15.2743 17 14.3425Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const FunpayStatisticsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M20 21C20 18.2386 16.4183 16 12 16C7.58172 16 4 18.2386 4 21M12 13C9.23858 13 7 10.7614 7 8C7 5.23858 9.23858 3 12 3C14.7614 3 17 5.23858 17 8C17 10.7614 14.7614 13 12 13Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const RentalsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M12 13V9M21 6L19 4M10 2H14M12 21C7.58172 21 4 17.4183 4 13C4 8.58172 7.58172 5 12 5C16.4183 5 20 8.58172 20 13C20 17.4183 16.4183 21 12 21Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const BlacklistIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M5.75 5.75L18.25 18.25M12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const InventoryIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M18 12V17C18 18.6569 15.3137 20 12 20C8.68629 20 6 18.6569 6 17V12M18 12V7M18 12C18 13.6569 15.3137 15 12 15C8.68629 15 6 13.6569 6 12M18 7C18 5.34315 15.3137 4 12 4C8.68629 4 6 5.34315 6 7M18 7C18 8.65685 15.3137 10 12 10C8.68629 10 6 8.65685 6 7M6 12V7"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const LotsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M18 12V17C18 18.6569 15.3137 20 12 20C8.68629 20 6 18.6569 6 17V12M18 12V7M18 12C18 13.6569 15.3137 15 12 15C8.68629 15 6 13.6569 6 12M18 7C18 5.34315 15.3137 4 12 4C8.68629 4 6 5.34315 6 7M18 7C18 8.65685 15.3137 10 12 10C8.68629 10 6 8.65685 6 7M6 12V7"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const ChatsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M5.59961 19.9203L7.12357 18.7012L7.13478 18.6926C7.45249 18.4384 7.61281 18.3101 7.79168 18.2188C7.95216 18.1368 8.12328 18.0771 8.2998 18.0408C8.49877 18 8.70603 18 9.12207 18H17.8031C18.921 18 19.4806 18 19.908 17.7822C20.2843 17.5905 20.5905 17.2842 20.7822 16.9079C21 16.4805 21 15.9215 21 14.8036V7.19691C21 6.07899 21 5.5192 20.7822 5.0918C20.5905 4.71547 20.2837 4.40973 19.9074 4.21799C19.4796 4 18.9203 4 17.8002 4H6.2002C5.08009 4 4.51962 4 4.0918 4.21799C3.71547 4.40973 3.40973 4.71547 3.21799 5.0918C3 5.51962 3 6.08009 3 7.2002V18.6712C3 19.7369 3 20.2696 3.21846 20.5433C3.40845 20.7813 3.69644 20.9198 4.00098 20.9195C4.35115 20.9191 4.76744 20.5861 5.59961 19.9203Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const AddIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M12 16V10M12 10L9 12M12 10L15 12M3 6V16.8C3 17.9201 3 18.4798 3.21799 18.9076C3.40973 19.2839 3.71547 19.5905 4.0918 19.7822C4.5192 20 5.07899 20 6.19691 20H17.8031C18.921 20 19.48 20 19.9074 19.7822C20.2837 19.5905 20.5905 19.2841 20.7822 18.9078C21.0002 18.48 21.0002 17.9199 21.0002 16.7998L21.0002 9.19978C21.0002 8.07967 21.0002 7.51962 20.7822 7.0918C20.5905 6.71547 20.2839 6.40973 19.9076 6.21799C19.4798 6 18.9201 6 17.8 6H12M3 6H12M3 6C3 4.89543 3.89543 4 5 4H8.67452C9.1637 4 9.40886 4 9.63904 4.05526C9.84311 4.10425 10.0379 4.18526 10.2168 4.29492C10.4186 4.41857 10.5918 4.59182 10.9375 4.9375L12 6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const NotificationsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M15 17V18C15 19.6569 13.6569 21 12 21C10.3431 21 9 19.6569 9 18V17M15 17H9M15 17H18.5905C18.973 17 19.1652 17 19.3201 16.9478C19.616 16.848 19.8475 16.6156 19.9473 16.3198C19.9997 16.1643 19.9997 15.9715 19.9997 15.5859C19.9997 15.4172 19.9995 15.3329 19.9863 15.2524C19.9614 15.1004 19.9024 14.9563 19.8126 14.8312C19.7651 14.7651 19.7048 14.7048 19.5858 14.5858L19.1963 14.1963C19.0706 14.0706 19 13.9001 19 13.7224V10C19 6.134 15.866 2.99999 12 3C8.13401 3.00001 5 6.13401 5 10V13.7224C5 13.9002 4.92924 14.0706 4.80357 14.1963L4.41406 14.5858C4.29476 14.7051 4.23504 14.765 4.1875 14.8312C4.09766 14.9564 4.03815 15.1004 4.0132 15.2524C4 15.3329 4 15.4172 4 15.586C4 15.9715 4 16.1642 4.05245 16.3197C4.15225 16.6156 4.3848 16.848 4.68066 16.9478C4.83556 17 5.02701 17 5.40956 17H9"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const OrdersHistoryIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4 8H20M4 8V16.8002C4 17.9203 4 18.4801 4.21799 18.9079C4.40973 19.2842 4.71547 19.5905 5.0918 19.7822C5.5192 20 6.07899 20 7.19691 20H16.8031C17.921 20 18.48 20 18.9074 19.7822C19.2837 19.5905 19.5905 19.2842 19.7822 18.9079C20 18.4805 20 17.9215 20 16.8036V8M4 8V7.2002C4 6.08009 4 5.51962 4.21799 5.0918C4.40973 4.71547 4.71547 4.40973 5.0918 4.21799C5.51962 4 6.08009 4 7.2002 4H8M20 8V7.19691C20 6.07899 20 5.5192 19.7822 5.0918C19.5905 4.71547 19.2837 4.40973 18.9074 4.21799C18.4796 4 17.9203 4 16.8002 4H16M16 2V4M16 4H8M8 2V4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg width="22" height="21" viewBox="0 0 22 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M19.3465 7.35066L18.9803 7.14693C18.9234 7.1153 18.8955 7.09942 18.868 7.08297C18.5949 6.91939 18.3647 6.69337 18.1968 6.42296C18.1799 6.39575 18.1639 6.36722 18.1314 6.31083C18.0988 6.25451 18.0824 6.22597 18.0672 6.19772C17.9166 5.9164 17.8351 5.60289 17.8302 5.2838C17.8297 5.25172 17.8298 5.21894 17.8309 5.15378L17.8381 4.72852C17.8495 4.04799 17.8552 3.70667 17.7596 3.40035C17.6747 3.12827 17.5325 2.87766 17.3428 2.66499C17.1282 2.42458 16.8313 2.25308 16.2368 1.9105L15.743 1.62594C15.1502 1.28431 14.8536 1.11344 14.5389 1.0483C14.2605 0.990672 13.9731 0.993343 13.6957 1.05563C13.3825 1.12592 13.0897 1.30125 12.5044 1.65169L12.5011 1.65328L12.1473 1.86514C12.0914 1.89864 12.063 1.91553 12.035 1.93112C11.7567 2.08584 11.4461 2.17139 11.1278 2.1816C11.0958 2.18263 11.0631 2.18263 10.9979 2.18263C10.9331 2.18263 10.899 2.18263 10.867 2.1816C10.5481 2.17134 10.2368 2.08533 9.95809 1.92997C9.93 1.91431 9.90222 1.89729 9.84615 1.86364L9.49008 1.64986C8.90081 1.2961 8.60573 1.11895 8.29086 1.0483C8.01229 0.9858 7.72395 0.984071 7.44449 1.04244C7.12894 1.10835 6.83235 1.28049 6.23916 1.62477L6.23653 1.62594L5.74886 1.90897L5.74347 1.91227C5.15562 2.25345 4.86099 2.42445 4.64828 2.66387C4.45952 2.87633 4.31843 3.12655 4.23398 3.39791C4.13852 3.70465 4.14361 4.0467 4.15511 4.73043L4.16226 5.15509C4.16334 5.2194 4.16522 5.25135 4.16475 5.28298C4.16002 5.60272 4.07744 5.91687 3.92633 6.19869C3.91138 6.22656 3.89528 6.25444 3.86312 6.31011C3.83094 6.36582 3.81536 6.39352 3.79867 6.42041C3.62995 6.69226 3.39872 6.9196 3.12391 7.08346C3.09673 7.09967 3.06808 7.11525 3.0118 7.14645L2.65023 7.34681C2.04867 7.68018 1.74795 7.84701 1.52914 8.08443C1.33557 8.29446 1.18933 8.54358 1.10007 8.8149C0.999171 9.1216 0.999256 9.46552 1.00082 10.1533L1.00209 10.7154C1.00365 11.3986 1.00577 11.7399 1.1069 12.0446C1.19637 12.3141 1.34153 12.5617 1.53402 12.7705C1.7516 13.0064 2.04932 13.1722 2.64633 13.5044L3.00467 13.7037C3.06565 13.7376 3.09634 13.7544 3.12575 13.7721C3.39806 13.9361 3.62747 14.1628 3.79476 14.4331C3.81284 14.4623 3.83019 14.4926 3.86488 14.5532C3.89914 14.613 3.91667 14.643 3.93252 14.673C4.07919 14.9507 4.15772 15.2592 4.16307 15.5732C4.16365 15.6071 4.16316 15.6414 4.16199 15.7104L4.15511 16.1179C4.14353 16.804 4.13849 17.1474 4.2345 17.455C4.31945 17.7271 4.46142 17.9777 4.65121 18.1904C4.86573 18.4308 5.16313 18.6022 5.75765 18.9448L6.25136 19.2293C6.84421 19.5709 7.14053 19.7416 7.45527 19.8067C7.73372 19.8644 8.02123 19.8621 8.29867 19.7998C8.61225 19.7294 8.90606 19.5535 9.49301 19.2021L9.84683 18.9902C9.90281 18.9567 9.93115 18.9399 9.9592 18.9243C10.2375 18.7696 10.5478 18.6836 10.8661 18.6734C10.8981 18.6723 10.9307 18.6723 10.996 18.6723C11.0614 18.6723 11.094 18.6723 11.1261 18.6734C11.445 18.6836 11.7573 18.7699 12.036 18.9253C12.0605 18.9389 12.0851 18.9537 12.1282 18.9796L12.5044 19.2054C13.0937 19.5592 13.3882 19.7359 13.703 19.8065C13.9816 19.869 14.2702 19.8716 14.5496 19.8132C14.8651 19.7473 15.1623 19.5748 15.7551 19.2307L16.2501 18.9434C16.8384 18.6021 17.1333 18.4309 17.3461 18.1914C17.5349 17.9789 17.6761 17.7288 17.7606 17.4574C17.8553 17.1529 17.8496 16.8135 17.8383 16.1396L17.8309 15.7002C17.8298 15.6358 17.8297 15.6039 17.8302 15.5722C17.8349 15.2525 17.9161 14.9381 18.0672 14.6563C18.0821 14.6285 18.0984 14.6004 18.1304 14.5449C18.1626 14.4892 18.1793 14.4614 18.1959 14.4345C18.3647 14.1627 18.5961 13.9351 18.8709 13.7713C18.8978 13.7553 18.9254 13.74 18.9804 13.7095L18.9823 13.7086L19.3438 13.5083C19.9454 13.1749 20.2467 13.0079 20.4655 12.7705C20.6591 12.5604 20.8051 12.3117 20.8944 12.0403C20.9947 11.7354 20.9939 11.3935 20.9924 10.7138L20.9911 10.1396C20.9895 9.45644 20.9887 9.11513 20.8875 8.81051C20.7981 8.54101 20.6521 8.29334 20.4596 8.08458C20.2422 7.84884 19.9441 7.68299 19.3483 7.35151L19.3465 7.35066Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6.99691 10.4277C6.99691 12.6368 8.78777 14.4277 10.9969 14.4277C13.2061 14.4277 14.9969 12.6368 14.9969 10.4277C14.9969 8.21856 13.2061 6.4277 10.9969 6.4277C8.78777 6.4277 6.99691 8.21856 6.99691 10.4277Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const AutomationsIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1l2.1-2.1M17 7l2.1-2.1"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+
+type NavItem = { id: string; label: string; Icon: React.FC };
+
+const NAV_ITEMS: NavItem[] = [
+  { id: "funpay-stats", label: "Funpay Statistics", Icon: FunpayStatisticsIcon },
+  { id: "overview", label: "Dashboard", Icon: DashboardIcon },
+  { id: "rentals", label: "Active Rentals", Icon: RentalsIcon },
+  { id: "orders", label: "Orders History", Icon: OrdersHistoryIcon },
+  { id: "tickets", label: "Tickets (FunPay)", Icon: OrdersHistoryIcon },
+  { id: "blacklist", label: "Blacklist", Icon: BlacklistIcon },
+  { id: "inventory", label: "Inventory", Icon: InventoryIcon },
+  { id: "lots", label: "Lots", Icon: LotsIcon },
+  { id: "chats", label: "Chats", Icon: ChatsIcon },
+  { id: "add", label: "Add Account", Icon: AddIcon },
+  { id: "automations", label: "Automations", Icon: AutomationsIcon },
+  { id: "notifications", label: "Notifications", Icon: NotificationsIcon },
+  { id: "settings", label: "Settings", Icon: SettingsIcon },
+];
+
+const BOTTOM_NAV_IDS = new Set(["notifications", "settings"]);
+
+const navIdToPath: Record<string, string> = {
+  "funpay-stats": "/dashboard",
+  overview: "/dashboard",
+  rentals: "/rentals",
+  orders: "/orders",
+  tickets: "/tickets",
+  blacklist: "/blacklist",
+  inventory: "/inventory",
+  lots: "/lots",
+  chats: "/chats",
+  add: "/add-account",
+  automations: "/automations",
+  notifications: "/notifications",
+  settings: "/settings",
 };
 
-const iconClass = "h-5 w-5 text-neutral-500";
-
-const itemsTop: NavItem[] = [
-  {
-    label: "Funpay Statistics",
-    to: "/dashboard",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" />
-      </svg>
-    ),
-  },
-  {
-    label: "Dashboard",
-    to: "/dashboard",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M3 10.5L12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19.5z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Active Rentals",
-    to: "/rentals",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="12" cy="12" r="8" />
-        <path d="M12 8v5l3 2" />
-      </svg>
-    ),
-  },
-  {
-    label: "Orders History",
-    to: "/orders",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <rect x="5" y="4" width="14" height="16" rx="2" />
-        <path d="M8 2v4M16 2v4M8 10h8M8 14h8" />
-      </svg>
-    ),
-  },
-  {
-    label: "Tickets (FunPay)",
-    to: "/tickets",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M4 7h16v4a2 2 0 1 1 0 4v4H4v-4a2 2 0 1 1 0-4z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Blacklist",
-    to: "/blacklist",
-    badge: "3",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="12" cy="12" r="8" />
-        <path d="M8 8l8 8" />
-      </svg>
-    ),
-  },
-  {
-    label: "Inventory",
-    to: "/inventory",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <ellipse cx="12" cy="6" rx="7" ry="3" />
-        <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
-        <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
-      </svg>
-    ),
-  },
-  {
-    label: "Lots",
-    to: "/lots",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <ellipse cx="12" cy="6" rx="7" ry="3" />
-        <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
-      </svg>
-    ),
-  },
-  {
-    label: "Chats",
-    to: "/chats",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M4 6h16v9a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z" />
-      </svg>
-    ),
-  },
-  {
-    label: "Add Account",
-    to: "/add-account",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <rect x="4" y="5" width="16" height="14" rx="2" />
-        <path d="M12 9v6M9 12h6" />
-      </svg>
-    ),
-  },
-  {
-    label: "Automations",
-    to: "/automations",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    ),
-  },
-];
-
-const itemsBottom: NavItem[] = [
-  {
-    label: "Notifications",
-    to: "/notifications",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M6 9a6 6 0 1 1 12 0v4l2 2H4l2-2z" />
-        <path d="M9.5 19a2.5 2.5 0 0 0 5 0" />
-      </svg>
-    ),
-  },
-  {
-    label: "Settings",
-    to: "/settings",
-    icon: (
-      <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19 12a7 7 0 0 0-.1-1l2-1.2-2-3.4-2.3.7a7 7 0 0 0-1.7-1L12.8 2h-3.6l-.2 2.9a7 7 0 0 0-1.7 1l-2.3-.7-2 3.4 2 1.2a7 7 0 0 0 0 2l-2 1.2 2 3.4 2.3-.7a7 7 0 0 0 1.7 1l.2 2.9h3.6l.2-2.9a7 7 0 0 0 1.7-1l2.3.7 2-3.4-2-1.2c.1-.3.1-.7.1-1z" />
-      </svg>
-    ),
-  },
-];
+const pathToNavId = (path: string): string => {
+  const clean = path.toLowerCase();
+  const found = Object.entries(navIdToPath).find(([, p]) => p === clean);
+  return found?.[0] || "overview";
+};
 
 const Sidebar: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeNav = pathToNavId(location.pathname);
+  const totalBlacklisted = 3;
+
   return (
-    <aside className="flex h-screen w-72 flex-col border-r border-neutral-200 bg-white px-6 py-7">
-      <div className="text-lg font-semibold text-neutral-900">Funpay Automation</div>
-
-      <nav className="mt-6 flex-1 space-y-2">
-        {itemsTop.map((item) => (
-          <NavLink
-            key={item.label}
-            to={item.to}
-            className={({ isActive }) =>
-              [
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                isActive
-                  ? "bg-neutral-900 text-white shadow-sm"
-                  : "text-neutral-700 hover:bg-neutral-100",
-              ].join(" ")
-            }
-          >
-            <span className={item.badge ? "text-white" : "text-inherit"}>{item.icon}</span>
-            <span className="flex-1">{item.label}</span>
-            {item.badge ? (
-              <span className="flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-amber-100 text-xs font-semibold text-amber-700">
-                {item.badge}
-              </span>
-            ) : null}
-          </NavLink>
-        ))}
+    <aside className="relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)]">
+      <div className="text-lg font-semibold tracking-tight text-neutral-900">Funpay Automation</div>
+      <nav className="relative mt-8 flex flex-1 flex-col">
+        <div className="flex flex-col space-y-2">
+          <AnimatePresence>
+            {NAV_ITEMS.filter((i) => !BOTTOM_NAV_IDS.has(i.id)).map((item) => {
+              const isActive = activeNav === item.id;
+              const showBlacklistBadge = item.id === "blacklist" && totalBlacklisted > 0;
+              return (
+                <motion.button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    const nextPath = navIdToPath[item.id] || "/dashboard";
+                    navigate(nextPath, { replace: false });
+                  }}
+                  className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none"
+                  whileHover={{ scale: 1.01 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="navHighlight"
+                      className="absolute inset-0 rounded-md bg-neutral-900 text-white shadow-[0_10px_25px_-15px_rgba(0,0,0,0.45)]"
+                      transition={{ type: "spring", stiffness: 280, damping: 26 }}
+                    />
+                  )}
+                  <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
+                    <item.Icon />
+                  </span>
+                  <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
+                    {item.label}
+                  </span>
+                  {showBlacklistBadge && (
+                    <span
+                      className={`relative z-10 ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        isActive ? "bg-white/20 text-white" : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {totalBlacklisted}
+                    </span>
+                  )}
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+        <div className="mt-auto flex flex-col space-y-2 pb-2">
+          <AnimatePresence>
+            {NAV_ITEMS.filter((i) => BOTTOM_NAV_IDS.has(i.id)).map((item) => {
+              const isActive = activeNav === item.id;
+              return (
+                <motion.button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    const nextPath = navIdToPath[item.id] || "/dashboard";
+                    navigate(nextPath, { replace: false });
+                  }}
+                  className="relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none"
+                  whileHover={{ scale: 1.01 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="navHighlight"
+                      className="absolute inset-0 rounded-md bg-neutral-900 text-white shadow-[0_10px_25px_-15px_rgba(0,0,0,0.45)]"
+                      transition={{ type: "spring", stiffness: 280, damping: 26 }}
+                    />
+                  )}
+                  <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
+                    <item.Icon />
+                  </span>
+                  <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
+                    {item.label}
+                  </span>
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
+        </div>
       </nav>
-
-      <div className="space-y-2">
-        {itemsBottom.map((item) => (
-          <NavLink
-            key={item.label}
-            to={item.to}
-            className={({ isActive }) =>
-              [
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition",
-                isActive
-                  ? "bg-neutral-900 text-white shadow-sm"
-                  : "text-neutral-700 hover:bg-neutral-100",
-              ].join(" ")
-            }
-          >
-            {item.icon}
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
-      </div>
     </aside>
   );
 };

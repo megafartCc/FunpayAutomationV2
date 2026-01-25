@@ -8,73 +8,56 @@ type TopBarProps = {
 
 const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [workspace, setWorkspace] = useState("all");
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-8 py-4">
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-10 py-4">
       <h1 className="text-xl font-semibold text-neutral-900">{title}</h1>
 
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-500">
-            WORKSPACE
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-sm font-semibold text-neutral-700"
-              onClick={() => setWorkspaceOpen((prev) => !prev)}
-            >
-              Default (Default)
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M5 8l5 5 5-5" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
-            >
-              Manage
-            </button>
-          </div>
-          {workspaceOpen ? (
-            <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-neutral-200 bg-white p-2 text-sm shadow-lg">
-              <button
-                type="button"
-                className="w-full rounded-xl px-3 py-2 text-left font-medium text-neutral-700 hover:bg-neutral-100"
-              >
-                Default (Default)
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-xl px-3 py-2 text-left font-medium text-neutral-700 hover:bg-neutral-100"
-              >
-                Personal Workspace
-              </button>
-            </div>
-          ) : null}
+        <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-semibold text-neutral-600 shadow-sm shadow-neutral-200">
+          <span className="hidden sm:inline text-[11px] uppercase tracking-wide text-neutral-500">Workspace</span>
+          <select
+            className="bg-transparent text-sm font-semibold text-neutral-700 outline-none"
+            value={workspace}
+            onChange={(event) => setWorkspace(event.target.value)}
+          >
+            <option value="all">All workspaces</option>
+            <option value="default">Default (Default)</option>
+          </select>
+          <button
+            type="button"
+            className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600 transition hover:bg-neutral-100"
+          >
+            Manage
+          </button>
         </div>
 
-        <div className="relative">
-          <input
-            className="w-60 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 placeholder:text-neutral-400 focus:border-neutral-300 focus:outline-none"
-            placeholder="Search..."
-          />
-          <svg
-            viewBox="0 0 24 24"
-            className="pointer-events-none absolute right-3 top-2.5 h-5 w-5 text-neutral-400"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="M20 20l-3.5-3.5" />
+        <label className="relative flex h-11 w-72 items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 text-sm text-neutral-500 shadow-sm shadow-neutral-200">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z"
+              stroke="#9CA3AF"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M21 21L16.65 16.65" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-        </div>
+          <input
+            type="search"
+            placeholder="Search..."
+            className="w-full bg-transparent text-neutral-700 placeholder:text-neutral-400 outline-none"
+          />
+        </label>
 
         <div className="relative">
           <button
             type="button"
-            className="grid h-10 w-10 place-items-center rounded-full bg-neutral-900 text-sm font-semibold text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-sm font-semibold text-white shadow-sm"
             onClick={() => setMenuOpen((prev) => !prev)}
+            aria-label="Profile"
+            title="Profile"
           >
             {userInitial}
           </button>
