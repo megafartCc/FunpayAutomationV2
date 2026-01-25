@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import sys
 import threading
 import time
@@ -15,16 +14,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import mysql.connector  # noqa: E402
-from bs4 import BeautifulSoup  # noqa: E402
-
 from FunPayAPI.account import Account  # noqa: E402
-from FunPayAPI.common.enums import MessageTypes  # noqa: E402
+from FunPayAPI.common.enums import EventTypes  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
 
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-HTML_TAG_RE = re.compile(r"<[a-zA-Z][^>]*>")
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -42,15 +38,6 @@ def env_int(name: str, default: int) -> int:
         return int(raw.strip())
     except ValueError:
         return default
-
-
-def sanitize_message(text: str, max_len: int, strip_html: bool) -> str:
-    cleaned = text.replace("\n", " ").strip()
-    if strip_html and HTML_TAG_RE.search(cleaned):
-        cleaned = BeautifulSoup(cleaned, "lxml").get_text(" ", strip=True)
-    if max_len > 0 and len(cleaned) > max_len:
-        cleaned = f"{cleaned[:max_len]}…"
-    return cleaned
 
 
 def get_mysql_config() -> dict:
@@ -125,43 +112,26 @@ def log_message(
     logger: logging.Logger,
     account: Account,
     site_username: str | None,
-    include_self: bool,
-    include_system: bool,
-    private_only: bool,
-    strip_html: bool,
-    max_len: int,
     event: NewMessageEvent,
-    last_stack_id: str | None,
 ) -> str | None:
-    stack = event.stack.get_stack() if event.stack else [event]
-    stack_id = event.stack.id() if event.stack else f"{event.message.chat_id}:{event.message.id}"
-    if stack_id == last_stack_id:
-        return last_stack_id
+    if event.type is not EventTypes.NEW_MESSAGE:
+        return None
 
-    for item in stack:
-        msg = item.message
-        if private_only and not Account.chat_id_private(msg.chat_id):
-            continue
-        if not include_self and account.id is not None and msg.author_id == account.id:
-            continue
-        if not include_system and msg.type is not None and msg.type != MessageTypes.NON_SYSTEM:
-            continue
+    msg = event.message
+    sender_username = msg.chat_name or msg.author or "-"
+    message_text = msg.text
 
-        text = msg.text or msg.image_link or ""
-        text = sanitize_message(text, max_len=max_len, strip_html=strip_html)
-        if not text:
-            continue
+    # If we don't have a chat name, it's likely not a private chat.
+    if not sender_username or sender_username == "-":
+        return None
 
-        logger.info(
-            "user=%s chat_id=%s chat_name=%s author=%s: %s",
-            site_username or "-",
-            msg.chat_id,
-            msg.chat_name or "-",
-            msg.author or "-",
-            text,
-        )
-
-    return stack_id
+    logger.info(
+        "user=%s Message from %s: %s",
+        site_username or "-",
+        sender_username,
+        message_text,
+    )
+    return None
 
 
 def run_single_user(logger: logging.Logger) -> None:
@@ -171,11 +141,6 @@ def run_single_user(logger: logging.Logger) -> None:
         sys.exit(1)
 
     user_agent = os.getenv("FUNPAY_USER_AGENT")
-    include_self = env_bool("FUNPAY_LOG_INCLUDE_SELF", False)
-    include_system = env_bool("FUNPAY_LOG_INCLUDE_SYSTEM", False)
-    private_only = env_bool("FUNPAY_PRIVATE_ONLY", True)
-    strip_html = env_bool("FUNPAY_STRIP_HTML", True)
-    max_len = env_int("FUNPAY_MAX_MESSAGE_LEN", 500)
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
 
     logger.info("Initializing FunPay account...")
@@ -186,33 +151,14 @@ def run_single_user(logger: logging.Logger) -> None:
     threading.Thread(target=refresh_session_loop, args=(account, 3600, None), daemon=True).start()
 
     runner = Runner(account, disable_message_requests=False)
-    last_stack_id: str | None = None
-
     logger.info("Listening for new messages...")
     for event in runner.listen(requests_delay=poll_seconds):
-        if not isinstance(event, NewMessageEvent):
-            continue
-        last_stack_id = log_message(
-            logger,
-            account,
-            account.username,
-            include_self,
-            include_system,
-            private_only,
-            strip_html,
-            max_len,
-            event,
-            last_stack_id,
-        )
+        if isinstance(event, NewMessageEvent):
+            log_message(logger, account, account.username, event)
 
 
 def user_worker_loop(
     user: dict,
-    include_self: bool,
-    include_system: bool,
-    private_only: bool,
-    strip_html: bool,
-    max_len: int,
     user_agent: str | None,
     poll_seconds: int,
 ) -> None:
@@ -237,33 +183,15 @@ def user_worker_loop(
             ).start()
 
             runner = Runner(account, disable_message_requests=False)
-            last_stack_id: str | None = None
             for event in runner.listen(requests_delay=poll_seconds):
-                if not isinstance(event, NewMessageEvent):
-                    continue
-                last_stack_id = log_message(
-                    logger,
-                    account,
-                    site_username,
-                    include_self,
-                    include_system,
-                    private_only,
-                    strip_html,
-                    max_len,
-                    event,
-                    last_stack_id,
-                )
+                if isinstance(event, NewMessageEvent):
+                    log_message(logger, account, site_username, event)
         except Exception:
             logger.exception("%s Worker crashed. Restarting in 30s.", label)
             time.sleep(30)
 
 
 def run_multi_user(logger: logging.Logger) -> None:
-    include_self = env_bool("FUNPAY_LOG_INCLUDE_SELF", False)
-    include_system = env_bool("FUNPAY_LOG_INCLUDE_SYSTEM", False)
-    private_only = env_bool("FUNPAY_PRIVATE_ONLY", True)
-    strip_html = env_bool("FUNPAY_STRIP_HTML", True)
-    max_len = env_int("FUNPAY_MAX_MESSAGE_LEN", 500)
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
     sync_seconds = env_int("FUNPAY_USER_SYNC_SECONDS", 60)
     max_users = env_int("FUNPAY_MAX_USERS", 0)
@@ -287,16 +215,7 @@ def run_multi_user(logger: logging.Logger) -> None:
                 running_ids.add(user_id)
                 thread = threading.Thread(
                     target=user_worker_loop,
-                    args=(
-                        user,
-                        include_self,
-                        include_system,
-                        private_only,
-                        strip_html,
-                        max_len,
-                        user_agent,
-                        poll_seconds,
-                    ),
+                    args=(user, user_agent, poll_seconds),
                     daemon=True,
                 )
                 thread.start()
