@@ -84,7 +84,6 @@ const InventoryPage: React.FC = () => {
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-neutral-900">Inventory</h3>
               <p className="text-xs text-neutral-500">Select an account to manage rentals.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -149,7 +148,7 @@ const InventoryPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid h-full gap-6 lg:grid-cols-2" style={{ gridAutoRows: "1fr" }}>
+        <div className="grid h-full self-stretch content-stretch items-stretch gap-6 lg:grid-cols-2" style={{ gridAutoRows: "1fr" }}>
           <div className="h-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
             <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
               <span>Account actions</span>
