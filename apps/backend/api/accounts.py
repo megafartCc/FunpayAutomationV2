@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+import json
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
@@ -36,6 +37,7 @@ class AccountItem(BaseModel):
     account_frozen: int
     rental_frozen: int
     state: str
+    steam_id: str | None = None
 
 
 class AccountListResponse(BaseModel):
@@ -44,6 +46,17 @@ class AccountListResponse(BaseModel):
 
 def _to_item(record: AccountRecord) -> AccountItem:
     state = "Available" if not record.owner else "Rented"
+    steam_id = None
+    if record.mafile_json:
+        try:
+            data = json.loads(record.mafile_json) if isinstance(record.mafile_json, str) else record.mafile_json
+            steam_value = (data or {}).get("Session", {}).get("SteamID")
+            if steam_value is None:
+                steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+            if steam_value is not None:
+                steam_id = str(int(steam_value))
+        except Exception:
+            steam_id = None
     return AccountItem(
         id=record.id,
         account_name=record.account_name,
@@ -57,6 +70,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         account_frozen=record.account_frozen,
         rental_frozen=record.rental_frozen,
         state=state,
+        steam_id=steam_id,
     )
 
 

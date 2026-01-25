@@ -21,6 +21,7 @@ export type AccountItem = {
   mmr?: number | null;
   owner?: string | null;
   state?: string;
+  steam_id?: string | null;
 };
 
 export type AccountCreatePayload = {

@@ -24,6 +24,7 @@ class AccountRecord:
     rental_duration_minutes: Optional[int]
     account_frozen: int
     rental_frozen: int
+    mafile_json: Optional[str] = None
 
 
 @dataclass
@@ -51,7 +52,7 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, account_name, login, password, lot_url, mmr,
+                SELECT id, user_id, account_name, login, password, lot_url, mmr, mafile_json,
                        owner, rental_start, rental_duration, rental_duration_minutes,
                        account_frozen, rental_frozen
                 FROM accounts
@@ -76,6 +77,7 @@ class MySQLAccountRepo:
                     rental_duration_minutes=row.get("rental_duration_minutes"),
                     account_frozen=int(row.get("account_frozen") or 0),
                     rental_frozen=int(row.get("rental_frozen") or 0),
+                    mafile_json=row.get("mafile_json"),
                 )
                 for row in rows
             ]

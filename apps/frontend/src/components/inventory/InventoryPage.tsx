@@ -20,7 +20,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   name: item.account_name,
   login: item.login,
   password: item.password ? "********" : "-",
-  steamId: "-",
+  steamId: item.steam_id ?? "-",
   mmr: item.mmr ?? "-",
   state: item.state ?? (item.owner ? "Rented" : "Available"),
 });
