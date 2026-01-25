@@ -1,14 +1,52 @@
 import React from "react";
 
+type DeltaTone = "up" | "down";
+
 type StatCardProps = {
   label: string;
   value: string | number;
   delta?: string;
+  deltaTone?: DeltaTone;
   icon: React.ReactNode;
-  deltaTone?: "up" | "down";
 };
 
-const StatCard: React.FC<StatCardProps> = ({ label, value, delta, icon, deltaTone }) => (
+const CardUsersIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M21 19.9999C21 18.2583 19.3304 16.7767 17 16.2275M15 20C15 17.7909 12.3137 16 9 16C5.68629 16 3 17.7909 3 20M15 13C17.2091 13 19 11.2091 19 9C19 6.79086 17.2091 5 15 5M9 13C6.79086 13 5 11.2091 5 9C5 6.79086 6.79086 5 9 5C11.2091 5 13 6.79086 13 9C13 11.2091 11.2091 13 9 13Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const CardCloudCheckIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M15 11L11 15L9 13M23 15C23 12.7909 21.2091 11 19 11C18.9764 11 18.9532 11.0002 18.9297 11.0006C18.4447 7.60802 15.5267 5 12 5C9.20335 5 6.79019 6.64004 5.66895 9.01082C3.06206 9.18144 1 11.3498 1 13.9999C1 16.7613 3.23858 19.0001 6 19.0001L19 19C21.2091 19 23 17.2091 23 15Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const CardBarsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M19.5 5.5V18.5M12 3.5V18.5M4.5 9.5V18.5M22 18.5H2"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, icon }) => (
   <div className="flex items-start justify-between rounded-2xl border border-neutral-200 bg-white px-5 py-4 shadow-sm" style={{ minHeight: 110 }}>
     <div className="flex gap-3">
       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-700">{icon}</div>
@@ -47,53 +85,10 @@ const ShortPanel: React.FC<{ title: string; helper?: string; minHeight?: number 
 
 const DashboardPage: React.FC = () => {
   const statCards: StatCardProps[] = [
-    {
-      label: "Revenue (24h)",
-      value: "$742",
-      delta: "+12%",
-      deltaTone: "up",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 1v22M5 6h8a3 3 0 0 1 0 6H7a3 3 0 0 0 0 6h8" />
-        </svg>
-      ),
-    },
-    {
-      label: "Active rentals",
-      value: 18,
-      delta: "+3",
-      deltaTone: "up",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-      ),
-    },
-    {
-      label: "Lots online",
-      value: 42,
-      delta: "+6%",
-      deltaTone: "up",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-        </svg>
-      ),
-    },
-    {
-      label: "Support tickets",
-      value: "2 open",
-      delta: "+2%",
-      deltaTone: "up",
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      ),
-    },
+    { label: "Total Accounts", value: 20, delta: "+12%", deltaTone: "up", icon: <CardUsersIcon /> },
+    { label: "Active Rentals", value: 0, delta: "-3%", deltaTone: "down", icon: <CardUsersIcon /> },
+    { label: "Free Accounts", value: 20, delta: "+6%", deltaTone: "up", icon: <CardCloudCheckIcon /> },
+    { label: "Past 24h", value: 0, delta: "+2%", deltaTone: "up", icon: <CardBarsIcon /> },
   ];
 
   return (
