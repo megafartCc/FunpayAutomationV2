@@ -1,77 +1,64 @@
-export type ApiClientOptions = {
-  onUnauthorized: () => void;
-  getKeyId?: () => string | number | null | undefined;
+export type ApiError = {
+  message: string;
+  status: number;
+  details?: unknown;
 };
 
-export const createApiClient = ({ onUnauthorized, getKeyId }: ApiClientOptions) => {
-  const apiFetchWithMeta = async <T>(
-    path: string,
-    options: RequestInit = {}
-  ): Promise<{ data: T | null; status: number; headers: Headers }> => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string> | undefined),
-    };
+type RequestOptions = Omit<RequestInit, "body"> & { body?: unknown };
+
+export type AuthResponse = {
+  user_id: number;
+  username: string;
+  email?: string | null;
+};
+
+const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
+const API_PREFIX = "/api";
+
+const buildUrl = (path: string) => {
+  const base = API_BASE.replace(/\/$/, "");
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("/")) return `${base}${API_PREFIX}${path}`;
+  return `${base}${API_PREFIX}/${path}`;
+};
+
+const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
+  const headers = new Headers(options.headers);
+  if (!headers.has("Content-Type") && options.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const res = await fetch(buildUrl(path), {
+    ...options,
+    headers,
+    credentials: "include",
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (!res.ok) {
+    let details: unknown = undefined;
     try {
-      const hasKeyHeader = Object.keys(headers).some((key) => {
-        const normalized = key.toLowerCase();
-        return normalized === "x-key-id" || normalized === "x-fp-key-id";
-      });
-      if (!hasKeyHeader && typeof window !== "undefined") {
-        let keyId: string | number | null | undefined;
-        if (getKeyId) {
-          try {
-            keyId = getKeyId();
-          } catch {
-            keyId = undefined;
-          }
-        }
-        if (keyId === undefined || keyId === null || keyId === "") {
-          keyId = window.localStorage.getItem("fpa_active_key_id");
-        }
-        if (keyId && keyId !== "all") {
-          headers["x-key-id"] = String(keyId);
-        }
-      }
+      details = await res.json();
     } catch {
-      // ignore storage errors
+      // ignore
     }
-    const response = await fetch(path, { ...options, headers, credentials: "include" });
-    if (!response.ok && response.status !== 304) {
-      if (response.status === 401) {
-        onUnauthorized();
-      }
-      const contentType = response.headers.get("content-type") || "";
-      let message = "";
-      if (contentType.includes("application/json")) {
-        try {
-          const data = await response.json();
-          if (typeof data?.detail === "string") {
-            message = data.detail;
-          } else if (data?.detail != null) {
-            message = JSON.stringify(data.detail);
-          } else {
-            message = JSON.stringify(data);
-          }
-        } catch (error) {
-          message = "Ð—Ð°Ð¿Ñ€Ð¾Ñ Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½";
-        }
-      } else {
-        message = await response.text();
-      }
-      throw new Error(message || "Ð—Ð°Ð¿Ñ€Ð¾Ñ Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½");
-    }
-    if (response.status === 204 || response.status === 304) {
-      return { data: null, status: response.status, headers: response.headers };
-    }
-    const data = (await response.json()) as T;
-    return { data, status: response.status, headers: response.headers };
-  };
+    const error: ApiError = {
+      message: (details as { detail?: string })?.detail || res.statusText || "Request failed",
+      status: res.status,
+      details,
+    };
+    throw error;
+  }
 
-  const apiFetch = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
-    const result = await apiFetchWithMeta<T>(path, options);
-    return result.data as T;
-  };
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+};
 
-  return { apiFetch, apiFetchWithMeta };
+export const api = {
+  login: (payload: { username: string; password: string }) =>
+    request<AuthResponse>("/auth/login", { method: "POST", body: payload }),
+  register: (payload: { username: string; password: string; golden_key: string }) =>
+    request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
+  me: () => request<AuthResponse>("/auth/me", { method: "GET" }),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };

@@ -18,7 +18,6 @@ from FunPayAPI.account import Account  # noqa: E402
 from FunPayAPI.common.enums import EventTypes  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
-from bs4 import BeautifulSoup  # noqa: E402
 
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -136,19 +135,6 @@ def log_message(
         sender_username = f"user_{msg.interlocutor_id}"
     else:
         sender_username = f"chat_{msg.chat_id}"
-
-    # If still resolved to our own name, try to extract from message HTML.
-    if sender_username == my_name and getattr(msg, "html", None):
-        try:
-            soup = BeautifulSoup(msg.html, "lxml")
-            link = soup.find("a", {"class": "chat-msg-author-link"})
-            if link and link.text.strip() and link.text.strip() != my_name:
-                sender_username = link.text.strip()
-        except Exception:
-            pass
-
-    if sender_username == my_name:
-        return None
 
     message_text = msg.text
 
