@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from db.mysql import ensure_schema
 from api.auth import router as auth_router
+from api.accounts import router as accounts_router
 from settings.config import settings
 
 app = FastAPI(title="FunpayAutomationV2 API")
@@ -25,6 +26,7 @@ else:
     )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(accounts_router, prefix="/api", tags=["accounts"])
 
 
 @app.on_event("startup")

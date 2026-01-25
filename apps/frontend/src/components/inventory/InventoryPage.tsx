@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { api, AccountItem } from "../../services/api";
 
 type AccountRow = {
   id: number;
@@ -14,70 +15,48 @@ type AccountRow = {
 const INVENTORY_GRID =
   "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
 
-const accounts: AccountRow[] = [
-  {
-    id: 24,
-    name: "No1 dwqbvfjw0u2j",
-    login: "dwqbvfjw0u2j",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-  {
-    id: 25,
-    name: "No2 lxbvgvusku1186",
-    login: "lxbvgvusku1186",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-  {
-    id: 26,
-    name: "No3 xucrlkdm44fsvi",
-    login: "xucrlkdm44fsvi",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-  {
-    id: 27,
-    name: "No4 cexkwtmz648938",
-    login: "cexkwtmz648938",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-  {
-    id: 28,
-    name: "No5 hbqc49licejn",
-    login: "hbqc49licejn",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-  {
-    id: 29,
-    name: "No6 zvshenrq450551",
-    login: "zvshenrq450551",
-    password: "********",
-    steamId: "-",
-    mmr: 900,
-    state: "Available",
-    label: "DEFAULT",
-  },
-];
+const mapAccount = (item: AccountItem): AccountRow => ({
+  id: item.id,
+  name: item.account_name,
+  login: item.login,
+  password: item.password ? "********" : "-",
+  steamId: "-",
+  mmr: item.mmr ?? "-",
+  state: item.state ?? (item.owner ? "Rented" : "Available"),
+});
 
 const InventoryPage: React.FC = () => {
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    api
+      .listAccounts()
+      .then((res) => {
+        if (!mounted) return;
+        setAccounts((res.items || []).map(mapAccount));
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setError((err as { message?: string })?.message || "Failed to load accounts.");
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const emptyMessage = loading
+    ? "Loading accounts..."
+    : error
+      ? `Failed to load accounts: ${error}`
+      : "No accounts loaded yet.";
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] items-stretch">
@@ -140,7 +119,7 @@ const InventoryPage: React.FC = () => {
 
                 {accounts.length === 0 && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    No accounts loaded yet.
+                    {emptyMessage}
                   </div>
                 )}
               </div>

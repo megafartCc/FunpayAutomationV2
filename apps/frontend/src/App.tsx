@@ -7,6 +7,7 @@ import DashboardPage from "./components/dashboard/DashboardPage";
 import FunpayStatsPage from "./components/stats/FunpayStatsPage";
 import ActiveRentalsPage from "./components/rentals/ActiveRentalsPage";
 import InventoryPage from "./components/inventory/InventoryPage";
+import AddAccountPage from "./components/account/AddAccountPage";
 
 type Toast = { message: string; isError?: boolean } | null;
 
@@ -145,7 +146,7 @@ const AppRoutes: React.FC = () => {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="lots" element={<DashboardPlaceholder title="Lots" />} />
           <Route path="chats" element={<DashboardPlaceholder title="Chats" />} />
-          <Route path="add-account" element={<DashboardPlaceholder title="Add Account" />} />
+          <Route path="add-account" element={<AddAccountPage />} />
           <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
           <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />
           <Route path="settings" element={<DashboardPlaceholder title="Settings" />} />

@@ -97,6 +97,33 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                account_name VARCHAR(255) NOT NULL,
+                login VARCHAR(255) NOT NULL,
+                password TEXT NOT NULL,
+                mafile_json LONGTEXT NULL,
+                lot_url TEXT NULL,
+                mmr INT NULL,
+                rental_duration INT NOT NULL DEFAULT 1,
+                rental_duration_minutes INT NULL,
+                owner VARCHAR(255) DEFAULT NULL,
+                rental_start DATETIME DEFAULT NULL,
+                account_frozen TINYINT(1) NOT NULL DEFAULT 0,
+                rental_frozen TINYINT(1) NOT NULL DEFAULT 0,
+                rental_frozen_at DATETIME NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_accounts_user (user_id),
+                INDEX idx_accounts_owner (owner),
+                UNIQUE KEY uniq_account_user_name (user_id, account_name),
+                CONSTRAINT fk_accounts_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()

@@ -22,6 +22,299 @@ from bs4 import BeautifulSoup  # noqa: E402
 
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# Keep ASCII source while matching Cyrillic commands.
+COMMAND_PREFIXES = (
+    "!\u0441\u0442\u043e\u043a",
+    "!\u0430\u043a\u043a",
+    "!\u043a\u043e\u0434",
+    "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c",
+    "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430",
+    "!\u043e\u0442\u043c\u0435\u043d\u0430",
+    "!\u0430\u0434\u043c\u0438\u043d",
+)
+STOCK_LIST_LIMIT = 8
+STOCK_TITLE = "\u0421\u0432\u043e\u0431\u043e\u0434\u043d\u044b\u0435 \u043b\u043e\u0442\u044b:"
+STOCK_EMPTY = "\u0421\u0432\u043e\u0431\u043e\u0434\u043d\u044b\u0445 \u043b\u043e\u0442\u043e\u0432 \u043d\u0435\u0442."
+STOCK_DB_MISSING = (
+    "\u0418\u043d\u0432\u0435\u043d\u0442\u0430\u0440\u044c \u043f\u043e\u043a\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d."
+)
+
+
+def detect_command(text: str | None) -> str | None:
+    if not text:
+        return None
+    cleaned = text.strip().lower()
+    if not cleaned.startswith("!"):
+        return None
+    for cmd in COMMAND_PREFIXES:
+        if cleaned.startswith(cmd):
+            return cmd
+    return None
+
+
+def parse_command(text: str | None) -> tuple[str | None, str]:
+    if not text:
+        return None, ""
+    cleaned = text.strip()
+    if not cleaned.startswith("!"):
+        return None, ""
+    parts = cleaned.split(maxsplit=1)
+    command = parts[0].lower()
+    if command not in COMMAND_PREFIXES:
+        return None, ""
+    args = parts[1].strip() if len(parts) > 1 else ""
+    return command, args
+
+
+def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, text: str) -> bool:
+    try:
+        account.send_message(chat_id, text)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to send chat message: %s", exc)
+        return False
+
+
+def get_user_id_by_username(mysql_cfg: dict, username: str) -> int | None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM users WHERE username = %s LIMIT 1",
+            (username.lower().strip(),),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row else None
+    finally:
+        conn.close()
+
+
+def table_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s LIMIT 1",
+        (table,),
+    )
+    return cursor.fetchone() is not None
+
+
+def column_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str, column: str) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = DATABASE() AND table_name = %s AND column_name = %s LIMIT 1",
+        (table, column),
+    )
+    return cursor.fetchone() is not None
+
+
+def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[dict]:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "accounts"):
+            return []
+        has_lots = table_exists(cursor, "lots")
+        has_account_user_id = column_exists(cursor, "accounts", "user_id")
+        has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
+        has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
+        has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
+        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+
+        select_fields = [
+            "a.ID AS id",
+            "a.account_name AS account_name",
+            "a.login AS login",
+            "a.owner AS owner",
+            "a.rental_start AS rental_start",
+            "a.rental_duration AS rental_duration",
+            "a.rental_duration_minutes AS rental_duration_minutes",
+            "a.mmr AS mmr",
+        ]
+        if has_lots:
+            select_fields.extend(["l.lot_number AS lot_number", "l.lot_url AS lot_url"])
+        else:
+            select_fields.append(
+                "a.lot_number AS lot_number" if has_account_lot_number else "NULL AS lot_number"
+            )
+            select_fields.append("a.lot_url AS lot_url" if has_account_lot_url else "NULL AS lot_url")
+
+        from_clause = "FROM accounts a"
+        if has_lots:
+            from_clause += " LEFT JOIN lots l ON l.account_id = a.ID"
+
+        where_clauses = ["a.owner IS NULL"]
+        if has_account_frozen:
+            where_clauses.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
+        if has_rental_frozen:
+            where_clauses.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
+
+        params: list = []
+        if user_id is not None:
+            if has_account_user_id:
+                where_clauses.append("a.user_id = %s")
+                params.append(user_id)
+            elif has_lot_user_id:
+                where_clauses.append("l.user_id = %s")
+                params.append(user_id)
+
+        if has_lots:
+            order_clause = "ORDER BY (l.lot_number IS NULL), l.lot_number"
+        elif has_account_lot_number:
+            order_clause = "ORDER BY (a.lot_number IS NULL), a.lot_number"
+        else:
+            order_clause = "ORDER BY a.ID"
+
+        query = f"SELECT {', '.join(select_fields)} {from_clause} WHERE {' AND '.join(where_clauses)} {order_clause}"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return list(rows or [])
+    finally:
+        conn.close()
+
+
+def build_stock_messages(accounts: list[dict]) -> list[str]:
+    if not accounts:
+        return [STOCK_EMPTY]
+    lines: list[str] = []
+    for account in accounts:
+        lot_number = account.get("lot_number")
+        lot_url = account.get("lot_url")
+        display_name = account.get("account_name") or account.get("login") or ""
+        if not display_name:
+            display_name = f"\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u2116{lot_number}" if lot_number else "\u0410\u043a\u043a\u0430\u0443\u043d\u0442"
+        line = f"{display_name} - {lot_url}" if lot_url else display_name
+        lines.append(line)
+
+    batches: list[str] = []
+    for i in range(0, len(lines), STOCK_LIST_LIMIT):
+        chunk = lines[i : i + STOCK_LIST_LIMIT]
+        if i == 0:
+            batches.append("\n".join([STOCK_TITLE, *chunk]))
+        else:
+            batches.append("\n".join(chunk))
+    return batches
+
+
+def handle_stock_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Stock command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Stock command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
+        return True
+
+    try:
+        accounts = fetch_available_lot_accounts(mysql_cfg, user_id)
+    except mysql.connector.Error as exc:
+        logger.warning("Stock query failed: %s", exc)
+        send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
+        return True
+
+    for message in build_stock_messages(accounts):
+        send_chat_message(logger, account, chat_id, message)
+    return True
+
+
+def _log_command_stub(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+    action: str,
+) -> bool:
+    logger.info(
+        "user=%s chat=%s author=%s command=%s args=%s action=%s url=%s",
+        site_username or "-",
+        chat_name,
+        sender_username,
+        command,
+        args or "-",
+        action,
+        chat_url,
+    )
+    return True
+
+
+def handle_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    handlers = {
+        "!\u0441\u0442\u043e\u043a": handle_stock_command,
+        "!\u0430\u043a\u043a": lambda *a: _log_command_stub(*a, action="account"),
+        "!\u043a\u043e\u0434": lambda *a: _log_command_stub(*a, action="code"),
+        "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c": lambda *a: _log_command_stub(*a, action="extend"),
+        "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(
+            *a, action="lp_replace"
+        ),
+        "!\u043e\u0442\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(*a, action="cancel"),
+        "!\u0430\u0434\u043c\u0438\u043d": lambda *a: _log_command_stub(*a, action="admin"),
+    }
+    handler = handlers.get(command)
+    if not handler:
+        logger.info(
+            "user=%s chat=%s author=%s command_unhandled=%s args=%s url=%s",
+            site_username or "-",
+            chat_name,
+            sender_username,
+            command,
+            args or "-",
+            chat_url,
+        )
+        return False
+    return handler(
+        logger,
+        account,
+        site_username,
+        site_user_id,
+        chat_name,
+        sender_username,
+        chat_id,
+        command,
+        args,
+        chat_url,
+    )
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -113,6 +406,7 @@ def log_message(
     logger: logging.Logger,
     account: Account,
     site_username: str | None,
+    site_user_id: int | None,
     event: NewMessageEvent,
 ) -> str | None:
     if event.type is not EventTypes.NEW_MESSAGE:
@@ -149,6 +443,7 @@ def log_message(
         sender_username = f"chat_{msg.chat_id}"
 
     message_text = msg.text
+    command, command_args = parse_command(message_text)
 
     # If we don't have a chat name, it's likely not a private chat.
     if not sender_username or sender_username == "-":
@@ -161,21 +456,45 @@ def log_message(
     if msg.author_id == 0 or (sender_username and sender_username.lower() == "funpay"):
         is_system = True
 
+    chat_name = msg.chat_name or msg.author or "-"
     logger.info(
         "user=%s chat=%s author=%s system=%s url=%s: %s",
         site_username or "-",
-        msg.chat_name or msg.author or "-",
+        chat_name,
         sender_username,
         is_system,
         chat_url,
         message_text,
     )
+    if command:
+        logger.info(
+            "user=%s chat=%s author=%s command=%s args=%s url=%s",
+            site_username or "-",
+            chat_name,
+            sender_username,
+            command,
+            command_args or "-",
+            chat_url,
+        )
+        if not is_system:
+            handle_command(
+                logger,
+                account,
+                site_username,
+                site_user_id,
+                chat_name,
+                sender_username,
+                msg.chat_id,
+                command,
+                command_args,
+                chat_url,
+            )
     if is_system:
         logger.info(
             "user=%s system_event type=%s chat=%s url=%s raw=%s",
             site_username or "-",
             getattr(msg.type, "name", msg.type),
-            msg.chat_name or msg.author or "-",
+            chat_name,
             chat_url,
             (msg.text or "").strip(),
         )
@@ -202,7 +521,7 @@ def run_single_user(logger: logging.Logger) -> None:
     logger.info("Listening for new messages...")
     for event in runner.listen(requests_delay=poll_seconds):
         if isinstance(event, NewMessageEvent):
-            log_message(logger, account, account.username, event)
+            log_message(logger, account, account.username, None, event)
 
 
 def user_worker_loop(
@@ -233,7 +552,7 @@ def user_worker_loop(
             runner = Runner(account, disable_message_requests=False)
             for event in runner.listen(requests_delay=poll_seconds):
                 if isinstance(event, NewMessageEvent):
-                    log_message(logger, account, site_username, event)
+                    log_message(logger, account, site_username, user.get("id"), event)
         except Exception as exc:
             # Avoid logging full HTML bodies from failed FunPay requests.
             short = exc.short_str() if hasattr(exc, "short_str") else str(exc)[:200]

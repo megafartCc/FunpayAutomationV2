@@ -12,6 +12,28 @@ export type AuthResponse = {
   email?: string | null;
 };
 
+export type AccountItem = {
+  id: number;
+  account_name: string;
+  login: string;
+  password: string;
+  lot_url?: string | null;
+  mmr?: number | null;
+  owner?: string | null;
+  state?: string;
+};
+
+export type AccountCreatePayload = {
+  account_name: string;
+  login: string;
+  password: string;
+  mafile_json: string;
+  lot_url?: string | null;
+  mmr?: number | null;
+  rental_duration?: number;
+  rental_minutes?: number;
+};
+
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
@@ -61,4 +83,7 @@ export const api = {
     request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
   me: () => request<AuthResponse>("/auth/me", { method: "GET" }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  listAccounts: () => request<{ items: AccountItem[] }>("/accounts", { method: "GET" }),
+  createAccount: (payload: AccountCreatePayload) =>
+    request<AccountItem>("/accounts", { method: "POST", body: payload }),
 };
