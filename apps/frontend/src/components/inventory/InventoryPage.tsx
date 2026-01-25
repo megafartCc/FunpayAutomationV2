@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+
 import { api, AccountItem } from "../../services/api";
 
 type AccountRow = {
@@ -18,6 +20,7 @@ type AccountRow = {
 
 const INVENTORY_GRID =
   "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
@@ -467,7 +470,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                   const rowId = acc.id ?? idx;
                   const isSelected = selectedId !== null && String(selectedId) === String(rowId);
                   return (
-                    <div
+                    <motion.div
                       key={rowId}
                       role="button"
                       tabIndex={0}
@@ -480,6 +483,8 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                       onClick={() =>
                         setSelectedId((prev) => (prev !== null && String(prev) === String(rowId) ? null : rowId))
                       }
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
                       className={`grid min-w-full items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
@@ -516,7 +521,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                       <span className={`justify-self-end rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>
                         {stateLabel}
                       </span>
-                    </div>
+                    </motion.div>
                   );
                 })}
                 {accounts.length === 0 && (
@@ -528,7 +533,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
             </div>
           </div>
         </div>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
           {renderAccountActionsPanel("Account actions")}
           {renderInventoryActionsPanel()}
         </div>

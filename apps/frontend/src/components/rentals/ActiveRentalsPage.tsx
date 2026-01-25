@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 
 import { api, ActiveRentalItem, AccountItem } from "../../services/api";
 
@@ -30,6 +31,18 @@ type AccountRow = {
 
 const RENTALS_GRID =
   "minmax(64px,0.6fr) minmax(180px,1.4fr) minmax(160px,1.1fr) minmax(140px,1fr) minmax(120px,0.8fr) minmax(110px,0.8fr) minmax(140px,1fr) minmax(110px,0.7fr)";
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const statusPill = (status?: string) => {
+  const lower = (status || "").toLowerCase();
+  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
+  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
+  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
+  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
+  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Idle" };
+  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Offline" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+};
 
 const mapRental = (item: ActiveRentalItem): RentalRow => ({
   id: item.id,
@@ -440,10 +453,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
         {selectedRental ? (
           (() => {
             const frozen = !!selectedAccount?.rentalFrozen;
-            const presenceLabel = frozen ? "Frozen" : selectedRental.status || "Active";
-            const pillClass = frozen
-              ? "bg-slate-100 text-slate-700"
-              : "bg-emerald-50 text-emerald-600";
+            const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
+            const presenceLabel = pill.label;
             return (
               <div className="space-y-4">
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -456,7 +467,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                         {selectedRental.account || "Rental"}
                       </div>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pillClass}`}>{presenceLabel}</span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>{presenceLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
                     <span>Buyer: {selectedRental.buyer || "-"}</span>
@@ -472,9 +483,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
                   <div className="mb-2 text-sm font-semibold text-neutral-800">Freeze rental</div>
-                  <p className="text-xs text-neutral-500">
-                    Pauses the rental timer and blocks Steam access until you unfreeze.
-                  </p>
+                  <p className="text-xs text-neutral-500">Freezing pauses the timer and kicks the user from Steam.</p>
                   <button
                     onClick={() => handleToggleRentalFreeze(!frozen)}
                     disabled={rentalActionBusy}
@@ -563,10 +572,11 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
               <span>Status</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
-              {rentals.map((row) => {
+              {rentals.map((row, idx) => {
                 const isSelected = selectedRentalId !== null && String(selectedRentalId) === String(row.id);
+                const pill = statusPill(row.status);
                 return (
-                  <div
+                  <motion.div
                     key={row.id}
                     role="button"
                     tabIndex={0}
@@ -581,6 +591,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     onClick={() =>
                       setSelectedRentalId((prev) => (prev !== null && String(prev) === String(row.id) ? null : row.id))
                     }
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
                     className={`grid items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                       isSelected
                         ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
@@ -600,16 +612,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <span className="min-w-0 truncate font-mono text-neutral-900">{row.timeLeft}</span>
                     <span className="min-w-0 truncate font-mono text-neutral-900">{row.matchTime}</span>
                     <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
-                    {row.status ? (
-                      <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
-                        {row.status}
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
+                        {pill.label}
                       </span>
-                    ) : (
-                      <span className="inline-flex w-fit rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-500">
-                        Offline
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  </motion.div>
                 );
               })}
               {rentals.length === 0 && !loading && (
