@@ -18,15 +18,15 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta }) => (
 
 const PlaceholderPanel: React.FC<{ minHeight: number; title: string }> = ({ minHeight, title }) => (
   <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm" style={{ minHeight }}>
-    <div className="text-sm font-semibold text-neutral-900">{title}</div>
+    <div className="text-base font-semibold text-neutral-900">{title}</div>
   </div>
 );
 
 const ShortPanel: React.FC<{ title: string; helper?: string; minHeight?: number }> = ({ title, helper, minHeight = 140 }) => (
   <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm" style={{ minHeight }}>
-    <div className="mb-3 flex items-center justify-between text-sm font-semibold text-neutral-900">
+    <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
       <span>{title}</span>
-      {helper ? <span className="text-[11px] font-semibold text-neutral-500">{helper}</span> : null}
+      {helper ? <span className="text-[12px] font-semibold text-neutral-500">{helper}</span> : null}
     </div>
     <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-xs text-neutral-400">
       {/* placeholder area */}
