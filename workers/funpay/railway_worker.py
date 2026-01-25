@@ -118,13 +118,18 @@ def log_message(
         return None
 
     msg = event.message
-    # Prefer the actual author; fall back to chat name; avoid logging ourselves as the sender.
-    sender_username = msg.author or msg.chat_name or "-"
     my_name = (account.username or "").strip()
-    if sender_username == my_name and msg.chat_name and msg.chat_name != my_name:
+
+    # Prefer the true author; avoid logging ourselves; fall back safely.
+    if msg.author and msg.author != my_name:
+        sender_username = msg.author
+    elif msg.interlocutor_id and msg.interlocutor_id != account.id:
+        sender_username = msg.chat_name or f"user_{msg.interlocutor_id}"
+    elif msg.chat_name and msg.chat_name != my_name:
         sender_username = msg.chat_name
-    if sender_username == my_name and msg.author_id and msg.author_id != account.id:
-        sender_username = f"user_{msg.author_id}"
+    else:
+        sender_username = msg.author or msg.chat_name or "-"
+
     message_text = msg.text
 
     # If we don't have a chat name, it's likely not a private chat.
