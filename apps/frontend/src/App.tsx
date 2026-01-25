@@ -1,13 +1,50 @@
-import React, { useRef, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
-import { api } from "./services/api";
+import { api, AuthResponse } from "./services/api";
 
 type Toast = { message: string; isError?: boolean } | null;
 
-const App: React.FC = () => {
+type User = AuthResponse;
+
+const Dashboard: React.FC<{ onLogout: () => Promise<void> }> = ({ onLogout }) => {
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+        <h1 className="text-2xl font-semibold text-neutral-900">Dashboard</h1>
+        <button
+          type="button"
+          className="rounded-full border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-900"
+          onClick={onLogout}
+        >
+          Log out
+        </button>
+      </div>
+      <div className="mx-auto max-w-5xl px-6">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-sm text-neutral-500 shadow-sm">
+          Protected content will live here.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProtectedRoute: React.FC<{ user: User | null; loading: boolean; children: React.ReactNode }> = ({
+  user,
+  loading,
+  children,
+}) => {
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
+const AppRoutes: React.FC = () => {
   const [toast, setToast] = useState<Toast>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const timerRef = useRef<number | null>(null);
+  const navigate = useNavigate();
 
   const showToast = (message: string, isError?: boolean) => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -15,10 +52,30 @@ const App: React.FC = () => {
     timerRef.current = window.setTimeout(() => setToast(null), 3200);
   };
 
+  useEffect(() => {
+    let mounted = true;
+    api
+      .me()
+      .then((me) => {
+        if (mounted) setUser(me);
+      })
+      .catch(() => {
+        // not logged in
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const onLogin = async (payload: { username: string; password: string }) => {
     try {
-      await api.login(payload);
+      const me = await api.login(payload);
+      setUser(me);
       showToast("Logged in.");
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       const message = (err as { message?: string })?.message || "Login failed";
       showToast(message, true);
@@ -28,8 +85,10 @@ const App: React.FC = () => {
 
   const onRegister = async (payload: { username: string; password: string; golden_key: string }) => {
     try {
-      await api.register(payload);
+      const me = await api.register(payload);
+      setUser(me);
       showToast("Account created.");
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       const message = (err as { message?: string })?.message || "Registration failed";
       showToast(message, true);
@@ -37,21 +96,51 @@ const App: React.FC = () => {
     }
   };
 
+  const onLogout = async () => {
+    try {
+      await api.logout();
+    } finally {
+      setUser(null);
+      navigate("/login", { replace: true });
+    }
+  };
+
   return (
-    <BrowserRouter>
+    <>
       <Routes>
         <Route
           path="/login"
-          element={<LoginPage onLogin={onLogin} onRegister={onRegister} onToast={showToast} />}
+          element={
+            user && !loading ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <LoginPage onLogin={onLogin} onRegister={onRegister} onToast={showToast} />
+            )
+          }
         />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Dashboard onLogout={onLogout} />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-
       {toast ? (
         <div className="toast">
           <span className={toast.isError ? "text-red-200" : "text-amber-200"}>{toast.message}</span>
         </div>
       ) : null}
+    </>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 };

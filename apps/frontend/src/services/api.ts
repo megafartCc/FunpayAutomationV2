@@ -6,9 +6,10 @@ export type ApiError = {
 
 type RequestOptions = Omit<RequestInit, "body"> & { body?: unknown };
 
-type AuthResponse = {
-  access_token: string;
-  token_type: "bearer";
+export type AuthResponse = {
+  user_id: number;
+  username: string;
+  email?: string | null;
 };
 
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
@@ -58,4 +59,6 @@ export const api = {
     request<AuthResponse>("/auth/login", { method: "POST", body: payload }),
   register: (payload: { username: string; password: string; golden_key: string }) =>
     request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
+  me: () => request<AuthResponse>("/auth/me", { method: "GET" }),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };
