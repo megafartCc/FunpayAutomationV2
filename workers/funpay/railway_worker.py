@@ -168,6 +168,15 @@ def log_message(
         chat_url,
         message_text,
     )
+    if is_system:
+        logger.info(
+            "user=%s system_event type=%s chat=%s url=%s raw=%s",
+            site_username or "-",
+            getattr(msg.type, "name", msg.type),
+            msg.chat_name or msg.author or "-",
+            chat_url,
+            (msg.text or "").strip(),
+        )
     return None
 
 
