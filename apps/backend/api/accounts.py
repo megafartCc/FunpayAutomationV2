@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-import json
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
@@ -80,6 +82,12 @@ def _to_item(record: AccountRecord) -> AccountItem:
                 steam_id = str(int(steam_value))
         except Exception:
             steam_id = None
+    rental_start = record.rental_start
+    if isinstance(rental_start, datetime):
+        rental_start = rental_start.isoformat()
+    elif rental_start is not None:
+        rental_start = str(rental_start)
+
     return AccountItem(
         id=record.id,
         account_name=record.account_name,
@@ -88,7 +96,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         lot_url=record.lot_url,
         mmr=record.mmr,
         owner=record.owner,
-        rental_start=record.rental_start,
+        rental_start=rental_start,
         rental_duration=record.rental_duration,
         rental_duration_minutes=record.rental_duration_minutes,
         account_frozen=record.account_frozen,
