@@ -133,16 +133,16 @@ def log_message(
         except Exception:
             sender_username = None
 
-    # 2) Use API-provided author when it's not us.
-    if not sender_username and msg.author and msg.author != my_name:
+    # 2) Use API-provided author.
+    if not sender_username and msg.author:
         sender_username = msg.author
-    # 3) Use chat_name when it's not us.
-    if not sender_username and msg.chat_name and msg.chat_name != my_name:
+    # 3) Use chat_name.
+    if not sender_username and msg.chat_name:
         sender_username = msg.chat_name
-    # 4) Use IDs if available and not ours.
-    if not sender_username and msg.author_id and account.id and msg.author_id != account.id:
+    # 4) Use IDs if available.
+    if not sender_username and msg.author_id:
         sender_username = f"user_{msg.author_id}"
-    if not sender_username and msg.interlocutor_id and msg.interlocutor_id != account.id:
+    if not sender_username and msg.interlocutor_id:
         sender_username = f"user_{msg.interlocutor_id}"
     # 5) Last resort: chat id placeholder.
     if not sender_username:
@@ -155,8 +155,9 @@ def log_message(
         return None
 
     logger.info(
-        "user=%s Message from %s: %s",
+        "user=%s chat=%s author=%s: %s",
         site_username or "-",
+        msg.chat_name or msg.author or "-",
         sender_username,
         message_text,
     )
