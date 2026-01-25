@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import Optional
+from urllib.parse import urlparse
 
 import mysql.connector
 from mysql.connector import pooling
@@ -17,14 +18,34 @@ class MySQLPool:
     def init_pool(self) -> None:
         if self._pool is not None:
             return
+        url = os.getenv("MYSQL_URL", "").strip()
+        host = os.getenv("MYSQLHOST", "").strip()
+        port = os.getenv("MYSQLPORT", "").strip() or "3306"
+        user = os.getenv("MYSQLUSER", "").strip()
+        password = os.getenv("MYSQLPASSWORD", "").strip()
+        database = os.getenv("MYSQLDATABASE", "").strip() or os.getenv("MYSQL_DATABASE", "").strip()
+
+        if url:
+            parsed = urlparse(url)
+            host = parsed.hostname or host
+            if parsed.port:
+                port = str(parsed.port)
+            user = parsed.username or user
+            password = parsed.password or password
+            if parsed.path and parsed.path != "/":
+                database = parsed.path.lstrip("/")
+
+        if not database:
+            raise RuntimeError("MySQL database name missing. Set MYSQLDATABASE or MYSQL_DATABASE.")
+
         self._pool = pooling.MySQLConnectionPool(
             pool_name="funpay_pool",
             pool_size=int(os.getenv("MYSQL_POOL_SIZE", "5")),
-            host=os.getenv("MYSQLHOST", ""),
-            port=int(os.getenv("MYSQLPORT", "3306")),
-            user=os.getenv("MYSQLUSER", ""),
-            password=os.getenv("MYSQLPASSWORD", ""),
-            database=os.getenv("MYSQLDATABASE", ""),
+            host=host,
+            port=int(port),
+            user=user,
+            password=password,
+            database=database,
         )
 
     def get_connection(self) -> mysql.connector.MySQLConnection:
