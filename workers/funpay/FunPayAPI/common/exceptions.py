@@ -40,14 +40,17 @@ class RequestFailedError(Exception):
         return f"Ошибка запроса к {self.url}. (Статус-код: {self.status_code})"
 
     def __str__(self):
-        msg = f"Ошибка запроса к {self.url} .\n" \
-              f"Метод: {self.response.request.method} .\n" \
-              f"Статус-код ответа: {self.status_code} .\n" \
-              f"Заголовки запроса: {self.request_headers} .\n" \
-              f"Тело запроса: {self.request_body} .\n" \
-              f"Текст ответа: {self.response.text}"
-        if self.log_response:
-            msg += f"\n{self.response.content.decode()}"
+        # Return a shortened message to avoid logging full HTML pages into worker logs.
+        snippet = self.response.text[:200]
+        if len(self.response.text) > 200:
+            snippet += "..."
+        msg = (
+            f"Ошибка запроса к {self.url}. "
+            f"Метод: {self.response.request.method}. "
+            f"Статус: {self.status_code}. "
+            f"Тело запроса: {self.request_body}. "
+            f"Ответ (фрагмент): {snippet}"
+        )
         return msg
 
 

@@ -186,8 +186,11 @@ def user_worker_loop(
             for event in runner.listen(requests_delay=poll_seconds):
                 if isinstance(event, NewMessageEvent):
                     log_message(logger, account, site_username, event)
-        except Exception:
-            logger.exception("%s Worker crashed. Restarting in 30s.", label)
+        except Exception as exc:
+            # Avoid logging full HTML bodies from failed FunPay requests.
+            short = exc.short_str() if hasattr(exc, "short_str") else str(exc)[:200]
+            logger.error("%s Worker error: %s. Restarting in 30s.", label, short)
+            logger.debug("%s Traceback:", label, exc_info=True)
             time.sleep(30)
 
 
@@ -220,8 +223,10 @@ def run_multi_user(logger: logging.Logger) -> None:
                 )
                 thread.start()
             time.sleep(sync_seconds)
-        except Exception:
-            logger.exception("User sync failed. Retrying in 30s.")
+        except Exception as exc:
+            short = exc.short_str() if hasattr(exc, "short_str") else str(exc)[:200]
+            logger.error("User sync failed: %s. Retrying in 30s.", short)
+            logger.debug("User sync traceback:", exc_info=True)
             time.sleep(30)
 
 
