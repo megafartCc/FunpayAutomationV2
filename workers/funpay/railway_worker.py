@@ -121,10 +121,6 @@ def log_message(
     msg = event.message
     my_name = (account.username or "").strip()
 
-    # If the author_id matches us, it's our outgoing message — skip logging.
-    if msg.author_id and account.id and msg.author_id == account.id:
-        return None
-
     sender_username = None
 
     # 1) Try to parse explicit author from message HTML (matches FunPay UI).
@@ -151,10 +147,6 @@ def log_message(
     # 5) Last resort: chat id placeholder.
     if not sender_username:
         sender_username = f"chat_{msg.chat_id}"
-
-    # Skip if still ourselves.
-    if sender_username == my_name:
-        return None
 
     message_text = msg.text
 
