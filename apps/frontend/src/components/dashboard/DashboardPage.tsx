@@ -27,8 +27,8 @@ const DashboardPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[520px]"></div>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[520px]"></div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[720px]"></div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm min-h-[720px]"></div>
       </div>
     </div>
   );
