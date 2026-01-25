@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
+from services.steam_service import deauthorize_sessions, SteamWorkerError
 
 
 router = APIRouter()
@@ -88,3 +89,23 @@ def create_account(payload: AccountCreate, user=Depends(get_current_user)) -> Ac
             detail="Account already exists",
         )
     return _to_item(created)
+
+
+@router.post("/accounts/{account_id}/steam/deauthorize")
+def steam_deauthorize(account_id: int, user=Depends(get_current_user)) -> dict:
+    account = accounts_repo.get_for_steam(account_id, int(user.id))
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if not account.mafile_json:
+        raise HTTPException(status_code=400, detail="mafile_json is required for Steam actions")
+
+    try:
+        deauthorize_sessions(
+            steam_login=account.login or account.account_name,
+            steam_password=account.password,
+            mafile_json=account.mafile_json,
+        )
+    except SteamWorkerError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+    return {"success": True}

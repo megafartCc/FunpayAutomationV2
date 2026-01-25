@@ -98,6 +98,8 @@ export const api = {
   listAccounts: () => request<{ items: AccountItem[] }>("/accounts", { method: "GET" }),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
+  deauthorizeSteam: (accountId: number) =>
+    request<{ success: boolean }>(`/accounts/${accountId}/steam/deauthorize`, { method: "POST" }),
   listLots: () => request<{ items: LotItem[] }>("/lots", { method: "GET" }),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
   deleteLot: (lotNumber: number) => request<{ ok: boolean }>(`/lots/${lotNumber}`, { method: "DELETE" }),

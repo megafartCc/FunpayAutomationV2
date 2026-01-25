@@ -144,7 +144,7 @@ const AppRoutes: React.FC = () => {
           <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
           <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
           <Route path="blacklist" element={<DashboardPlaceholder title="Blacklist" />} />
-          <Route path="inventory" element={<InventoryPage />} />
+          <Route path="inventory" element={<InventoryPage onToast={showToast} />} />
           <Route path="lots" element={<LotsPage />} />
           <Route path="chats" element={<DashboardPlaceholder title="Chats" />} />
           <Route path="add-account" element={<AddAccountPage />} />

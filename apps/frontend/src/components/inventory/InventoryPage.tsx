@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, AccountItem } from "../../services/api";
 
 type AccountRow = {
@@ -25,10 +25,22 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   state: item.state ?? (item.owner ? "Rented" : "Available"),
 });
 
-const InventoryPage: React.FC = () => {
+type InventoryPageProps = {
+  onToast?: (message: string, isError?: boolean) => void;
+};
+
+const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [actionStatus, setActionStatus] = useState<{ message: string; isError?: boolean } | null>(null);
+  const [deauthLoading, setDeauthLoading] = useState(false);
+
+  const selectedAccount = useMemo(
+    () => accounts.find((acc) => acc.id === selectedId) ?? null,
+    [accounts, selectedId],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -51,11 +63,41 @@ const InventoryPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedId && !accounts.some((acc) => acc.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [accounts, selectedId]);
+
   const emptyMessage = loading
     ? "Loading accounts..."
     : error
       ? `Failed to load accounts: ${error}`
       : "No accounts loaded yet.";
+
+  const handleDeauthorize = async () => {
+    if (!selectedAccount) {
+      onToast?.("Select an account first.", true);
+      setActionStatus({ message: "Select an account first.", isError: true });
+      return;
+    }
+    if (!window.confirm(`Deauthorize Steam sessions for ${selectedAccount.name}?`)) return;
+
+    setDeauthLoading(true);
+    setActionStatus(null);
+    try {
+      await api.deauthorizeSteam(selectedAccount.id);
+      const message = "Steam sessions deauthorized.";
+      setActionStatus({ message });
+      onToast?.(message);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to deauthorize Steam.";
+      setActionStatus({ message, isError: true });
+      onToast?.(message, true);
+    } finally {
+      setDeauthLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -93,8 +135,13 @@ const InventoryPage: React.FC = () => {
                 {accounts.map((acc) => (
                   <div
                     key={acc.id}
-                    className="grid min-w-full items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)]"
+                    className={`grid min-w-full cursor-pointer items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                      selectedId === acc.id
+                        ? "border-neutral-900 bg-neutral-100"
+                        : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
+                    }`}
                     style={{ gridTemplateColumns: INVENTORY_GRID }}
+                    onClick={() => setSelectedId(acc.id)}
                   >
                     <span className="min-w-0 font-semibold text-neutral-900">{acc.id}</span>
                     <div className="min-w-0">
@@ -131,7 +178,9 @@ const InventoryPage: React.FC = () => {
           <div className="h-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
             <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
               <span>Account actions</span>
-              <span className="text-[12px] font-semibold text-neutral-500">Select an account</span>
+              <span className="text-[12px] font-semibold text-neutral-500">
+                {selectedAccount ? `Selected: ${selectedAccount.name}` : "Select an account"}
+              </span>
             </div>
             <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-xs text-neutral-400">
               Select an account to unlock account actions.
@@ -140,11 +189,32 @@ const InventoryPage: React.FC = () => {
           <div className="h-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm shadow-neutral-200/70">
             <div className="mb-3 flex items-center justify-between text-base font-semibold text-neutral-900">
               <span>Account controls</span>
-              <span className="text-[12px] font-semibold text-neutral-500">Select an account</span>
+              <span className="text-[12px] font-semibold text-neutral-500">
+                {selectedAccount ? `Selected: ${selectedAccount.name}` : "Select an account"}
+              </span>
             </div>
-            <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 px-4 py-6 text-center text-xs text-neutral-400">
-              Select an account to manage freeze &amp; deletion.
-            </div>
+            {actionStatus ? (
+              <div
+                className={`mb-3 rounded-xl border px-4 py-3 text-sm ${
+                  actionStatus.isError
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {actionStatus.message}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleDeauthorize}
+              disabled={!selectedAccount || deauthLoading}
+              className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deauthLoading ? "Deauthorizing Steam..." : "Steam: Deauthorize sessions"}
+            </button>
+            <p className="mt-3 text-xs text-neutral-500">
+              Sign out all devices for the selected Steam account.
+            </p>
           </div>
         </div>
       </div>

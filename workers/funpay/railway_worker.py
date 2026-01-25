@@ -530,13 +530,14 @@ def user_worker_loop(
     user: dict,
     user_agent: str | None,
     poll_seconds: int,
+    stop_event: threading.Event,
 ) -> None:
     logger = logging.getLogger("funpay.worker")
     site_username = user.get("username") or f"user-{user.get('id')}"
     golden_key = user.get("golden_key")
     label = f"[{site_username}]"
 
-    while True:
+    while not stop_event.is_set():
         try:
             if not golden_key:
                 logger.warning("%s Missing golden_key, skipping.", label)
@@ -552,15 +553,22 @@ def user_worker_loop(
             ).start()
 
             runner = Runner(account, disable_message_requests=False)
-            for event in runner.listen(requests_delay=poll_seconds):
-                if isinstance(event, NewMessageEvent):
-                    log_message(logger, account, site_username, user.get("id"), event)
+            while not stop_event.is_set():
+                updates = runner.get_updates()
+                events = runner.parse_updates(updates)
+                for event in events:
+                    if stop_event.is_set():
+                        break
+                    if isinstance(event, NewMessageEvent):
+                        log_message(logger, account, site_username, user.get("id"), event)
+                time.sleep(poll_seconds)
         except Exception as exc:
             # Avoid logging full HTML bodies from failed FunPay requests.
             short = exc.short_str() if hasattr(exc, "short_str") else str(exc)[:200]
             logger.error("%s Worker error: %s. Restarting in 30s.", label, short)
             logger.debug("%s Traceback:", label, exc_info=True)
             time.sleep(30)
+    logger.info("%s Worker stopped (key updated or removed).", label)
 
 
 def run_multi_user(logger: logging.Logger) -> None:
@@ -572,7 +580,7 @@ def run_multi_user(logger: logging.Logger) -> None:
     mysql_cfg = get_mysql_config()
     logger.info("Multi-user mode enabled. Sync interval: %ss.", sync_seconds)
 
-    running_ids: set[int] = set()
+    workers: dict[int, dict] = {}
 
     while True:
         try:
@@ -580,16 +588,40 @@ def run_multi_user(logger: logging.Logger) -> None:
             if max_users > 0:
                 users = users[:max_users]
 
-            for user in users:
-                user_id = int(user["id"])
-                if user_id in running_ids:
+            desired = {
+                int(u["id"]): u
+                for u in users
+                if u.get("golden_key") and str(u.get("golden_key")).strip()
+            }
+
+            # Stop removed users or users without keys.
+            for user_id in list(workers.keys()):
+                if user_id not in desired:
+                    workers[user_id]["stop"].set()
+                    workers[user_id]["thread"].join(timeout=5)
+                    workers.pop(user_id, None)
+
+            for user_id, user in desired.items():
+                golden_key = user.get("golden_key") or ""
+                existing = workers.get(user_id)
+                if existing and existing["golden_key"] == golden_key:
                     continue
-                running_ids.add(user_id)
+                if existing:
+                    existing["stop"].set()
+                    existing["thread"].join(timeout=5)
+                    workers.pop(user_id, None)
+
+                stop_event = threading.Event()
                 thread = threading.Thread(
                     target=user_worker_loop,
-                    args=(user, user_agent, poll_seconds),
+                    args=(user, user_agent, poll_seconds, stop_event),
                     daemon=True,
                 )
+                workers[user_id] = {
+                    "golden_key": golden_key,
+                    "thread": thread,
+                    "stop": stop_event,
+                }
                 thread.start()
             time.sleep(sync_seconds)
         except Exception as exc:

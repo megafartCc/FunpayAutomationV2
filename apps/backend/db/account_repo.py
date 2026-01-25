@@ -26,6 +26,16 @@ class AccountRecord:
     rental_frozen: int
 
 
+@dataclass
+class AccountSteamRecord:
+    id: int
+    user_id: int
+    account_name: str
+    login: str
+    password: str
+    mafile_json: Optional[str]
+
+
 class MySQLAccountRepo:
     def _column_exists(self, cursor: mysql.connector.cursor.MySQLCursor, column: str) -> bool:
         cursor.execute(
@@ -163,6 +173,33 @@ class MySQLAccountRepo:
                 rental_duration_minutes=row.get("rental_duration_minutes"),
                 account_frozen=int(row.get("account_frozen") or 0),
                 rental_frozen=int(row.get("rental_frozen") or 0),
+            )
+        finally:
+            conn.close()
+
+    def get_for_steam(self, account_id: int, user_id: int) -> Optional[AccountSteamRecord]:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT id, user_id, account_name, login, password, mafile_json
+                FROM accounts
+                WHERE id = %s AND user_id = %s
+                LIMIT 1
+                """,
+                (account_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return AccountSteamRecord(
+                id=int(row["id"]),
+                user_id=int(row["user_id"]),
+                account_name=row["account_name"],
+                login=row["login"],
+                password=row["password"],
+                mafile_json=row.get("mafile_json"),
             )
         finally:
             conn.close()
