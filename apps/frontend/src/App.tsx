@@ -5,6 +5,7 @@ import { api, AuthResponse } from "./services/api";
 import Layout from "./components/layout/Layout";
 import DashboardPage from "./components/dashboard/DashboardPage";
 import FunpayStatsPage from "./components/stats/FunpayStatsPage";
+import ActiveRentalsPage from "./components/rentals/ActiveRentalsPage";
 
 type Toast = { message: string; isError?: boolean } | null;
 
@@ -136,7 +137,7 @@ const AppRoutes: React.FC = () => {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
-          <Route path="rentals" element={<DashboardPlaceholder title="Active Rentals" />} />
+          <Route path="rentals" element={<ActiveRentalsPage />} />
           <Route path="orders" element={<DashboardPlaceholder title="Orders History" />} />
           <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
           <Route path="blacklist" element={<DashboardPlaceholder title="Blacklist" />} />
