@@ -789,6 +789,7 @@ def fetch_available_lot_accounts(
         has_account_user_id = column_exists(cursor, "accounts", "user_id")
         has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
         has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
         has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
