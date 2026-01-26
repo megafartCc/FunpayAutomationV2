@@ -273,55 +273,44 @@ def _table_exists(conn: mysql.connector.MySQLConnection, schema: str, table: str
     return cursor.fetchone() is not None
 
 
+def _get_table_columns(conn: mysql.connector.MySQLConnection, schema: str, table: str) -> set[str]:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = %s AND table_name = %s",
+        (schema, table),
+    )
+    return {str(row[0]) for row in cursor.fetchall() or []}
+
+
 def _migrate_workspace_data(
     conn: mysql.connector.MySQLConnection,
     base_db: str,
     workspace_db: str,
     workspace_id: int,
 ) -> None:
-    if not _table_exists(conn, base_db, "accounts"):
-        return
-
     base_db_q = _quote_identifier(base_db)
     ws_db_q = _quote_identifier(workspace_db)
     cursor = conn.cursor()
-    cursor.execute(
-        f"""
-        INSERT IGNORE INTO {ws_db_q}.accounts (
-            id, user_id, workspace_id, account_name, login, password, mafile_json, lot_url, mmr,
-            rental_duration, rental_duration_minutes, owner, rental_start, account_frozen,
-            rental_frozen, rental_frozen_at, created_at
-        )
-        SELECT id, user_id, workspace_id, account_name, login, password, mafile_json, lot_url, mmr,
-               rental_duration, rental_duration_minutes, owner, rental_start, account_frozen,
-               rental_frozen, rental_frozen_at, created_at
-        FROM {base_db_q}.accounts
-        WHERE workspace_id = %s
-        """,
-        (workspace_id,),
-    )
-
-    if _table_exists(conn, base_db, "lots"):
+    for table in ("accounts", "lots", "lot_aliases"):
+        if not _table_exists(conn, base_db, table):
+            continue
+        if not _table_exists(conn, workspace_db, table):
+            continue
+        base_cols = _get_table_columns(conn, base_db, table)
+        ws_cols = _get_table_columns(conn, workspace_db, table)
+        if "workspace_id" not in base_cols:
+            continue
+        columns = [col for col in base_cols if col in ws_cols]
+        if not columns:
+            continue
+        cols_sql = ", ".join(_quote_identifier(col) for col in columns)
+        table_q = _quote_identifier(table)
         cursor.execute(
             f"""
-            INSERT IGNORE INTO {ws_db_q}.lots (
-                id, user_id, workspace_id, lot_number, account_id, lot_url, created_at
-            )
-            SELECT id, user_id, workspace_id, lot_number, account_id, lot_url, created_at
-            FROM {base_db_q}.lots
-            WHERE workspace_id = %s
-            """,
-            (workspace_id,),
-        )
-
-    if _table_exists(conn, base_db, "lot_aliases"):
-        cursor.execute(
-            f"""
-            INSERT IGNORE INTO {ws_db_q}.lot_aliases (
-                id, user_id, workspace_id, lot_number, funpay_url, created_at
-            )
-            SELECT id, user_id, workspace_id, lot_number, funpay_url, created_at
-            FROM {base_db_q}.lot_aliases
+            INSERT IGNORE INTO {ws_db_q}.{table_q} ({cols_sql})
+            SELECT {cols_sql}
+            FROM {base_db_q}.{table_q}
             WHERE workspace_id = %s
             """,
             (workspace_id,),
