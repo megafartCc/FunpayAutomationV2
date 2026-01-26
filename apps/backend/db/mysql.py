@@ -123,6 +123,7 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT NOT NULL,
             workspace_id BIGINT NULL,
+            last_rented_workspace_id BIGINT NULL,
             account_name VARCHAR(255) NOT NULL,
             login VARCHAR(255) NOT NULL,
             password TEXT NOT NULL,
@@ -166,6 +167,11 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
             raise
     try:
         cursor.execute("ALTER TABLE accounts ADD COLUMN workspace_id BIGINT NULL;")
+    except mysql.connector.Error as exc:
+        if exc.errno != errorcode.ER_DUP_FIELDNAME:
+            raise
+    try:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN last_rented_workspace_id BIGINT NULL;")
     except mysql.connector.Error as exc:
         if exc.errno != errorcode.ER_DUP_FIELDNAME:
             raise
@@ -313,6 +319,10 @@ def get_workspace_connection(workspace_id: int) -> mysql.connector.MySQLConnecti
     return pool.get_connection()
 
 
+def get_base_connection() -> mysql.connector.MySQLConnection:
+    return _pool.get_connection()
+
+
 def list_workspace_ids_for_user(user_id: int) -> list[int]:
     conn = _pool.get_connection()
     try:
@@ -395,6 +405,7 @@ def ensure_schema() -> None:
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
                 workspace_id BIGINT NULL,
+                last_rented_workspace_id BIGINT NULL,
                 account_name VARCHAR(255) NOT NULL,
                 login VARCHAR(255) NOT NULL,
                 password TEXT NOT NULL,
@@ -441,6 +452,11 @@ def ensure_schema() -> None:
                 raise
         try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN workspace_id BIGINT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN last_rented_workspace_id BIGINT NULL;")
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
@@ -526,6 +542,16 @@ def ensure_schema() -> None:
             WHERE a.workspace_id IS NULL
             """
         )
+        try:
+            cursor.execute(
+                """
+                UPDATE accounts
+                SET last_rented_workspace_id = workspace_id
+                WHERE last_rented_workspace_id IS NULL
+                """
+            )
+        except mysql.connector.Error:
+            pass
         cursor.execute(
             """
             UPDATE lots l

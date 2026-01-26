@@ -482,11 +482,11 @@ def fetch_active_rentals_for_monitor(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
         params: list = [user_id]
         workspace_clause = ""
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(workspace_id)
         cursor.execute(
             f"""
@@ -513,14 +513,14 @@ def release_account_in_db(
     try:
         cursor = conn.cursor()
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
         workspace_clause = ""
         params: list = [account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(workspace_id)
         cursor.execute(
             f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s{workspace_clause}",
@@ -774,8 +774,6 @@ def fetch_available_lot_accounts(
         from_clause = "FROM accounts a"
         if has_lots:
             join_clause = " LEFT JOIN lots l ON l.account_id = a.ID"
-            if has_account_workspace and has_lot_workspace and workspace_id is not None:
-                join_clause += " AND (l.workspace_id = a.workspace_id OR l.workspace_id IS NULL)"
             from_clause += join_clause
 
         where_clauses = ["a.owner IS NULL"]
@@ -868,20 +866,23 @@ def assign_account_to_buyer(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
-        workspace_clause = ""
-        params: list = [buyer, int(units), int(total_minutes), int(account_id), int(user_id)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        updates = [
+            "owner = %s",
+            "rental_duration = %s",
+            "rental_duration_minutes = %s",
+            "rental_start = NULL",
+        ]
+        params: list = [buyer, int(units), int(total_minutes)]
+        if workspace_id is not None and has_last_rented:
+            updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id))
+        params.extend([int(account_id), int(user_id)])
         cursor.execute(
             f"""
             UPDATE accounts
-            SET owner = %s,
-                rental_duration = %s,
-                rental_duration_minutes = %s,
-                rental_start = NULL
-            WHERE id = %s AND user_id = %s{workspace_clause}
+            SET {', '.join(updates)}
+            WHERE id = %s AND user_id = %s
             """,
             tuple(params),
         )
@@ -904,19 +905,29 @@ def extend_rental_for_buyer(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         workspace_clause = ""
-        params: list = [account_id, user_id, normalize_username(buyer)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
-            params.append(int(workspace_id))
+        base_params: list = [account_id, user_id, normalize_username(buyer)]
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
+            base_params.append(int(workspace_id))
+
+        lot_number_query = "SELECT lot_number FROM lots WHERE lots.account_id = accounts.id"
+        lot_url_query = "SELECT lot_url FROM lots WHERE lots.account_id = accounts.id"
+        lot_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            lot_number_query += " AND lots.workspace_id = %s"
+            lot_url_query += " AND lots.workspace_id = %s"
+            lot_params = [int(workspace_id), int(workspace_id)]
+        params = lot_params + base_params
         cursor.execute(
             f"""
             SELECT id, account_name, login, password, mafile_json,
                    owner, rental_start, rental_duration, rental_duration_minutes,
                    account_frozen, rental_frozen,
-                   (SELECT lot_number FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_number,
-                   (SELECT lot_url FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_url
+                   ({lot_number_query} LIMIT 1) AS lot_number,
+                   ({lot_url_query} LIMIT 1) AS lot_url
             FROM accounts
             WHERE id = %s AND user_id = %s AND LOWER(owner) = %s{workspace_clause}
             LIMIT 1
@@ -945,8 +956,8 @@ def extend_rental_for_buyer(
         cursor = conn.cursor()
         update_workspace_clause = ""
         update_params: list = [new_units, new_minutes, account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            update_workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            update_workspace_clause = " AND last_rented_workspace_id = %s"
             update_params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -960,14 +971,15 @@ def extend_rental_for_buyer(
         conn.commit()
 
         cursor = conn.cursor(dictionary=True)
-        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
-        if has_workspace and has_lot_workspace:
-            join_clause += " AND l.workspace_id = a.workspace_id"
+        join_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            join_clause += " AND l.workspace_id = %s"
+            join_params.append(int(workspace_id))
         final_workspace_clause = ""
         final_params: list = [account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            final_workspace_clause = " AND a.workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            final_workspace_clause = " AND a.last_rented_workspace_id = %s"
             final_params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -980,7 +992,7 @@ def extend_rental_for_buyer(
             WHERE a.id = %s AND a.user_id = %s{final_workspace_clause}
             LIMIT 1
             """,
-            tuple(final_params),
+            tuple(join_params + final_params),
         )
         return cursor.fetchone()
     finally:
@@ -997,15 +1009,16 @@ def fetch_owner_accounts(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
         has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
-        if has_workspace and has_lot_workspace:
-            join_clause += " AND l.workspace_id = a.workspace_id"
+        join_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            join_clause += " AND l.workspace_id = %s"
+            join_params.append(int(workspace_id))
         workspace_clause = ""
         params: list = [user_id, normalize_username(owner)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND a.workspace_id = %s"
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND a.last_rented_workspace_id = %s"
             params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -1018,7 +1031,7 @@ def fetch_owner_accounts(
             WHERE a.user_id = %s AND LOWER(a.owner) = %s{workspace_clause}
             ORDER BY a.id
             """,
-            tuple(params),
+            tuple(join_params + params),
         )
         return list(cursor.fetchall() or [])
     finally:
@@ -1035,11 +1048,10 @@ def start_rental_for_owner(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
         workspace_clause = ""
         params: list = [user_id, normalize_username(owner)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -1513,14 +1525,7 @@ def get_workspace_db_name(mysql_cfg: dict, workspace_id: int) -> str | None:
 
 
 def resolve_workspace_mysql_cfg(mysql_cfg: dict, workspace_id: int | None) -> dict:
-    if workspace_id is None:
-        return mysql_cfg
-    db_name = get_workspace_db_name(mysql_cfg, int(workspace_id))
-    if not db_name:
-        return mysql_cfg
-    cfg = dict(mysql_cfg)
-    cfg["database"] = db_name
-    return cfg
+    return mysql_cfg
 
 
 def normalize_proxy_url(raw: str | None) -> str:

@@ -93,11 +93,10 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(workspace_id: int | None = None, user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
-    if workspace_id is None:
-        raise HTTPException(status_code=400, detail="workspace_id is required")
-    workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
-    if not workspace:
-        raise HTTPException(status_code=400, detail="Select a workspace for rentals.")
+    if workspace_id is not None:
+        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+        if not workspace:
+            raise HTTPException(status_code=400, detail="Select a workspace for rentals.")
     cached_items = rentals_cache.get(user_id, workspace_id)
     if cached_items is not None:
         return ActiveRentalResponse(items=[ActiveRentalItem(**item) for item in cached_items])
