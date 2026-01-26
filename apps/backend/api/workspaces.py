@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+import requests
 
 from api.deps import get_current_user
 from db.workspace_repo import MySQLWorkspaceRepo, WorkspaceRecord
@@ -45,6 +46,30 @@ class WorkspaceItem(BaseModel):
 
 class WorkspaceListResponse(BaseModel):
     items: list[WorkspaceItem]
+
+
+class ProxyCheckResponse(BaseModel):
+    ok: bool
+    direct_ip: str | None = None
+    proxy_ip: str | None = None
+    error: str | None = None
+
+
+_IP_CHECK_URL = "https://api.ipify.org?format=json"
+
+
+def _fetch_ip(proxies: dict[str, str] | None = None) -> str:
+    response = requests.get(_IP_CHECK_URL, timeout=10, proxies=proxies)
+    response.raise_for_status()
+    try:
+        payload = response.json()
+        ip_value = (payload.get("ip") if isinstance(payload, dict) else None) or ""
+    except ValueError:
+        ip_value = response.text or ""
+    ip_value = str(ip_value).strip()
+    if not ip_value:
+        raise ValueError("IP response did not include an address.")
+    return ip_value
 
 
 def _to_item(record: WorkspaceRecord) -> WorkspaceItem:
@@ -133,3 +158,38 @@ def delete_workspace(workspace_id: int, user=Depends(get_current_user)) -> dict:
     if not ok:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return {"ok": True}
+
+
+@router.post("/workspaces/{workspace_id}/proxy-check", response_model=ProxyCheckResponse)
+def check_workspace_proxy(workspace_id: int, user=Depends(get_current_user)) -> ProxyCheckResponse:
+    existing = workspace_repo.get_by_id(workspace_id, int(user.id))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    proxy_url = (existing.proxy_url or "").strip()
+    if not proxy_url:
+        return ProxyCheckResponse(ok=False, error="Proxy is not set for this workspace.")
+
+    try:
+        direct_ip = _fetch_ip()
+    except (requests.RequestException, ValueError):
+        raise HTTPException(status_code=502, detail="Failed to fetch direct IP address.")
+
+    proxies = {"http": proxy_url, "https": proxy_url}
+    try:
+        proxy_ip = _fetch_ip(proxies=proxies)
+    except (requests.RequestException, ValueError):
+        return ProxyCheckResponse(
+            ok=False,
+            direct_ip=direct_ip,
+            proxy_ip=None,
+            error="Proxy request failed.",
+        )
+
+    if proxy_ip == direct_ip:
+        return ProxyCheckResponse(
+            ok=False,
+            direct_ip=direct_ip,
+            proxy_ip=proxy_ip,
+            error="Proxy did not change the IP address.",
+        )
+    return ProxyCheckResponse(ok=True, direct_ip=direct_ip, proxy_ip=proxy_ip)
