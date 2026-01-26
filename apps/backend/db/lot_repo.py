@@ -44,6 +44,28 @@ def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
     return dup_key.endswith(f".{expected}")
 
 
+def _handle_primary_duplicate(
+    cursor: mysql.connector.cursor.MySQLCursorDict,
+    *,
+    workspace_id: int,
+    lot_number: int,
+    account_id: int,
+) -> None:
+    cursor.execute(
+        "SELECT 1 FROM lots WHERE workspace_id = %s AND lot_number = %s LIMIT 1",
+        (workspace_id, lot_number),
+    )
+    if cursor.fetchone():
+        raise LotCreateError("duplicate_lot_number")
+    cursor.execute(
+        "SELECT 1 FROM lots WHERE workspace_id = %s AND account_id = %s LIMIT 1",
+        (workspace_id, account_id),
+    )
+    if cursor.fetchone():
+        raise LotCreateError("account_already_mapped")
+    raise LotCreateError("duplicate")
+
+
 def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
     try:
         idx_cursor = conn.cursor(dictionary=True)
@@ -157,6 +179,13 @@ class MySQLLotRepo:
                         raise LotCreateError("duplicate_lot_number")
                     if _dup_key_matches(dup_key, "uniq_account_workspace"):
                         raise LotCreateError("account_already_mapped")
+                    if _dup_key_matches(dup_key, "PRIMARY"):
+                        _handle_primary_duplicate(
+                            cursor_dict,
+                            workspace_id=workspace_id,
+                            lot_number=lot_number,
+                            account_id=account_id,
+                        )
                     _cleanup_lot_unique_indexes(conn)
                     cursor.execute(
                         """
