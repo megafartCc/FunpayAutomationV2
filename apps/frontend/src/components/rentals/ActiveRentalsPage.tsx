@@ -232,7 +232,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       }
       const workspaceId = selectedWorkspaceId as number;
       const res = await api.listAccounts(workspaceId);
-      setAccounts(res.items.map(mapAccount));
+      const mapped = res.items.map(mapAccount);
+      setAccounts(mapped.filter((item) => item.workspaceId === workspaceId));
     } catch {
       setAccounts([]);
     }
