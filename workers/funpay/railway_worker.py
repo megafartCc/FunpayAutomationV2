@@ -137,20 +137,34 @@ def normalize_username(name: str | None) -> str:
     return (name or "").strip().lower()
 
 
-def _orders_key(site_username: str | None, site_user_id: int | None) -> str:
+def _orders_key(site_username: str | None, site_user_id: int | None, workspace_id: int | None) -> str:
     if site_user_id is not None:
-        return str(site_user_id)
-    return site_username or "single"
+        base = str(site_user_id)
+    else:
+        base = site_username or "single"
+    if workspace_id is not None:
+        return f"{base}:{workspace_id}"
+    return base
 
 
-def is_order_processed(site_username: str | None, site_user_id: int | None, order_id: str) -> bool:
-    key = _orders_key(site_username, site_user_id)
+def is_order_processed(
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    order_id: str,
+) -> bool:
+    key = _orders_key(site_username, site_user_id, workspace_id)
     with _processed_orders_lock:
         return order_id in _processed_orders.get(key, set())
 
 
-def mark_order_processed(site_username: str | None, site_user_id: int | None, order_id: str) -> None:
-    key = _orders_key(site_username, site_user_id)
+def mark_order_processed(
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    order_id: str,
+) -> None:
+    key = _orders_key(site_username, site_user_id, workspace_id)
     with _processed_orders_lock:
         bucket = _processed_orders.setdefault(key, set())
         bucket.add(order_id)
@@ -459,35 +473,56 @@ def fetch_presence(steam_id: str | None) -> dict:
     return data
 
 
-def fetch_active_rentals_for_monitor(mysql_cfg: dict, user_id: int) -> list[dict]:
+def fetch_active_rentals_for_monitor(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        params: list = [user_id]
+        workspace_clause = ""
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(workspace_id)
         cursor.execute(
-            """
+            f"""
             SELECT id, owner, rental_start, rental_duration, rental_duration_minutes,
                    account_name, login, password, mafile_json, account_frozen, rental_frozen
             FROM accounts
-            WHERE user_id = %s AND owner IS NOT NULL AND owner != ''
+            WHERE user_id = %s AND owner IS NOT NULL AND owner != ''{workspace_clause}
             """,
-            (user_id,),
+            tuple(params),
         )
         return list(cursor.fetchall() or [])
     finally:
         conn.close()
 
 
-def release_account_in_db(mysql_cfg: dict, account_id: int, user_id: int) -> bool:
+def release_account_in_db(
+    mysql_cfg: dict,
+    account_id: int,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> bool:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor()
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
+        workspace_clause = ""
+        params: list = [account_id, user_id]
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(workspace_id)
         cursor.execute(
-            f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
-            (account_id, user_id),
+            f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s{workspace_clause}",
+            tuple(params),
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -579,6 +614,7 @@ def process_rental_monitor(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     state: RentalMonitorState,
 ) -> None:
     interval = env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30)
@@ -602,7 +638,7 @@ def process_rental_monitor(
     if user_id is None:
         return
 
-    rentals = fetch_active_rentals_for_monitor(mysql_cfg, int(user_id))
+    rentals = fetch_active_rentals_for_monitor(mysql_cfg, int(user_id), workspace_id)
     now = datetime.utcnow()
     active_ids = {int(row.get("id")) for row in rentals}
     if state.freeze_cache:
@@ -656,7 +692,7 @@ def process_rental_monitor(
 
         if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
             deauthorize_account_sessions(logger, row)
-        released = release_account_in_db(mysql_cfg, account_id, int(user_id))
+        released = release_account_in_db(mysql_cfg, account_id, int(user_id), workspace_id)
         if released:
             send_message_by_owner(logger, account, owner, RENTAL_EXPIRED_MESSAGE)
         _clear_expire_delay_state(state, account_id)
@@ -693,7 +729,11 @@ def column_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str, column
     return cursor.fetchone() is not None
 
 
-def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[dict]:
+def fetch_available_lot_accounts(
+    mysql_cfg: dict,
+    user_id: int | None,
+    workspace_id: int | None = None,
+) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -702,6 +742,8 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
         has_lots = table_exists(cursor, "lots")
         has_account_user_id = column_exists(cursor, "accounts", "user_id")
         has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
+        has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
         has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
@@ -727,7 +769,10 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
 
         from_clause = "FROM accounts a"
         if has_lots:
-            from_clause += " LEFT JOIN lots l ON l.account_id = a.ID"
+            join_clause = " LEFT JOIN lots l ON l.account_id = a.ID"
+            if has_account_workspace and has_lot_workspace:
+                join_clause += " AND l.workspace_id = a.workspace_id"
+            from_clause += join_clause
 
         where_clauses = ["a.owner IS NULL"]
         if has_account_frozen:
@@ -745,6 +790,13 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
             elif has_lot_user_id:
                 where_clauses.append("l.user_id = %s")
                 params.append(user_id)
+        if workspace_id is not None:
+            if has_account_workspace:
+                where_clauses.append("a.workspace_id = %s")
+                params.append(workspace_id)
+            elif has_lot_workspace:
+                where_clauses.append("l.workspace_id = %s")
+                params.append(workspace_id)
 
         if has_lots:
             order_clause = "ORDER BY (l.lot_number IS NULL), l.lot_number"
@@ -761,22 +813,41 @@ def fetch_available_lot_accounts(mysql_cfg: dict, user_id: int | None) -> list[d
         conn.close()
 
 
-def fetch_lot_account(mysql_cfg: dict, user_id: int, lot_number: int) -> dict | None:
+def fetch_lot_account(
+    mysql_cfg: dict,
+    user_id: int,
+    lot_number: int,
+    workspace_id: int | None = None,
+) -> dict | None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
+        has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
+        workspace_clause = ""
+        params: list = [user_id, lot_number]
+        if workspace_id is not None:
+            if has_account_workspace:
+                workspace_clause = " AND a.workspace_id = %s"
+                params.append(workspace_id)
+            elif has_lot_workspace:
+                workspace_clause = " AND l.workspace_id = %s"
+                params.append(workspace_id)
+        join_clause = "JOIN accounts a ON a.id = l.account_id"
+        if has_account_workspace and has_lot_workspace:
+            join_clause += " AND a.workspace_id = l.workspace_id"
         cursor.execute(
-            """
+            f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen,
                    l.lot_number, l.lot_url
             FROM lots l
-            JOIN accounts a ON a.id = l.account_id
-            WHERE l.user_id = %s AND l.lot_number = %s
+            {join_clause}
+            WHERE l.user_id = %s AND l.lot_number = %s{workspace_clause}
             LIMIT 1
             """,
-            (user_id, lot_number),
+            tuple(params),
         )
         return cursor.fetchone()
     finally:
@@ -791,20 +862,27 @@ def assign_account_to_buyer(
     buyer: str,
     units: int,
     total_minutes: int,
+    workspace_id: int | None = None,
 ) -> None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor()
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        workspace_clause = ""
+        params: list = [buyer, int(units), int(total_minutes), int(account_id), int(user_id)]
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             UPDATE accounts
             SET owner = %s,
                 rental_duration = %s,
                 rental_duration_minutes = %s,
                 rental_start = NULL
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s AND user_id = %s{workspace_clause}
             """,
-            (buyer, int(units), int(total_minutes), int(account_id), int(user_id)),
+            tuple(params),
         )
         conn.commit()
     finally:
@@ -819,22 +897,29 @@ def extend_rental_for_buyer(
     buyer: str,
     add_units: int,
     add_minutes: int,
+    workspace_id: int | None = None,
 ) -> dict | None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        workspace_clause = ""
+        params: list = [account_id, user_id, normalize_username(buyer)]
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             SELECT id, account_name, login, password, mafile_json,
                    owner, rental_start, rental_duration, rental_duration_minutes,
                    account_frozen, rental_frozen,
                    (SELECT lot_number FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_number,
                    (SELECT lot_url FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_url
             FROM accounts
-            WHERE id = %s AND user_id = %s AND LOWER(owner) = %s
+            WHERE id = %s AND user_id = %s AND LOWER(owner) = %s{workspace_clause}
             LIMIT 1
             """,
-            (account_id, user_id, normalize_username(buyer)),
+            tuple(params),
         )
         current = cursor.fetchone()
         if not current:
@@ -856,69 +941,109 @@ def extend_rental_for_buyer(
         new_units = base_units + int(add_units)
 
         cursor = conn.cursor()
+        update_workspace_clause = ""
+        update_params: list = [new_units, new_minutes, account_id, user_id]
+        if workspace_id is not None and has_workspace:
+            update_workspace_clause = " AND workspace_id = %s"
+            update_params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             UPDATE accounts
             SET rental_duration = %s,
                 rental_duration_minutes = %s
-            WHERE id = %s AND user_id = %s
+            WHERE id = %s AND user_id = %s{update_workspace_clause}
             """,
-            (new_units, new_minutes, account_id, user_id),
+            tuple(update_params),
         )
         conn.commit()
 
         cursor = conn.cursor(dictionary=True)
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
+        join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
+        if has_workspace and has_lot_workspace:
+            join_clause += " AND l.workspace_id = a.workspace_id"
+        final_workspace_clause = ""
+        final_params: list = [account_id, user_id]
+        if workspace_id is not None and has_workspace:
+            final_workspace_clause = " AND a.workspace_id = %s"
+            final_params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen,
                    l.lot_number, l.lot_url
             FROM accounts a
-            LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
-            WHERE a.id = %s AND a.user_id = %s
+            {join_clause}
+            WHERE a.id = %s AND a.user_id = %s{final_workspace_clause}
             LIMIT 1
             """,
-            (account_id, user_id),
+            tuple(final_params),
         )
         return cursor.fetchone()
     finally:
         conn.close()
 
 
-def fetch_owner_accounts(mysql_cfg: dict, user_id: int, owner: str) -> list[dict]:
+def fetch_owner_accounts(
+    mysql_cfg: dict,
+    user_id: int,
+    owner: str,
+    workspace_id: int | None = None,
+) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
+        join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
+        if has_workspace and has_lot_workspace:
+            join_clause += " AND l.workspace_id = a.workspace_id"
+        workspace_clause = ""
+        params: list = [user_id, normalize_username(owner)]
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND a.workspace_id = %s"
+            params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen,
                    l.lot_number, l.lot_url
             FROM accounts a
-            LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
-            WHERE a.user_id = %s AND LOWER(a.owner) = %s
+            {join_clause}
+            WHERE a.user_id = %s AND LOWER(a.owner) = %s{workspace_clause}
             ORDER BY a.id
             """,
-            (user_id, normalize_username(owner)),
+            tuple(params),
         )
         return list(cursor.fetchall() or [])
     finally:
         conn.close()
 
 
-def start_rental_for_owner(mysql_cfg: dict, user_id: int, owner: str) -> int:
+def start_rental_for_owner(
+    mysql_cfg: dict,
+    user_id: int,
+    owner: str,
+    workspace_id: int | None = None,
+) -> int:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor()
+        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        workspace_clause = ""
+        params: list = [user_id, normalize_username(owner)]
+        if workspace_id is not None and has_workspace:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
         cursor.execute(
-            """
+            f"""
             UPDATE accounts
             SET rental_start = NOW()
-            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL
+            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}
             """,
-            (user_id, normalize_username(owner)),
+            tuple(params),
         )
         conn.commit()
         return cursor.rowcount
@@ -954,6 +1079,7 @@ def handle_stock_command(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     chat_name: str,
     sender_username: str,
     chat_id: int | None,
@@ -985,7 +1111,7 @@ def handle_stock_command(
         return True
 
     try:
-        accounts = fetch_available_lot_accounts(mysql_cfg, user_id)
+        accounts = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id)
     except mysql.connector.Error as exc:
         logger.warning("Stock query failed: %s", exc)
         send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
@@ -1001,6 +1127,7 @@ def handle_account_command(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     chat_name: str,
     sender_username: str,
     chat_id: int | None,
@@ -1031,7 +1158,7 @@ def handle_account_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username)
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
     if not accounts:
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
@@ -1050,6 +1177,7 @@ def handle_code_command(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     chat_name: str,
     sender_username: str,
     chat_id: int | None,
@@ -1080,7 +1208,7 @@ def handle_code_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username)
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
     if not accounts:
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
@@ -1099,7 +1227,7 @@ def handle_code_command(
             started_now = True
 
     if started_now:
-        start_rental_for_owner(mysql_cfg, user_id, sender_username)
+        start_rental_for_owner(mysql_cfg, user_id, sender_username, workspace_id)
         lines.extend(
             [
                 "",
@@ -1116,12 +1244,13 @@ def handle_order_purchased(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     msg: object,
 ) -> None:
     order_id = extract_order_id(getattr(msg, "text", None) or "")
     if not order_id:
         return
-    if is_order_processed(site_username, site_user_id, order_id):
+    if is_order_processed(site_username, site_user_id, workspace_id, order_id):
         return
 
     try:
@@ -1151,7 +1280,7 @@ def handle_order_purchased(
     lot_number = extract_lot_number_from_order(order)
     if lot_number is None:
         send_chat_message(logger, account, chat_id, ORDER_LOT_MISSING)
-        mark_order_processed(site_username, site_user_id, order_id)
+        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     try:
@@ -1172,21 +1301,21 @@ def handle_order_purchased(
         logger.warning("Order %s skipped: user id missing.", order_id)
         return
 
-    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number)
+    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id)
     if not mapping:
         send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
-        mark_order_processed(site_username, site_user_id, order_id)
+        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen"):
         send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
-        mark_order_processed(site_username, site_user_id, order_id)
+        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     owner = mapping.get("owner")
     if owner and normalize_username(owner) != normalize_username(buyer):
         send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
-        mark_order_processed(site_username, site_user_id, order_id)
+        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     try:
@@ -1208,6 +1337,7 @@ def handle_order_purchased(
             buyer=buyer,
             units=amount,
             total_minutes=total_minutes,
+            workspace_id=workspace_id,
         )
     else:
         updated_account = extend_rental_for_buyer(
@@ -1217,15 +1347,16 @@ def handle_order_purchased(
             buyer=buyer,
             add_units=amount,
             add_minutes=total_minutes,
+            workspace_id=workspace_id,
         )
         if not updated_account:
             send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
-            mark_order_processed(site_username, site_user_id, order_id)
+            mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
 
     message = build_account_message(updated_account or mapping, total_minutes, include_timer_note=True)
     send_chat_message(logger, account, chat_id, message)
-    mark_order_processed(site_username, site_user_id, order_id)
+    mark_order_processed(site_username, site_user_id, workspace_id, order_id)
 
 
 def _log_command_stub(
@@ -1233,6 +1364,7 @@ def _log_command_stub(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     chat_name: str,
     sender_username: str,
     chat_id: int | None,
@@ -1242,8 +1374,9 @@ def _log_command_stub(
     action: str,
 ) -> bool:
     logger.info(
-        "user=%s chat=%s author=%s command=%s args=%s action=%s url=%s",
+        "user=%s workspace=%s chat=%s author=%s command=%s args=%s action=%s url=%s",
         site_username or "-",
+        workspace_id if workspace_id is not None else "-",
         chat_name,
         sender_username,
         command,
@@ -1259,6 +1392,7 @@ def handle_command(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     chat_name: str,
     sender_username: str,
     chat_id: int | None,
@@ -1280,8 +1414,9 @@ def handle_command(
     handler = handlers.get(command)
     if not handler:
         logger.info(
-            "user=%s chat=%s author=%s command_unhandled=%s args=%s url=%s",
+            "user=%s workspace=%s chat=%s author=%s command_unhandled=%s args=%s url=%s",
             site_username or "-",
+            workspace_id if workspace_id is not None else "-",
             chat_name,
             sender_username,
             command,
@@ -1294,6 +1429,7 @@ def handle_command(
         account,
         site_username,
         site_user_id,
+        workspace_id,
         chat_name,
         sender_username,
         chat_id,
@@ -1350,13 +1486,35 @@ def get_mysql_config() -> dict:
     }
 
 
-def fetch_users(mysql_cfg: dict) -> list[dict]:
+def normalize_proxy_url(raw: str | None) -> str:
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    if "://" in value:
+        return value
+    return f"socks5://{value}"
+
+
+def build_proxy_config(raw: str | None) -> dict | None:
+    url = normalize_proxy_url(raw)
+    if not url:
+        return None
+    return {"http": url, "https": url}
+
+
+def fetch_workspaces(mysql_cfg: dict) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT id, username, golden_key FROM users "
-            "WHERE golden_key IS NOT NULL AND golden_key != ''"
+            """
+            SELECT w.id AS workspace_id, w.name AS workspace_name, w.golden_key, w.proxy_url,
+                   w.user_id, u.username
+            FROM workspaces w
+            JOIN users u ON u.id = w.user_id
+            WHERE w.golden_key IS NOT NULL AND w.golden_key != ''
+            ORDER BY w.user_id, w.id
+            """
         )
         rows = cursor.fetchall()
         return list(rows or [])
@@ -1393,6 +1551,7 @@ def log_message(
     account: Account,
     site_username: str | None,
     site_user_id: int | None,
+    workspace_id: int | None,
     event: NewMessageEvent,
 ) -> str | None:
     if event.type is not EventTypes.NEW_MESSAGE:
@@ -1444,8 +1603,9 @@ def log_message(
 
     chat_name = msg.chat_name or msg.author or "-"
     logger.info(
-        "user=%s chat=%s author=%s system=%s url=%s: %s",
+        "user=%s workspace=%s chat=%s author=%s system=%s url=%s: %s",
         site_username or "-",
+        workspace_id if workspace_id is not None else "-",
         chat_name,
         sender_username,
         is_system,
@@ -1454,8 +1614,9 @@ def log_message(
     )
     if command:
         logger.info(
-            "user=%s chat=%s author=%s command=%s args=%s url=%s",
+            "user=%s workspace=%s chat=%s author=%s command=%s args=%s url=%s",
             site_username or "-",
+            workspace_id if workspace_id is not None else "-",
             chat_name,
             sender_username,
             command,
@@ -1468,6 +1629,7 @@ def log_message(
                 account,
                 site_username,
                 site_user_id,
+                workspace_id,
                 chat_name,
                 sender_username,
                 msg.chat_id,
@@ -1477,15 +1639,16 @@ def log_message(
             )
     if is_system:
         logger.info(
-            "user=%s system_event type=%s chat=%s url=%s raw=%s",
+            "user=%s workspace=%s system_event type=%s chat=%s url=%s raw=%s",
             site_username or "-",
+            workspace_id if workspace_id is not None else "-",
             getattr(msg.type, "name", msg.type),
             chat_name,
             chat_url,
             (msg.text or "").strip(),
         )
         if msg.type == MessageTypes.ORDER_PURCHASED:
-            handle_order_purchased(logger, account, site_username, site_user_id, msg)
+            handle_order_purchased(logger, account, site_username, site_user_id, workspace_id, msg)
     return None
 
 
@@ -1495,11 +1658,16 @@ def run_single_user(logger: logging.Logger) -> None:
         logger.error("FUNPAY_GOLDEN_KEY is required (set FUNPAY_MULTI_USER=1 for DB mode).")
         sys.exit(1)
 
+    proxy_url = normalize_proxy_url(os.getenv("FUNPAY_PROXY_URL"))
+    if not proxy_url:
+        logger.error("FUNPAY_PROXY_URL is required to start the bot.")
+        sys.exit(1)
+
     user_agent = os.getenv("FUNPAY_USER_AGENT")
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
 
     logger.info("Initializing FunPay account...")
-    account = Account(golden_key, user_agent=user_agent)
+    account = Account(golden_key, user_agent=user_agent, proxy=build_proxy_config(proxy_url))
     account.get()
     logger.info("Bot started for %s.", account.username or "unknown")
 
@@ -1513,21 +1681,25 @@ def run_single_user(logger: logging.Logger) -> None:
         events = runner.parse_updates(updates)
         for event in events:
             if isinstance(event, NewMessageEvent):
-                log_message(logger, account, account.username, None, event)
-        process_rental_monitor(logger, account, account.username, None, state)
+                log_message(logger, account, account.username, None, None, event)
+        process_rental_monitor(logger, account, account.username, None, None, state)
         time.sleep(poll_seconds)
 
 
-def user_worker_loop(
-    user: dict,
+def workspace_worker_loop(
+    workspace: dict,
     user_agent: str | None,
     poll_seconds: int,
     stop_event: threading.Event,
 ) -> None:
     logger = logging.getLogger("funpay.worker")
-    site_username = user.get("username") or f"user-{user.get('id')}"
-    golden_key = user.get("golden_key")
-    label = f"[{site_username}]"
+    workspace_id = workspace.get("workspace_id")
+    workspace_name = workspace.get("workspace_name") or f"Workspace {workspace_id}"
+    user_id = workspace.get("user_id")
+    site_username = workspace.get("username") or f"user-{user_id}"
+    golden_key = workspace.get("golden_key")
+    proxy_url = normalize_proxy_url(workspace.get("proxy_url"))
+    label = f"[{workspace_name}]"
 
     state = RentalMonitorState()
     while not stop_event.is_set():
@@ -1535,9 +1707,17 @@ def user_worker_loop(
             if not golden_key:
                 logger.warning("%s Missing golden_key, skipping.", label)
                 return
-            account = Account(golden_key, user_agent=user_agent)
+            if not proxy_url:
+                logger.warning("%s Missing proxy_url, bot will not start.", label)
+                return
+            proxy_cfg = build_proxy_config(proxy_url)
+            if not proxy_cfg:
+                logger.warning("%s Invalid proxy_url, bot will not start.", label)
+                return
+
+            account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
             account.get()
-            logger.info("Bot started for %s.", site_username)
+            logger.info("Bot started for %s (%s).", site_username, workspace_name)
 
             threading.Thread(
                 target=refresh_session_loop,
@@ -1553,8 +1733,8 @@ def user_worker_loop(
                     if stop_event.is_set():
                         break
                     if isinstance(event, NewMessageEvent):
-                        log_message(logger, account, site_username, user.get("id"), event)
-                process_rental_monitor(logger, account, site_username, user.get("id"), state)
+                        log_message(logger, account, site_username, user_id, workspace_id, event)
+                process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
                 time.sleep(poll_seconds)
         except Exception as exc:
             # Avoid logging full HTML bodies from failed FunPay requests.
@@ -1578,41 +1758,54 @@ def run_multi_user(logger: logging.Logger) -> None:
 
     while True:
         try:
-            users = fetch_users(mysql_cfg)
+            workspaces = fetch_workspaces(mysql_cfg)
             if max_users > 0:
-                users = users[:max_users]
+                workspaces = workspaces[:max_users]
 
             desired = {
-                int(u["id"]): u
-                for u in users
-                if u.get("golden_key") and str(u.get("golden_key")).strip()
+                int(w["workspace_id"]): w
+                for w in workspaces
+                if w.get("golden_key") and str(w.get("golden_key")).strip()
             }
 
-            # Stop removed users or users without keys.
-            for user_id in list(workers.keys()):
-                if user_id not in desired:
-                    workers[user_id]["stop"].set()
-                    workers[user_id]["thread"].join(timeout=5)
-                    workers.pop(user_id, None)
+            # Stop removed workspaces.
+            for workspace_id in list(workers.keys()):
+                if workspace_id not in desired:
+                    workers[workspace_id]["stop"].set()
+                    workers[workspace_id]["thread"].join(timeout=5)
+                    workers.pop(workspace_id, None)
 
-            for user_id, user in desired.items():
-                golden_key = user.get("golden_key") or ""
-                existing = workers.get(user_id)
-                if existing and existing["golden_key"] == golden_key:
+            for workspace_id, workspace in desired.items():
+                golden_key = (workspace.get("golden_key") or "").strip()
+                proxy_url = normalize_proxy_url(workspace.get("proxy_url"))
+                existing = workers.get(workspace_id)
+                if (
+                    existing
+                    and existing.get("golden_key") == golden_key
+                    and existing.get("proxy_url") == proxy_url
+                ):
                     continue
                 if existing:
                     existing["stop"].set()
                     existing["thread"].join(timeout=5)
-                    workers.pop(user_id, None)
+                    workers.pop(workspace_id, None)
+
+                if not proxy_url:
+                    logger.warning(
+                        "Workspace %s missing proxy_url, bot will not start.",
+                        workspace.get("workspace_name") or workspace_id,
+                    )
+                    continue
 
                 stop_event = threading.Event()
                 thread = threading.Thread(
-                    target=user_worker_loop,
-                    args=(user, user_agent, poll_seconds, stop_event),
+                    target=workspace_worker_loop,
+                    args=(workspace, user_agent, poll_seconds, stop_event),
                     daemon=True,
                 )
-                workers[user_id] = {
+                workers[workspace_id] = {
                     "golden_key": golden_key,
+                    "proxy_url": proxy_url,
                     "thread": thread,
                     "stop": stop_event,
                 }

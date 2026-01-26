@@ -19,6 +19,7 @@ type RentalRow = {
 
 type AccountRow = {
   id: number;
+  workspaceId?: number | null;
   name: string;
   login: string;
   password: string;
@@ -34,7 +35,7 @@ type AccountRow = {
 };
 
 const RENTALS_GRID =
-  "minmax(64px,0.5fr) minmax(200px,1.4fr) minmax(160px,1.1fr) minmax(140px,0.9fr) minmax(170px,1fr) minmax(150px,0.9fr) minmax(220px,1.2fr) minmax(120px,0.7fr)";
+  "minmax(64px,0.5fr) minmax(240px,1.5fr) minmax(180px,1.1fr) minmax(150px,0.9fr) minmax(190px,1fr) minmax(170px,0.9fr) minmax(260px,1.4fr) minmax(140px,0.7fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const statusPill = (status?: string) => {
@@ -91,6 +92,7 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
+  workspaceId: item.workspace_id ?? null,
   name: item.account_name,
   login: item.login,
   password: item.password || "",
@@ -157,7 +159,21 @@ const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => 
   return formatMatchTime(row.matchTimeSeconds + elapsed);
 };
 
+const resolveWorkspaceName = (
+  workspaceId: number | null | undefined,
+  workspaceName: string | null | undefined,
+  workspaces: { id: number; name: string }[],
+) => {
+  if (workspaceName) return workspaceName;
+  if (workspaceId) {
+    const match = workspaces.find((item) => item.id === workspaceId);
+    if (match) return match.name;
+  }
+  return "Workspace";
+};
+
 const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
+  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -186,7 +202,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await api.listActiveRentals();
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      const res = await api.listActiveRentals(typeof workspaceId === "number" ? workspaceId : undefined);
       const observedAt = Date.now();
       setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
@@ -198,7 +215,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const loadAccounts = async () => {
     try {
-      const res = await api.listAccounts();
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      const res = await api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined);
       setAccounts(res.items.map(mapAccount));
     } catch {
       setAccounts([]);
@@ -208,7 +226,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadRentals();
     void loadAccounts();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -216,7 +234,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       void loadAccounts();
     }, 30_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -406,6 +424,17 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 ? "bg-amber-50 text-amber-700"
                 : "bg-emerald-50 text-emerald-600";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
+            const workspaceLabel = resolveWorkspaceName(
+              selectedAccount.workspaceId,
+              selectedAccount.workspaceName,
+              workspaces,
+            );
+            const workspaceRecord = selectedAccount.workspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
+              : null;
+            const workspaceDisplay = workspaceRecord?.is_default
+              ? `${workspaceLabel} (Default)`
+              : workspaceLabel;
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
               (selectedAccount.rentalDuration ? selectedAccount.rentalDuration * 60 : null);
@@ -440,7 +469,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <span>Login: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
-                    <span>Workspace: Default</span>
+                    <span>Workspace: {workspaceDisplay}</span>
                     <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
                     <span>Duration: {hoursLabel}</span>
                   </div>
@@ -495,11 +524,11 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
                       <select
-                        value="default"
+                        value={workspaceDisplay}
                         disabled
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                       >
-                        <option value="default">Default workspace</option>
+                        <option value={workspaceDisplay}>{workspaceDisplay}</option>
                       </select>
                     </div>
                     <input
@@ -546,6 +575,17 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
             const frozen = !!selectedAccount?.rentalFrozen;
             const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
             const presenceLabel = pill.label;
+            const workspaceLabel = resolveWorkspaceName(
+              selectedAccount?.workspaceId,
+              selectedAccount?.workspaceName,
+              workspaces,
+            );
+            const workspaceRecord = selectedAccount?.workspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
+              : null;
+            const workspaceDisplay = workspaceRecord?.is_default
+              ? `${workspaceLabel} (Default)`
+              : workspaceLabel;
             return (
               <div className="space-y-4">
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -570,7 +610,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   </span>
                     <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
                     <span>Hero: {selectedRental.hero || "-"}</span>
-                    <span>Workspace: Default</span>
+                    <span>Workspace: {workspaceDisplay}</span>
                     <span>Started: {selectedRental.started || "-"}</span>
                     {frozen && (
                       <span className="text-rose-600">Frozen: timer paused until you unfreeze.</span>
@@ -657,7 +697,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="overflow-x-auto">
           <div className="min-w-[1100px]">
-            <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
+            <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
               <span>ID</span>
               <span>Account</span>
               <span>Buyer</span>
@@ -671,6 +711,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
               {rentals.map((row, idx) => {
                 const isSelected = selectedRentalId !== null && String(selectedRentalId) === String(row.id);
                 const pill = statusPill(row.status);
+                const account = accountById.get(row.id);
+                const workspaceLabel = resolveWorkspaceName(
+                  account?.workspaceId,
+                  account?.workspaceName,
+                  workspaces,
+                );
+                const workspaceRecord = account?.workspaceId
+                  ? workspaces.find((item) => item.id === account.workspaceId)
+                  : null;
+                const workspaceBadge = workspaceRecord?.is_default
+                  ? `${workspaceLabel} (Default)`
+                  : workspaceLabel;
                 return (
                   <motion.div
                     key={row.id}
@@ -689,7 +741,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     }
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
-                    className={`grid items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                    className={`grid items-center gap-4 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                       isSelected
                         ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
                         : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
@@ -700,7 +752,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <div className="min-w-0">
                       <div className="truncate text-neutral-800">{row.account}</div>
                       <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                        Default
+                        {workspaceBadge}
                       </span>
                     </div>
                     <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>

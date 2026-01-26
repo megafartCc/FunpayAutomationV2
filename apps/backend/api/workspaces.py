@@ -16,8 +16,8 @@ def _mask_key(value: str) -> str:
     if not raw:
         return ""
     if len(raw) <= 6:
-        return "•" * len(raw)
-    return f"{'•' * (len(raw) - 4)}{raw[-4:]}"
+        return "*" * len(raw)
+    return f"{'*' * (len(raw) - 4)}{raw[-4:]}"
 
 
 class WorkspaceCreate(BaseModel):

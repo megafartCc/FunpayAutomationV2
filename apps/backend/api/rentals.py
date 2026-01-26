@@ -24,6 +24,8 @@ class ActiveRentalItem(BaseModel):
     buyer: str
     started: str
     time_left: str
+    workspace_id: int | None = None
+    workspace_name: str | None = None
     match_time: str = ""
     hero: str = ""
     status: str = ""
@@ -118,6 +120,8 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
                 buyer=record.owner,
                 started=started_label,
                 time_left=time_left_label,
+                workspace_id=record.workspace_id,
+                workspace_name=record.workspace_name,
                 match_time=match_time,
                 hero=hero,
                 status=status,

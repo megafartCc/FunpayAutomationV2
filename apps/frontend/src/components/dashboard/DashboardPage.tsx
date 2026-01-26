@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { api, AccountItem, ActiveRentalItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 type DeltaTone = "up" | "down";
 
@@ -88,6 +89,8 @@ const statusPill = (status?: string) => {
 
 type AccountRow = {
   id: number;
+  workspaceId?: number | null;
+  workspaceName?: string | null;
   name: string;
   login: string;
   password: string;
@@ -116,12 +119,13 @@ type RentalRow = {
 
 const INVENTORY_GRID =
   "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
-
-  const RENTALS_GRID =
-    "minmax(64px,0.5fr) minmax(200px,1.4fr) minmax(160px,1.1fr) minmax(140px,0.9fr) minmax(170px,1fr) minmax(150px,0.9fr) minmax(220px,1.2fr) minmax(120px,0.7fr)";
+const RENTALS_GRID =
+  "minmax(64px,0.5fr) minmax(240px,1.5fr) minmax(180px,1.1fr) minmax(150px,0.9fr) minmax(190px,1fr) minmax(170px,0.9fr) minmax(260px,1.4fr) minmax(140px,0.7fr)";
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
+  workspaceId: item.workspace_id ?? null,
+  workspaceName: item.workspace_name ?? null,
   name: item.account_name,
   login: item.login,
   password: item.password || "",
@@ -224,13 +228,27 @@ const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => 
   return formatMatchTime(row.matchTimeSeconds + elapsed);
 };
 
+const resolveWorkspaceName = (
+  workspaceId: number | null | undefined,
+  workspaceName: string | null | undefined,
+  workspaces: { id: number; name: string }[],
+) => {
+  if (workspaceName) return workspaceName;
+  if (workspaceId) {
+    const match = workspaces.find((item) => item.id === workspaceId);
+    if (match) return match.name;
+  }
+  return "Workspace";
+};
+
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
+  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingRentals, setLoadingRentals] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
   const [accountEditLogin, setAccountEditLogin] = useState("");
@@ -242,12 +260,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
 
   const selectedAccount = useMemo(
-    () => accounts.find((acc) => acc.id === selectedId) ?? null,
-    [accounts, selectedId],
+    () => accounts.find((acc) => acc.id === selectedRowId) ?? null,
+    [accounts, selectedRowId],
   );
   const selectedRental = useMemo(
-    () => rentals.find((row) => row.id === selectedId) ?? null,
-    [rentals, selectedId],
+    () => rentals.find((row) => row.id === selectedRowId) ?? null,
+    [rentals, selectedRowId],
   );
   const accountById = useMemo(() => new Map(accounts.map((acc) => [acc.id, acc])), [accounts]);
 
@@ -270,7 +288,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const loadAccounts = async (silent = false) => {
     if (!silent) setLoadingAccounts(true);
     try {
-      const res = await api.listAccounts();
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      const res = await api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined);
       setAccounts((res.items || []).map(mapAccount));
     } catch {
       setAccounts([]);
@@ -282,7 +301,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoadingRentals(true);
     try {
-      const res = await api.listActiveRentals();
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      const res = await api.listActiveRentals(typeof workspaceId === "number" ? workspaceId : undefined);
       const observedAt = Date.now();
       setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
@@ -295,7 +315,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadAccounts();
     void loadRentals();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -311,10 +331,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   }, []);
 
   useEffect(() => {
-    if (selectedId && !accounts.some((acc) => acc.id === selectedId) && !rentals.some((r) => r.id === selectedId)) {
-      setSelectedId(null);
+    if (
+      selectedRowId &&
+      !accounts.some((acc) => acc.id === selectedRowId) &&
+      !rentals.some((r) => r.id === selectedRowId)
+    ) {
+      setSelectedRowId(null);
     }
-  }, [accounts, rentals, selectedId]);
+  }, [accounts, rentals, selectedRowId]);
 
   useEffect(() => {
     if (!selectedAccount) {
@@ -498,6 +522,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 ? "bg-amber-50 text-amber-700"
                 : "bg-emerald-50 text-emerald-600";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
+            const workspaceLabel = resolveWorkspaceName(
+              selectedAccount.workspaceId,
+              selectedAccount.workspaceName,
+              workspaces,
+            );
+            const workspaceRecord = selectedAccount.workspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
+              : null;
+            const workspaceDisplay = workspaceRecord?.is_default
+              ? `${workspaceLabel} (Default)`
+              : workspaceLabel;
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
               (selectedAccount.rentalDuration ? selectedAccount.rentalDuration * 60 : null);
@@ -533,7 +568,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     <span>Login: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
-                    <span>Workspace: Default</span>
+                    <span>Workspace: {workspaceDisplay}</span>
                     <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
                     <span>Duration: {hoursLabel}</span>
                   </div>
@@ -588,11 +623,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
                       <select
-                        value="default"
+                        value={workspaceDisplay}
                         disabled
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                       >
-                        <option value="default">Default workspace</option>
+                        <option value={workspaceDisplay}>{workspaceDisplay}</option>
                       </select>
                     </div>
                     <input
@@ -639,6 +674,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             const frozen = !!selectedAccount?.rentalFrozen;
             const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
             const presenceLabel = pill.label;
+            const workspaceLabel = resolveWorkspaceName(
+              selectedAccount?.workspaceId,
+              selectedAccount?.workspaceName,
+              workspaces,
+            );
+            const workspaceRecord = selectedAccount?.workspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
+              : null;
+            const workspaceDisplay = workspaceRecord?.is_default
+              ? `${workspaceLabel} (Default)`
+              : workspaceLabel;
             return (
               <div className="space-y-4">
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -663,7 +709,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   </span>
                     <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
                     <span>Hero: {selectedRental.hero || "-"}</span>
-                    <span>Workspace: Default</span>
+                    <span>Workspace: {workspaceDisplay}</span>
                     <span>Started: {selectedRental.started || "-"}</span>
                     {frozen && <span className="text-rose-600">Frozen: timer paused until you unfreeze.</span>}
                   </div>
@@ -749,7 +795,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="overflow-x-auto">
             <div className="min-w-[1000px]">
-              <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
+              <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
                 <span>ID</span>
                 <span>Name</span>
                 <span>Login</span>
@@ -768,8 +814,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     : rented
                       ? "bg-amber-50 text-amber-700"
                       : "bg-emerald-50 text-emerald-600";
+                  const workspaceLabel = resolveWorkspaceName(acc.workspaceId, acc.workspaceName, workspaces);
+                  const workspaceRecord = acc.workspaceId
+                    ? workspaces.find((item) => item.id === acc.workspaceId)
+                    : null;
+                  const workspaceBadge = workspaceRecord?.is_default
+                    ? `${workspaceLabel} (Default)`
+                    : workspaceLabel;
                   const rowId = acc.id ?? idx;
-                  const isSelected = selectedId !== null && String(selectedId) === String(rowId);
+                  const isSelected = selectedRowId !== null && String(selectedRowId) === String(rowId);
                   return (
                     <motion.div
                       key={rowId}
@@ -778,13 +831,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setSelectedId((prev) => (prev !== null && String(prev) === String(rowId) ? null : rowId));
+                          setSelectedRowId((prev) =>
+                            prev !== null && String(prev) === String(rowId) ? null : rowId
+                          );
                         }
                       }}
-                      onClick={() => setSelectedId((prev) => (prev !== null && String(prev) === String(rowId) ? null : rowId))}
+                      onClick={() =>
+                        setSelectedRowId((prev) =>
+                          prev !== null && String(prev) === String(rowId) ? null : rowId
+                        )
+                      }
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
-                      className={`grid min-w-full items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                      className={`grid min-w-full items-center gap-4 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
                           : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
@@ -799,7 +858,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                           {acc.name || "Account"}
                         </div>
                         <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          Default
+                          {workspaceBadge}
                         </span>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.login || ""}>
@@ -837,7 +896,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="overflow-x-auto">
             <div className="min-w-[1100px]">
-              <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
+              <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
                 <span>ID</span>
                 <span>Account</span>
                 <span>Buyer</span>
@@ -849,8 +908,20 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {rentals.map((row, idx) => {
-                  const isSelected = selectedId !== null && String(selectedId) === String(row.id);
+                  const isSelected = selectedRowId !== null && String(selectedRowId) === String(row.id);
                   const pill = statusPill(row.status);
+                  const account = accountById.get(row.id);
+                  const workspaceLabel = resolveWorkspaceName(
+                    account?.workspaceId,
+                    account?.workspaceName,
+                    workspaces,
+                  );
+                  const workspaceRecord = account?.workspaceId
+                    ? workspaces.find((item) => item.id === account.workspaceId)
+                    : null;
+                  const workspaceBadge = workspaceRecord?.is_default
+                    ? `${workspaceLabel} (Default)`
+                    : workspaceLabel;
                   return (
                     <motion.div
                       key={row.id}
@@ -859,13 +930,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setSelectedId((prev) => (prev !== null && String(prev) === String(row.id) ? null : row.id));
+                          setSelectedRowId((prev) =>
+                            prev !== null && String(prev) === String(row.id) ? null : row.id
+                          );
                         }
                       }}
-                      onClick={() => setSelectedId((prev) => (prev !== null && String(prev) === String(row.id) ? null : row.id))}
+                      onClick={() =>
+                        setSelectedRowId((prev) =>
+                          prev !== null && String(prev) === String(row.id) ? null : row.id
+                        )
+                      }
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
-                      className={`grid items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                      className={`grid items-center gap-4 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
                           : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
@@ -876,7 +953,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       <div className="min-w-0">
                         <div className="truncate text-neutral-800">{row.account}</div>
                         <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          Default
+                          {workspaceBadge}
                         </span>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>

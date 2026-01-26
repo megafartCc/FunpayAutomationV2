@@ -9,6 +9,7 @@ import ActiveRentalsPage from "./components/rentals/ActiveRentalsPage";
 import InventoryPage from "./components/inventory/InventoryPage";
 import AddAccountPage from "./components/account/AddAccountPage";
 import LotsPage from "./components/lots/LotsPage";
+import SettingsPage from "./components/settings/SettingsPage";
 
 type Toast = { message: string; isError?: boolean } | null;
 
@@ -150,7 +151,7 @@ const AppRoutes: React.FC = () => {
           <Route path="add-account" element={<AddAccountPage />} />
           <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
           <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />
-          <Route path="settings" element={<DashboardPlaceholder title="Settings" />} />
+          <Route path="settings" element={<SettingsPage onToast={showToast} />} />
         </Route>
       </Routes>
       {toast ? (

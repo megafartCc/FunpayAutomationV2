@@ -72,6 +72,8 @@ export type ActiveRentalItem = {
   buyer: string;
   started: string;
   time_left: string;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
   match_time?: string;
   hero?: string;
   status?: string;
