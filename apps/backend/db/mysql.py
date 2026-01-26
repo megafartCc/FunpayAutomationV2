@@ -179,8 +179,6 @@ def ensure_schema() -> None:
                 account_id BIGINT NOT NULL,
                 lot_url TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uniq_lot_user (user_id, lot_number),
-                UNIQUE KEY uniq_account_user (user_id, account_id),
                 INDEX idx_lots_account (account_id),
                 CONSTRAINT fk_lots_user FOREIGN KEY (user_id)
                     REFERENCES users(id) ON DELETE CASCADE,
@@ -194,6 +192,42 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        # Relax uniqueness to allow multiple accounts per lot_number per user.
+        try:
+            cursor.execute("ALTER TABLE lots DROP INDEX uniq_lot_user;")
+        except mysql.connector.Error as exc:
+            if exc.errno not in (errorcode.ER_CANT_DROP_FIELD_OR_KEY, errorcode.ER_DUP_KEYNAME):
+                raise
+        try:
+            cursor.execute("ALTER TABLE lots DROP INDEX uniq_account_user;")
+        except mysql.connector.Error as exc:
+            if exc.errno not in (errorcode.ER_CANT_DROP_FIELD_OR_KEY, errorcode.ER_DUP_KEYNAME):
+                raise
+        try:
+            cursor.execute(
+                "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_account_user (user_id, lot_number, account_id)"
+            )
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_KEYNAME:
+                raise
+
+        # Aliases: multiple FunPay URLs per logical lot_number.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lot_aliases (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                lot_number INT NOT NULL,
+                funpay_url TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_alias_user_url (user_id, funpay_url(191)),
+                INDEX idx_alias_user_lot (user_id, lot_number),
+                CONSTRAINT fk_alias_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
 
         # Seed default workspaces for legacy users.
         cursor.execute("SELECT id, username, golden_key FROM users")
@@ -230,6 +264,25 @@ def ensure_schema() -> None:
             JOIN accounts a ON a.id = l.account_id
             SET l.workspace_id = a.workspace_id
             WHERE l.workspace_id IS NULL
+            """
+        )
+
+        # Backfill aliases from existing lot_url columns.
+        cursor.execute(
+            """
+            INSERT IGNORE INTO lot_aliases (user_id, workspace_id, lot_number, funpay_url)
+            SELECT l.user_id, l.workspace_id, l.lot_number, l.lot_url
+            FROM lots l
+            WHERE l.lot_url IS NOT NULL AND l.lot_url <> ''
+            """
+        )
+        cursor.execute(
+            """
+            INSERT IGNORE INTO lot_aliases (user_id, workspace_id, lot_number, funpay_url)
+            SELECT a.user_id, a.workspace_id, l.lot_number, a.lot_url
+            FROM accounts a
+            JOIN lots l ON l.account_id = a.id
+            WHERE a.lot_url IS NOT NULL AND a.lot_url <> ''
             """
         )
 

@@ -732,7 +732,6 @@ def column_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str, column
 def fetch_available_lot_accounts(
     mysql_cfg: dict,
     user_id: int | None,
-    workspace_id: int | None = None,
 ) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
@@ -743,7 +742,6 @@ def fetch_available_lot_accounts(
         has_account_user_id = column_exists(cursor, "accounts", "user_id")
         has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
         has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
-        has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
         has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
@@ -790,14 +788,6 @@ def fetch_available_lot_accounts(
             elif has_lot_user_id:
                 where_clauses.append("l.user_id = %s")
                 params.append(user_id)
-        if workspace_id is not None:
-            if has_account_workspace:
-                where_clauses.append("a.workspace_id = %s")
-                params.append(workspace_id)
-            elif has_lot_workspace:
-                where_clauses.append("l.workspace_id = %s")
-                params.append(workspace_id)
-
         if has_lots:
             order_clause = "ORDER BY (l.lot_number IS NULL), l.lot_number"
         elif has_account_lot_number:
@@ -817,25 +807,12 @@ def fetch_lot_account(
     mysql_cfg: dict,
     user_id: int,
     lot_number: int,
-    workspace_id: int | None = None,
 ) -> dict | None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
-        has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
-        workspace_clause = ""
         params: list = [user_id, lot_number]
-        if workspace_id is not None:
-            if has_account_workspace:
-                workspace_clause = " AND a.workspace_id = %s"
-                params.append(workspace_id)
-            elif has_lot_workspace:
-                workspace_clause = " AND l.workspace_id = %s"
-                params.append(workspace_id)
         join_clause = "JOIN accounts a ON a.id = l.account_id"
-        if has_account_workspace and has_lot_workspace:
-            join_clause += " AND a.workspace_id = l.workspace_id"
         cursor.execute(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
@@ -844,7 +821,11 @@ def fetch_lot_account(
                    l.lot_number, l.lot_url
             FROM lots l
             {join_clause}
-            WHERE l.user_id = %s AND l.lot_number = %s{workspace_clause}
+            WHERE l.user_id = %s AND l.lot_number = %s
+                  AND (a.owner IS NULL OR a.owner = '')
+                  AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
+                  AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
+            ORDER BY a.id
             LIMIT 1
             """,
             tuple(params),
@@ -1111,7 +1092,7 @@ def handle_stock_command(
         return True
 
     try:
-        accounts = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id)
+        accounts = fetch_available_lot_accounts(mysql_cfg, user_id)
     except mysql.connector.Error as exc:
         logger.warning("Stock query failed: %s", exc)
         send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
@@ -1301,7 +1282,7 @@ def handle_order_purchased(
         logger.warning("Order %s skipped: user id missing.", order_id)
         return
 
-    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id)
+    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number)
     if not mapping:
         send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
