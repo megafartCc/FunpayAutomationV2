@@ -93,8 +93,6 @@ def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
             columns = [col for _, col in sorted(cols)]
             if columns in (desired_lot_unique, desired_account_unique):
                 continue
-            if index_unique.get(key, False) and "workspace_id" in columns:
-                continue
             try:
                 cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
             except mysql.connector.Error:
