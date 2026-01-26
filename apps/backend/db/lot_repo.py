@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import List, Optional
 
 import mysql.connector
@@ -16,6 +17,23 @@ class LotRecord:
     account_name: str
     lot_url: Optional[str]
     workspace_id: int | None = None
+
+
+class LotCreateError(Exception):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+_DUP_KEY_RE = re.compile(r"for key '([^']+)'")
+
+
+def _extract_dup_key(exc: mysql.connector.Error) -> str | None:
+    msg = getattr(exc, "msg", "") or ""
+    match = _DUP_KEY_RE.search(msg)
+    if match:
+        return match.group(1)
+    return None
 
 
 class MySQLLotRepo:
@@ -55,7 +73,7 @@ class MySQLLotRepo:
         lot_number: int,
         account_id: int,
         lot_url: Optional[str],
-    ) -> Optional[LotRecord]:
+    ) -> LotRecord:
         conn = _pool.get_connection()
         try:
             cursor_dict = conn.cursor(dictionary=True)
@@ -65,18 +83,34 @@ class MySQLLotRepo:
             )
             account = cursor_dict.fetchone()
             if not account:
-                return None
+                raise LotCreateError("account_not_found")
             # auto-attach account to workspace if it was missing
-            if account.get("workspace_id") is None:
+            account_workspace_id = account.get("workspace_id")
+            if account_workspace_id is None:
                 cursor_update = conn.cursor()
                 cursor_update.execute(
                     "UPDATE accounts SET workspace_id = %s WHERE id = %s AND user_id = %s",
                     (workspace_id, account_id, user_id),
                 )
                 conn.commit()
+                account_workspace_id = workspace_id
                 account["workspace_id"] = workspace_id
-            if int(account.get("workspace_id") or 0) != int(workspace_id):
-                return None
+            if int(account_workspace_id or 0) != int(workspace_id):
+                raise LotCreateError("account_wrong_workspace")
+
+            cursor_dict.execute(
+                "SELECT 1 FROM lots WHERE user_id = %s AND workspace_id = %s AND lot_number = %s LIMIT 1",
+                (user_id, workspace_id, lot_number),
+            )
+            if cursor_dict.fetchone():
+                raise LotCreateError("duplicate_lot_number")
+
+            cursor_dict.execute(
+                "SELECT 1 FROM lots WHERE user_id = %s AND workspace_id = %s AND account_id = %s LIMIT 1",
+                (user_id, workspace_id, account_id),
+            )
+            if cursor_dict.fetchone():
+                raise LotCreateError("account_already_mapped")
 
             cursor = conn.cursor()
             try:
@@ -90,7 +124,12 @@ class MySQLLotRepo:
                 conn.commit()
             except mysql.connector.Error as exc:
                 if exc.errno == errorcode.ER_DUP_ENTRY:
-                    return None
+                    dup_key = _extract_dup_key(exc)
+                    if dup_key == "uniq_lot_workspace":
+                        raise LotCreateError("duplicate_lot_number")
+                    if dup_key == "uniq_account_workspace":
+                        raise LotCreateError("account_already_mapped")
+                    raise LotCreateError("duplicate")
                 raise
 
             return LotRecord(

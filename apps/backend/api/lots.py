@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
-from db.lot_repo import MySQLLotRepo, LotRecord
+from db.lot_repo import MySQLLotRepo, LotRecord, LotCreateError
 
 
 router = APIRouter()
@@ -52,15 +52,26 @@ def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
     if not payload.lot_url.strip():
         raise HTTPException(status_code=400, detail="Lot URL is required")
-    created = lots_repo.create(
-        user_id=int(user.id),
-        workspace_id=int(payload.workspace_id),
-        lot_number=payload.lot_number,
-        account_id=payload.account_id,
-        lot_url=payload.lot_url.strip(),
-    )
-    if not created:
-        raise HTTPException(status_code=400, detail="Failed to create lot (number may already exist in this workspace)")
+    try:
+        created = lots_repo.create(
+            user_id=int(user.id),
+            workspace_id=int(payload.workspace_id),
+            lot_number=payload.lot_number,
+            account_id=payload.account_id,
+            lot_url=payload.lot_url.strip(),
+        )
+    except LotCreateError as exc:
+        if exc.code == "account_not_found":
+            detail = "Account not found"
+        elif exc.code == "account_wrong_workspace":
+            detail = "Account belongs to a different workspace"
+        elif exc.code == "duplicate_lot_number":
+            detail = "Lot number already exists in this workspace"
+        elif exc.code == "account_already_mapped":
+            detail = "This account already has a lot in this workspace"
+        else:
+            detail = "Failed to create lot"
+        raise HTTPException(status_code=400, detail=detail)
     return _to_item(created)
 
 
