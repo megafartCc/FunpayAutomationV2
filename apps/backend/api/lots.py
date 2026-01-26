@@ -73,8 +73,6 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
     except LotCreateError as exc:
         if exc.code == "account_not_found":
             detail = "Account not found"
-        elif exc.code == "account_wrong_workspace":
-            detail = "Account belongs to a different workspace"
         elif exc.code == "duplicate_lot_number":
             detail = "Lot number already exists in this workspace"
         elif exc.code == "account_already_mapped":

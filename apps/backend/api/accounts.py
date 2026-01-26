@@ -55,6 +55,8 @@ class AccountItem(BaseModel):
     id: int
     workspace_id: int | None = None
     workspace_name: str | None = None
+    last_rented_workspace_id: int | None = None
+    last_rented_workspace_name: str | None = None
     account_name: str
     login: str
     password: str
@@ -97,6 +99,8 @@ def _to_item(record: AccountRecord) -> AccountItem:
         id=record.id,
         workspace_id=record.workspace_id,
         workspace_name=record.workspace_name,
+        last_rented_workspace_id=record.last_rented_workspace_id,
+        last_rented_workspace_name=record.last_rented_workspace_name,
         account_name=record.account_name,
         login=record.login,
         password=record.password,
@@ -123,8 +127,9 @@ def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
 
 @router.get("/accounts", response_model=AccountListResponse)
 def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user)) -> AccountListResponse:
-    _ensure_workspace(workspace_id, int(user.id))
-    items = accounts_repo.list_by_workspace(int(user.id), int(workspace_id))
+    if workspace_id is not None:
+        _ensure_workspace(workspace_id, int(user.id))
+    items = accounts_repo.list_by_user(int(user.id))
     return AccountListResponse(items=[_to_item(item) for item in items])
 
 
@@ -212,6 +217,8 @@ def update_account(
         user_id=int(updated["user_id"]),
         workspace_id=updated.get("workspace_id"),
         workspace_name=None,
+        last_rented_workspace_id=updated.get("last_rented_workspace_id"),
+        last_rented_workspace_name=None,
         account_name=updated["account_name"],
         login=updated["login"],
         password=updated["password"],

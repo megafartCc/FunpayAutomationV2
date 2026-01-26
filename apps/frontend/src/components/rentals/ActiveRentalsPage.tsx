@@ -206,7 +206,9 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     if (!silent) setLoading(true);
     try {
       if (selectedWorkspaceId === "all") {
-        setRentals([]);
+        const res = await api.listActiveRentals();
+        const observedAt = Date.now();
+        setRentals(res.items.map((item) => mapRental(item, observedAt)));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
@@ -223,7 +225,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadAccounts = async () => {
     try {
       if (selectedWorkspaceId === "all") {
-        setAccounts([]);
+        const res = await api.listAccounts();
+        setAccounts(res.items.map(mapAccount));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
