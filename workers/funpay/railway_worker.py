@@ -823,6 +823,7 @@ def fetch_available_lot_accounts(
             from_clause += join_clause
 
         where_clauses = ["a.owner IS NULL"]
+        params: list = []
         if has_account_frozen:
             where_clauses.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
         if has_rental_frozen:
@@ -833,7 +834,6 @@ def fetch_available_lot_accounts(
                 where_clauses.append("(l.workspace_id = %s OR l.workspace_id IS NULL)")
                 params.append(int(workspace_id))
 
-        params: list = []
         if user_id is not None:
             if has_account_user_id:
                 where_clauses.append("a.user_id = %s")
