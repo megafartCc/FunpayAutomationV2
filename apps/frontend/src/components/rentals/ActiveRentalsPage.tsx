@@ -6,6 +6,7 @@ import { useWorkspace } from "../../context/WorkspaceContext";
 
 type RentalRow = {
   id: number;
+  workspaceId?: number | null;
   account: string;
   buyer: string;
   started: string;
@@ -78,6 +79,7 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
   const matchSeconds = parseMatchTimeSeconds(rawMatch);
   return {
     id: item.id,
+    workspaceId: item.workspace_id ?? null,
     account: item.account,
     buyer: item.buyer,
     started: item.started,
@@ -205,13 +207,14 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      const observedAt = Date.now();
       if (selectedWorkspaceId === "all") {
-        setRentals([]);
+        const res = await api.listActiveRentals();
+        setRentals(res.items.map((item) => mapRental(item, observedAt)));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
       const res = await api.listActiveRentals(workspaceId);
-      const observedAt = Date.now();
       setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
       setRentals([]);
@@ -223,7 +226,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadAccounts = async () => {
     try {
       if (selectedWorkspaceId === "all") {
-        setAccounts([]);
+        const res = await api.listAccounts();
+        setAccounts(res.items.map(mapAccount));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
@@ -237,6 +241,10 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadRentals();
     void loadAccounts();
+  }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    setSelectedRentalId(null);
   }, [selectedWorkspaceId]);
 
   useEffect(() => {

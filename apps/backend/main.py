@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db.mysql import ensure_schema
 from api.auth import router as auth_router
 from api.accounts import router as accounts_router
 from api.lots import router as lots_router
@@ -34,7 +33,3 @@ app.include_router(lots_router, prefix="/api", tags=["lots"])
 app.include_router(rentals_router, prefix="/api", tags=["rentals"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
 
-
-@app.on_event("startup")
-def startup() -> None:
-    ensure_schema()
