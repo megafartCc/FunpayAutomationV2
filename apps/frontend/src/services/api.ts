@@ -16,6 +16,8 @@ export type AccountItem = {
   id: number;
   workspace_id?: number | null;
   workspace_name?: string | null;
+  last_rented_workspace_id?: number | null;
+  last_rented_workspace_name?: string | null;
   account_name: string;
   login: string;
   password: string;
