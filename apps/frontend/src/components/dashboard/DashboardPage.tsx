@@ -323,7 +323,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     if (!silent) setLoadingRentals(true);
     try {
       if (selectedWorkspaceId === "all") {
-        setRentals([]);
+        const res = await api.listActiveRentals();
+        const observedAt = Date.now();
+        setRentals(res.items.map((item) => mapRental(item, observedAt)));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;

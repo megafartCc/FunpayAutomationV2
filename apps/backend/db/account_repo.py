@@ -334,25 +334,33 @@ class MySQLAccountRepo:
             conn.close()
 
     def list_active_rentals(self, user_id: int, workspace_id: int | None = None) -> List[ActiveRentalRecord]:
-        if workspace_id is None:
-            return []
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            params: list = [user_id]
+            workspace_clause = ""
+            lot_join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
+            if workspace_id is not None:
+                workspace_clause = " AND a.last_rented_workspace_id = %s"
+                params.append(workspace_id)
+                lot_join_clause += " AND l.workspace_id = %s"
+                params.append(workspace_id)
+            else:
+                lot_join_clause += " AND l.workspace_id = a.last_rented_workspace_id"
             cursor.execute(
-                """
+                f"""
                 SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        a.last_rented_workspace_id,
                        lw.name AS last_rented_workspace_name,
                        l.lot_number
                 FROM accounts a
-                LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id AND l.workspace_id = %s
+                {lot_join_clause}
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
-                WHERE a.user_id = %s AND a.last_rented_workspace_id = %s AND a.owner IS NOT NULL AND a.owner != ''
+                WHERE a.user_id = %s{workspace_clause} AND a.owner IS NOT NULL AND a.owner != ''
                 ORDER BY a.rental_start DESC, a.id DESC
                 """,
-                (workspace_id, user_id, workspace_id),
+                tuple(params),
             )
             rows = cursor.fetchall() or []
             return [
