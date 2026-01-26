@@ -97,6 +97,25 @@ def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
                 cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
             except mysql.connector.Error:
                 pass
+        existing_uniques = {
+            tuple(col for _, col in sorted(cols))
+            for key, cols in index_cols.items()
+            if index_unique.get(key, False)
+        }
+        try:
+            if tuple(desired_lot_unique) not in existing_uniques:
+                cursor.execute(
+                    "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_workspace (workspace_id, lot_number)"
+                )
+        except mysql.connector.Error:
+            pass
+        try:
+            if tuple(desired_account_unique) not in existing_uniques:
+                cursor.execute(
+                    "ALTER TABLE lots ADD UNIQUE KEY uniq_account_workspace (workspace_id, account_id)"
+                )
+        except mysql.connector.Error:
+            pass
         conn.commit()
     except mysql.connector.Error:
         pass
