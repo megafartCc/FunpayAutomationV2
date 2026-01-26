@@ -735,7 +735,6 @@ def fetch_lot_alias(
     lot_number: int,
     workspace_id: int | None = None,
 ) -> str | None:
-    workspace_id = None
     """
     Return a FunPay URL for the given lot_number, preferring the caller's workspace alias.
     """
@@ -782,8 +781,6 @@ def fetch_available_lot_accounts(
     user_id: int | None,
     workspace_id: int | None = None,
 ) -> list[dict]:
-    # Shared inventory: ignore workspace scoping.
-    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
