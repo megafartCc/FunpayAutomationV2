@@ -192,7 +192,7 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
-        # Ensure no UNIQUE index blocks duplicate lot_number across workspaces.
+        # Ensure no UNIQUE index blocks duplicate lot_number across workspaces/users.
         try:
             idx_cursor = conn.cursor(dictionary=True)
             idx_cursor.execute("SHOW INDEX FROM lots")
@@ -202,18 +202,25 @@ def ensure_schema() -> None:
                 key = row["Key_name"]
                 index_unique[key] = row["Non_unique"] == 0
                 index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
+            desired_lot_unique = ["user_id", "workspace_id", "lot_number"]
+            desired_account_unique = ["workspace_id", "account_id"]
             for key, cols in index_cols.items():
                 if key == "PRIMARY":
                     continue
                 if not index_unique.get(key, False):
                     continue
                 columns = [col for _, col in sorted(cols)]
-                if "workspace_id" not in columns:
-                    try:
-                        cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
-                    except mysql.connector.Error:
-                        # Ignore if the index can't be dropped (e.g. already removed).
-                        pass
+                if columns in (desired_lot_unique, desired_account_unique):
+                    continue
+                if "lot_number" not in columns and "account_id" not in columns:
+                    continue
+                # Drop any other UNIQUE indexes that could block per-workspace mappings.
+                # (Legacy schemas used global UNIQUE keys.)
+                try:
+                    cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+                except mysql.connector.Error:
+                    # Ignore if the index can't be dropped (e.g. already removed).
+                    pass
         except mysql.connector.Error:
             pass
 
@@ -227,13 +234,47 @@ def ensure_schema() -> None:
                 lot_number INT NOT NULL,
                 funpay_url TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uniq_alias_user_url (user_id, funpay_url(191)),
+                UNIQUE KEY uniq_alias_workspace_url (user_id, workspace_id, funpay_url(191)),
                 INDEX idx_alias_user_lot (user_id, lot_number),
                 CONSTRAINT fk_alias_user FOREIGN KEY (user_id)
                     REFERENCES users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        # Ensure alias uniqueness is workspace-scoped.
+        try:
+            idx_cursor = conn.cursor(dictionary=True)
+            idx_cursor.execute("SHOW INDEX FROM lot_aliases")
+            index_cols: dict[str, list[tuple[int, str]]] = {}
+            index_unique: dict[str, bool] = {}
+            for row in idx_cursor.fetchall() or []:
+                key = row["Key_name"]
+                index_unique[key] = row["Non_unique"] == 0
+                index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
+            desired_alias_unique = ["user_id", "workspace_id", "funpay_url"]
+            for key, cols in index_cols.items():
+                if key == "PRIMARY":
+                    continue
+                if not index_unique.get(key, False):
+                    continue
+                columns = [col for _, col in sorted(cols)]
+                if columns == desired_alias_unique:
+                    continue
+                if "funpay_url" not in columns:
+                    continue
+                try:
+                    cursor.execute(f"ALTER TABLE lot_aliases DROP INDEX `{key}`")
+                except mysql.connector.Error:
+                    pass
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE lot_aliases ADD UNIQUE KEY uniq_alias_workspace_url "
+                "(user_id, workspace_id, funpay_url(191))"
+            )
+        except mysql.connector.Error:
+            pass
 
         # Seed default workspaces for legacy users.
         cursor.execute("SELECT id, username, golden_key FROM users")
@@ -305,7 +346,7 @@ def ensure_schema() -> None:
             pass
         try:
             cursor.execute(
-                "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_workspace (workspace_id, lot_number)"
+                "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_workspace (user_id, workspace_id, lot_number)"
             )
         except mysql.connector.Error:
             pass

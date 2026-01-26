@@ -36,6 +36,14 @@ def _extract_dup_key(exc: mysql.connector.Error) -> str | None:
     return None
 
 
+def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
+    if not dup_key:
+        return False
+    if dup_key == expected:
+        return True
+    return dup_key.endswith(f".{expected}")
+
+
 class MySQLLotRepo:
     def list_by_user(self, user_id: int, workspace_id: int) -> List[LotRecord]:
         conn = _pool.get_connection()
@@ -125,9 +133,9 @@ class MySQLLotRepo:
             except mysql.connector.Error as exc:
                 if exc.errno == errorcode.ER_DUP_ENTRY:
                     dup_key = _extract_dup_key(exc)
-                    if dup_key == "uniq_lot_workspace":
+                    if _dup_key_matches(dup_key, "uniq_lot_workspace"):
                         raise LotCreateError("duplicate_lot_number")
-                    if dup_key == "uniq_account_workspace":
+                    if _dup_key_matches(dup_key, "uniq_account_workspace"):
                         raise LotCreateError("account_already_mapped")
                     raise LotCreateError("duplicate")
                 raise
