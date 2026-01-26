@@ -16,6 +16,8 @@ export type AccountItem = {
   id: number;
   workspace_id?: number | null;
   workspace_name?: string | null;
+  last_rented_workspace_id?: number | null;
+  last_rented_workspace_name?: string | null;
   account_name: string;
   login: string;
   password: string;
@@ -86,6 +88,13 @@ export type WorkspaceItem = {
   is_default: boolean;
   created_at?: string | null;
   key_hint?: string | null;
+};
+
+export type WorkspaceProxyCheck = {
+  ok: boolean;
+  direct_ip?: string | null;
+  proxy_ip?: string | null;
+  error?: string | null;
 };
 
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
@@ -204,4 +213,6 @@ export const api = {
     request<{ ok: boolean }>(`/workspaces/${workspaceId}/default`, { method: "POST" }),
   deleteWorkspace: (workspaceId: number) =>
     request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
+  checkWorkspaceProxy: (workspaceId: number) =>
+    request<WorkspaceProxyCheck>(`/workspaces/${workspaceId}/proxy-check`, { method: "POST" }),
 };
