@@ -869,9 +869,11 @@ def fetch_lot_account(
         join_clause = "JOIN accounts a ON a.id = l.account_id"
         where_workspace = ""
         has_workspace = column_exists(cursor, "lots", "workspace_id")
+        order_clause = " ORDER BY a.id"
         if has_workspace and workspace_id is not None:
             where_workspace = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
             params.append(int(workspace_id))
+            order_clause = " ORDER BY CASE WHEN l.workspace_id = %s THEN 0 ELSE 1 END, a.id"
         cursor.execute(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
@@ -885,9 +887,7 @@ def fetch_lot_account(
                   AND (a.owner IS NULL OR a.owner = '')
                   AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
                   AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
-            ORDER BY
-                CASE WHEN l.workspace_id = %s THEN 0 ELSE 1 END,
-                a.id
+            {order_clause}
             LIMIT 1
             """,
             tuple(params + ([int(workspace_id)] if has_workspace and workspace_id is not None else [])),
