@@ -398,7 +398,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         >
                           Cancel
                         </button>
+                        <button
+                          onClick={() => handleCheckProxy(item.id)}
+                          disabled={proxyCheck?.status === "loading"}
+                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {proxyCheck?.status === "loading" ? "Checking..." : "Check proxy"}
+                        </button>
                       </div>
+                      {proxyCheck?.status && proxyCheck.status !== "loading" && (
+                        <div
+                          className={`rounded-lg border px-3 py-2 text-xs ${
+                            proxyCheck.ok
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          <div className="font-semibold">
+                            {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
+                          </div>
+                          <div>Before: {proxyCheck.direct_ip || "—"}</div>
+                          <div>After: {proxyCheck.proxy_ip || "—"}</div>
+                          {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
