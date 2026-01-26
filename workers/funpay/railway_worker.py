@@ -45,6 +45,8 @@ COMMAND_PREFIXES = (
     "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430",
     "!\u043e\u0442\u043c\u0435\u043d\u0430",
     "!\u0430\u0434\u043c\u0438\u043d",
+    "!\u043f\u0430\u0443\u0437\u0430",
+    "!\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
 )
 STOCK_LIST_LIMIT = 8
 STOCK_TITLE = "\u0421\u0432\u043e\u0431\u043e\u0434\u043d\u044b\u0435 \u043b\u043e\u0442\u044b:"
@@ -72,6 +74,8 @@ COMMANDS_RU = (
     "!\u043a\u043e\u0434 \u2014 \u043a\u043e\u0434 Steam Guard\n"
     "!\u0441\u0442\u043e\u043a \u2014 \u043d\u0430\u043b\u0438\u0447\u0438\u0435 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432\n"
     "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c <\u0447\u0430\u0441\u044b> <ID_\u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430> \u2014 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443\n"
+    "!\u043f\u0430\u0443\u0437\u0430 <ID> \u2014 \u043f\u0430\u0443\u0437\u0430 \u0430\u0440\u0435\u043d\u0434\u044b \u043d\u0430 1 \u0447\u0430\u0441\n"
+    "!\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c <ID> \u2014 \u0441\u043d\u044f\u0442\u044c \u043f\u0430\u0443\u0437\u0443 \u0440\u0430\u043d\u044c\u0448\u0435 \u0441\u0440\u043e\u043a\u0430\n"
     "!\u0430\u0434\u043c\u0438\u043d \u2014 \u0432\u044b\u0437\u0432\u0430\u0442\u044c \u043f\u0440\u043e\u0434\u0430\u0432\u0446\u0430\n"
     "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430 <ID> \u2014 \u0437\u0430\u043c\u0435\u043d\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 (10 \u043c\u0438\u043d\u0443\u0442 \u043f\u043e\u0441\u043b\u0435 !\u043a\u043e\u0434)\n"
     "!\u043e\u0442\u043c\u0435\u043d\u0430 <ID> \u2014 \u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443"
@@ -81,6 +85,25 @@ RENTAL_FROZEN_MESSAGE = (
 )
 RENTAL_UNFROZEN_MESSAGE = (
     "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u0440\u0430\u0437\u043c\u043e\u0440\u043e\u0437\u0438\u043b \u0432\u0430\u0448\u0443 \u0430\u0440\u0435\u043d\u0434\u0443. \u0414\u043e\u0441\u0442\u0443\u043f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d."
+)
+RENTAL_PAUSED_MESSAGE = (
+    "\u23f8\ufe0f \u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0430 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443 \u043d\u0430 1 \u0447\u0430\u0441.\n"
+    "\u0427\u0442\u043e\u0431\u044b \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c \u0440\u0430\u043d\u044c\u0448\u0435 \u0441\u0440\u043e\u043a\u0430, \u043d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c"
+)
+RENTAL_PAUSE_ALREADY_USED_MESSAGE = (
+    "\u23f8\ufe0f \u041f\u0430\u0443\u0437\u0430 \u0443\u0436\u0435 \u0431\u044b\u043b\u0430 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0430 \u0434\u043b\u044f \u044d\u0442\u043e\u0439 \u0430\u0440\u0435\u043d\u0434\u044b."
+)
+RENTAL_ALREADY_PAUSED_MESSAGE = (
+    "\u23f8\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u0443\u0436\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
+)
+RENTAL_NOT_PAUSED_MESSAGE = (
+    "\u25b6\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
+)
+RENTAL_RESUMED_MESSAGE = (
+    "\u25b6\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u0432\u043e\u0437\u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
+)
+RENTAL_PAUSE_EXPIRED_MESSAGE = (
+    "\u23f0 \u041f\u0430\u0443\u0437\u0430 \u0438\u0441\u0442\u0435\u043a\u043b\u0430 (\u043f\u0440\u043e\u0448\u043b\u043e 1 \u0447\u0430\u0441). \u0410\u0440\u0435\u043d\u0434\u0430 \u0432\u043e\u0437\u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
 )
 RENTAL_EXPIRED_MESSAGE = "\u0410\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c. \u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043a\u0440\u044b\u0442."
 RENTAL_EXPIRE_DELAY_MESSAGE = (
@@ -218,6 +241,41 @@ def extract_lot_number_from_order(order: object) -> int | None:
         if lot_number is not None:
             return lot_number
     return None
+
+
+def parse_account_id_arg(args: str) -> int | None:
+    if not args:
+        return None
+    token = args.strip().split(maxsplit=1)[0]
+    if not token.isdigit():
+        return None
+    try:
+        return int(token)
+    except ValueError:
+        return None
+
+
+def build_rental_choice_message(accounts: list[dict], command: str) -> str:
+    lines = [
+        "\u0423 \u0432\u0430\u0441 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0430\u0440\u0435\u043d\u0434.",
+        f"\u0423\u043a\u0430\u0436\u0438\u0442\u0435 ID \u0432 \u043a\u043e\u043c\u0430\u043d\u0434\u0435 {command} <ID>:",
+        "",
+    ]
+    for acc in accounts:
+        display = build_display_name(acc)
+        lines.append(f"ID {acc.get('id')}: {display}")
+    return "\n".join(lines)
+
+
+def _calculate_resume_start(rental_start: object, frozen_at: object) -> datetime | None:
+    start_dt = _parse_datetime(rental_start)
+    frozen_dt = _parse_datetime(frozen_at)
+    if not start_dt or not frozen_dt:
+        return None
+    delta = datetime.utcnow() - frozen_dt
+    if delta.total_seconds() < 0:
+        delta = timedelta(0)
+    return start_dt + delta
 
 
 def get_unit_minutes(account: dict) -> int:
@@ -482,16 +540,18 @@ def fetch_active_rentals_for_monitor(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         params: list = [user_id]
         workspace_clause = ""
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(workspace_id)
         cursor.execute(
             f"""
             SELECT id, owner, rental_start, rental_duration, rental_duration_minutes,
                    account_name, login, password, mafile_json, account_frozen, rental_frozen
+                   {', rental_frozen_at' if has_frozen_at else ''}
             FROM accounts
             WHERE user_id = %s AND owner IS NOT NULL AND owner != ''{workspace_clause}
             """,
@@ -513,17 +573,61 @@ def release_account_in_db(
     try:
         cursor = conn.cursor()
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
         workspace_clause = ""
         params: list = [account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(workspace_id)
         cursor.execute(
             f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s{workspace_clause}",
+            tuple(params),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def update_rental_freeze_state(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    user_id: int,
+    owner: str | None,
+    workspace_id: int | None,
+    frozen: bool,
+    rental_start: datetime | None = None,
+    frozen_at: datetime | None = None,
+    clear_frozen_at: bool = False,
+) -> bool:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        updates = ["rental_frozen = %s"]
+        params: list = [1 if frozen else 0]
+        if has_frozen_at and (frozen or frozen_at is not None or clear_frozen_at):
+            updates.append("rental_frozen_at = %s")
+            params.append(frozen_at.strftime("%Y-%m-%d %H:%M:%S") if frozen_at else None)
+        if rental_start is not None:
+            updates.append("rental_start = %s")
+            params.append(rental_start.strftime("%Y-%m-%d %H:%M:%S"))
+        params.extend([account_id, user_id])
+        where_clause = " WHERE id = %s AND user_id = %s"
+        if owner:
+            where_clause += " AND LOWER(owner) = %s"
+            params.append(normalize_username(owner))
+        if workspace_id is not None and has_last_rented:
+            where_clause += " AND last_rented_workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"UPDATE accounts SET {', '.join(updates)}{where_clause}",
             tuple(params),
         )
         conn.commit()
@@ -658,6 +762,24 @@ def process_rental_monitor(
         account_id = int(row.get("id"))
         owner = row.get("owner")
         frozen = bool(row.get("rental_frozen"))
+        frozen_at = _parse_datetime(row.get("rental_frozen_at"))
+        if frozen and frozen_at and now >= frozen_at + timedelta(hours=1):
+            new_start = _calculate_resume_start(row.get("rental_start"), frozen_at)
+            unfrozen = update_rental_freeze_state(
+                mysql_cfg,
+                account_id=account_id,
+                user_id=int(user_id),
+                owner=owner,
+                workspace_id=workspace_id,
+                frozen=False,
+                rental_start=new_start,
+            )
+            if unfrozen:
+                frozen = False
+                row["rental_frozen"] = 0
+                send_message_by_owner(logger, account, owner, RENTAL_PAUSE_EXPIRED_MESSAGE)
+                state.freeze_cache[account_id] = False
+                continue
         prev = state.freeze_cache.get(account_id)
         if prev is None:
             state.freeze_cache[account_id] = frozen
@@ -774,8 +896,6 @@ def fetch_available_lot_accounts(
         from_clause = "FROM accounts a"
         if has_lots:
             join_clause = " LEFT JOIN lots l ON l.account_id = a.ID"
-            if has_account_workspace and has_lot_workspace and workspace_id is not None:
-                join_clause += " AND (l.workspace_id = a.workspace_id OR l.workspace_id IS NULL)"
             from_clause += join_clause
 
         where_clauses = ["a.owner IS NULL"]
@@ -868,20 +988,23 @@ def assign_account_to_buyer(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
-        workspace_clause = ""
-        params: list = [buyer, int(units), int(total_minutes), int(account_id), int(user_id)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        updates = [
+            "owner = %s",
+            "rental_duration = %s",
+            "rental_duration_minutes = %s",
+            "rental_start = NULL",
+        ]
+        params: list = [buyer, int(units), int(total_minutes)]
+        if workspace_id is not None and has_last_rented:
+            updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id))
+        params.extend([int(account_id), int(user_id)])
         cursor.execute(
             f"""
             UPDATE accounts
-            SET owner = %s,
-                rental_duration = %s,
-                rental_duration_minutes = %s,
-                rental_start = NULL
-            WHERE id = %s AND user_id = %s{workspace_clause}
+            SET {', '.join(updates)}
+            WHERE id = %s AND user_id = %s
             """,
             tuple(params),
         )
@@ -904,19 +1027,29 @@ def extend_rental_for_buyer(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         workspace_clause = ""
-        params: list = [account_id, user_id, normalize_username(buyer)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
-            params.append(int(workspace_id))
+        base_params: list = [account_id, user_id, normalize_username(buyer)]
+        if workspace_id is not None and has_last_rented:
+            workspace_clause = " AND last_rented_workspace_id = %s"
+            base_params.append(int(workspace_id))
+
+        lot_number_query = "SELECT lot_number FROM lots WHERE lots.account_id = accounts.id"
+        lot_url_query = "SELECT lot_url FROM lots WHERE lots.account_id = accounts.id"
+        lot_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            lot_number_query += " AND lots.workspace_id = %s"
+            lot_url_query += " AND lots.workspace_id = %s"
+            lot_params = [int(workspace_id), int(workspace_id)]
+        params = lot_params + base_params
         cursor.execute(
             f"""
             SELECT id, account_name, login, password, mafile_json,
                    owner, rental_start, rental_duration, rental_duration_minutes,
                    account_frozen, rental_frozen,
-                   (SELECT lot_number FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_number,
-                   (SELECT lot_url FROM lots WHERE lots.account_id = accounts.id LIMIT 1) AS lot_url
+                   ({lot_number_query} LIMIT 1) AS lot_number,
+                   ({lot_url_query} LIMIT 1) AS lot_url
             FROM accounts
             WHERE id = %s AND user_id = %s AND LOWER(owner) = %s{workspace_clause}
             LIMIT 1
@@ -945,8 +1078,8 @@ def extend_rental_for_buyer(
         cursor = conn.cursor()
         update_workspace_clause = ""
         update_params: list = [new_units, new_minutes, account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            update_workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            update_workspace_clause = " AND last_rented_workspace_id = %s"
             update_params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -960,14 +1093,15 @@ def extend_rental_for_buyer(
         conn.commit()
 
         cursor = conn.cursor(dictionary=True)
-        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
-        if has_workspace and has_lot_workspace:
-            join_clause += " AND l.workspace_id = a.workspace_id"
+        join_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            join_clause += " AND l.workspace_id = %s"
+            join_params.append(int(workspace_id))
         final_workspace_clause = ""
         final_params: list = [account_id, user_id]
-        if workspace_id is not None and has_workspace:
-            final_workspace_clause = " AND a.workspace_id = %s"
+        if workspace_id is not None and has_last_rented:
+            final_workspace_clause = " AND a.last_rented_workspace_id = %s"
             final_params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -980,7 +1114,7 @@ def extend_rental_for_buyer(
             WHERE a.id = %s AND a.user_id = %s{final_workspace_clause}
             LIMIT 1
             """,
-            tuple(final_params),
+            tuple(join_params + final_params),
         )
         return cursor.fetchone()
     finally:
@@ -997,28 +1131,30 @@ def fetch_owner_accounts(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
         has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
-        if has_workspace and has_lot_workspace:
-            join_clause += " AND l.workspace_id = a.workspace_id"
+        join_params: list = []
+        if workspace_id is not None and has_lot_workspace:
+            join_clause += " AND l.workspace_id = %s"
+            join_params.append(int(workspace_id))
         workspace_clause = ""
         params: list = [user_id, normalize_username(owner)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND a.workspace_id = %s"
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND a.last_rented_workspace_id = %s"
             params.append(int(workspace_id))
         cursor.execute(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   a.account_frozen, a.rental_frozen,
+                   a.account_frozen, a.rental_frozen{', a.rental_frozen_at' if has_frozen_at else ''},
                    l.lot_number, l.lot_url
             FROM accounts a
             {join_clause}
             WHERE a.user_id = %s AND LOWER(a.owner) = %s{workspace_clause}
             ORDER BY a.id
             """,
-            tuple(params),
+            tuple(join_params + params),
         )
         return list(cursor.fetchall() or [])
     finally:
@@ -1035,11 +1171,10 @@ def start_rental_for_owner(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        has_workspace = column_exists(cursor, "accounts", "workspace_id")
         workspace_clause = ""
         params: list = [user_id, normalize_username(owner)]
-        if workspace_id is not None and has_workspace:
-            workspace_clause = " AND workspace_id = %s"
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(int(workspace_id))
         cursor.execute(
             f"""
@@ -1244,6 +1379,167 @@ def handle_code_command(
     return True
 
 
+def _select_account_for_command(
+    logger: logging.Logger,
+    account: Account,
+    chat_id: int,
+    accounts: list[dict],
+    args: str,
+    command: str,
+) -> dict | None:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return None
+    account_id = parse_account_id_arg(args)
+    if account_id is None:
+        if len(accounts) == 1:
+            return accounts[0]
+        send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
+        return None
+    for acc in accounts:
+        if int(acc.get("id")) == account_id:
+            return acc
+    send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
+    return None
+
+
+def handle_pause_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Pause command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Pause command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    if not selected:
+        return True
+
+    if selected.get("rental_frozen"):
+        send_chat_message(logger, account, chat_id, RENTAL_ALREADY_PAUSED_MESSAGE)
+        return True
+
+    frozen_at = selected.get("rental_frozen_at")
+    if frozen_at:
+        send_chat_message(logger, account, chat_id, RENTAL_PAUSE_ALREADY_USED_MESSAGE)
+        return True
+
+    now = datetime.utcnow()
+    ok = update_rental_freeze_state(
+        mysql_cfg,
+        account_id=int(selected["id"]),
+        user_id=int(user_id),
+        owner=sender_username,
+        workspace_id=workspace_id,
+        frozen=True,
+        frozen_at=now,
+    )
+    if not ok:
+        send_chat_message(logger, account, chat_id, "❌ Не удалось поставить аренду на паузу.")
+        return True
+
+    pause_message = RENTAL_PAUSED_MESSAGE
+    if len(accounts) > 1:
+        pause_message = f"{pause_message} (ID {selected.get('id')})"
+    send_chat_message(logger, account, chat_id, pause_message)
+    return True
+
+
+def handle_resume_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Resume command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Resume command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    if not selected:
+        return True
+
+    if not selected.get("rental_frozen"):
+        send_chat_message(logger, account, chat_id, RENTAL_NOT_PAUSED_MESSAGE)
+        return True
+
+    new_start = _calculate_resume_start(selected.get("rental_start"), selected.get("rental_frozen_at"))
+    ok = update_rental_freeze_state(
+        mysql_cfg,
+        account_id=int(selected["id"]),
+        user_id=int(user_id),
+        owner=sender_username,
+        workspace_id=workspace_id,
+        frozen=False,
+        rental_start=new_start,
+    )
+    if not ok:
+        send_chat_message(logger, account, chat_id, "❌ Не удалось снять паузу.")
+        return True
+
+    resume_message = RENTAL_RESUMED_MESSAGE
+    if len(accounts) > 1:
+        resume_message = f"{resume_message} (ID {selected.get('id')})"
+    send_chat_message(logger, account, chat_id, resume_message)
+    return True
+
+
 def handle_order_purchased(
     logger: logging.Logger,
     account: Account,
@@ -1415,6 +1711,8 @@ def handle_command(
         ),
         "!\u043e\u0442\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(*a, action="cancel"),
         "!\u0430\u0434\u043c\u0438\u043d": lambda *a: _log_command_stub(*a, action="admin"),
+        "!\u043f\u0430\u0443\u0437\u0430": handle_pause_command,
+        "!\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c": handle_resume_command,
     }
     handler = handlers.get(command)
     if not handler:
@@ -1513,14 +1811,7 @@ def get_workspace_db_name(mysql_cfg: dict, workspace_id: int) -> str | None:
 
 
 def resolve_workspace_mysql_cfg(mysql_cfg: dict, workspace_id: int | None) -> dict:
-    if workspace_id is None:
-        return mysql_cfg
-    db_name = get_workspace_db_name(mysql_cfg, int(workspace_id))
-    if not db_name:
-        return mysql_cfg
-    cfg = dict(mysql_cfg)
-    cfg["database"] = db_name
-    return cfg
+    return mysql_cfg
 
 
 def normalize_proxy_url(raw: str | None) -> str:

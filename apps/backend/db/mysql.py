@@ -123,6 +123,7 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT NOT NULL,
             workspace_id BIGINT NULL,
+            last_rented_workspace_id BIGINT NULL,
             account_name VARCHAR(255) NOT NULL,
             login VARCHAR(255) NOT NULL,
             password TEXT NOT NULL,
@@ -169,6 +170,11 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
     except mysql.connector.Error as exc:
         if exc.errno != errorcode.ER_DUP_FIELDNAME:
             raise
+    try:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN last_rented_workspace_id BIGINT NULL;")
+    except mysql.connector.Error as exc:
+        if exc.errno != errorcode.ER_DUP_FIELDNAME:
+            raise
 
     cursor.execute(
         """
@@ -191,6 +197,13 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
     except mysql.connector.Error as exc:
         if exc.errno != errorcode.ER_DUP_FIELDNAME:
             raise
+    _ensure_lots_primary_key(conn)
+    legacy_unique_names = {
+        "uniq_account_user",
+        "uniq_lot_user",
+        "uniq_lot_user_id",
+        "uniq_lot_user_number",
+    }
     try:
         idx_cursor = conn.cursor(dictionary=True)
         idx_cursor.execute("SHOW INDEX FROM lots")
@@ -202,10 +215,15 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
             index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
         desired_lot_unique = ["workspace_id", "lot_number"]
         desired_account_unique = ["workspace_id", "account_id"]
+        for key in legacy_unique_names:
+            try:
+                cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+            except mysql.connector.Error:
+                pass
         for key, cols in index_cols.items():
             if key == "PRIMARY":
                 continue
-            if not index_unique.get(key, False):
+            if not index_unique.get(key, False) and key not in legacy_unique_names:
                 continue
             columns = [col for _, col in sorted(cols)]
             if columns in (desired_lot_unique, desired_account_unique):
@@ -235,6 +253,42 @@ def _get_table_columns(conn: mysql.connector.MySQLConnection, schema: str, table
         (schema, table),
     )
     return {str(row[0]) for row in cursor.fetchall() or []}
+
+
+def _ensure_lots_primary_key(conn: mysql.connector.MySQLConnection) -> None:
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SHOW COLUMNS FROM lots")
+        columns = {row["Field"] for row in cursor.fetchall() or []}
+        cursor.execute("SHOW KEYS FROM lots WHERE Key_name = 'PRIMARY'")
+        primary_cols = [
+            row["Column_name"]
+            for row in sorted(cursor.fetchall() or [], key=lambda item: int(item["Seq_in_index"]))
+        ]
+        if primary_cols == ["id"]:
+            return
+        if "id" not in columns:
+            try:
+                cursor.execute("ALTER TABLE lots ADD COLUMN id BIGINT AUTO_INCREMENT PRIMARY KEY FIRST")
+                return
+            except mysql.connector.Error:
+                pass
+        if primary_cols:
+            try:
+                cursor.execute("ALTER TABLE lots DROP PRIMARY KEY")
+            except mysql.connector.Error:
+                pass
+        if "id" in columns:
+            try:
+                cursor.execute("ALTER TABLE lots MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT")
+            except mysql.connector.Error:
+                pass
+            try:
+                cursor.execute("ALTER TABLE lots ADD PRIMARY KEY (id)")
+            except mysql.connector.Error:
+                pass
+    except mysql.connector.Error:
+        pass
 
 
 def _migrate_workspace_data(
@@ -311,6 +365,10 @@ def get_workspace_connection(workspace_id: int) -> mysql.connector.MySQLConnecti
         )
         _workspace_pools[workspace_id] = pool
     return pool.get_connection()
+
+
+def get_base_connection() -> mysql.connector.MySQLConnection:
+    return _pool.get_connection()
 
 
 def list_workspace_ids_for_user(user_id: int) -> list[int]:
@@ -395,6 +453,7 @@ def ensure_schema() -> None:
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
                 workspace_id BIGINT NULL,
+                last_rented_workspace_id BIGINT NULL,
                 account_name VARCHAR(255) NOT NULL,
                 login VARCHAR(255) NOT NULL,
                 password TEXT NOT NULL,
@@ -444,6 +503,11 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN last_rented_workspace_id BIGINT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS lots (
@@ -467,7 +531,14 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        _ensure_lots_primary_key(conn)
         # Ensure lots only enforce workspace-scoped uniqueness.
+        legacy_unique_names = {
+            "uniq_account_user",
+            "uniq_lot_user",
+            "uniq_lot_user_id",
+            "uniq_lot_user_number",
+        }
         try:
             idx_cursor = conn.cursor(dictionary=True)
             idx_cursor.execute("SHOW INDEX FROM lots")
@@ -479,10 +550,15 @@ def ensure_schema() -> None:
                 index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
             desired_lot_unique = ["workspace_id", "lot_number"]
             desired_account_unique = ["workspace_id", "account_id"]
+            for key in legacy_unique_names:
+                try:
+                    cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+                except mysql.connector.Error:
+                    pass
             for key, cols in index_cols.items():
                 if key == "PRIMARY":
                     continue
-                if not index_unique.get(key, False):
+                if not index_unique.get(key, False) and key not in legacy_unique_names:
                     continue
                 columns = [col for _, col in sorted(cols)]
                 if columns in (desired_lot_unique, desired_account_unique):
@@ -526,6 +602,16 @@ def ensure_schema() -> None:
             WHERE a.workspace_id IS NULL
             """
         )
+        try:
+            cursor.execute(
+                """
+                UPDATE accounts
+                SET last_rented_workspace_id = workspace_id
+                WHERE last_rented_workspace_id IS NULL
+                """
+            )
+        except mysql.connector.Error:
+            pass
         cursor.execute(
             """
             UPDATE lots l
