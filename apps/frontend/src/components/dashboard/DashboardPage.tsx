@@ -94,6 +94,8 @@ type RentalRow = {
   started: string;
   timeLeft: string;
   matchTime: string;
+  matchTimeSeconds?: number | null;
+  matchTimeObservedAt?: number | null;
   hero: string;
   status: string;
 };
@@ -102,7 +104,7 @@ const INVENTORY_GRID =
   "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
 
 const RENTALS_GRID =
-  "minmax(64px,0.6fr) minmax(180px,1.4fr) minmax(160px,1.1fr) minmax(140px,1fr) minmax(120px,0.8fr) minmax(110px,0.8fr) minmax(140px,1fr) minmax(110px,0.7fr)";
+  "minmax(64px,0.5fr) minmax(200px,1.4fr) minmax(160px,1.1fr) minmax(140px,0.9fr) minmax(170px,1fr) minmax(130px,0.8fr) minmax(160px,1fr) minmax(120px,0.7fr)";
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
@@ -119,16 +121,46 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   rentalFrozen: !!item.rental_frozen,
 });
 
-const mapRental = (item: ActiveRentalItem): RentalRow => ({
-  id: item.id,
-  account: item.account,
-  buyer: item.buyer,
-  started: item.started,
-  timeLeft: item.time_left,
-  matchTime: item.match_time || "-",
-  hero: item.hero || "-",
-  status: item.status || "",
-});
+const parseMatchTimeSeconds = (value?: string | null) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "-") return null;
+  if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+  if (!trimmed.includes(":")) return null;
+  const parts = trimmed.split(":").map((part) => Number.parseInt(part, 10));
+  if (parts.some((part) => Number.isNaN(part))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+};
+
+const formatMatchTime = (seconds: number) => {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+};
+
+const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
+  const rawMatch = item.match_time || "-";
+  const matchSeconds = parseMatchTimeSeconds(rawMatch);
+  return {
+    id: item.id,
+    account: item.account,
+    buyer: item.buyer,
+    started: item.started,
+    timeLeft: item.time_left,
+    matchTime: rawMatch,
+    matchTimeSeconds: matchSeconds,
+    matchTimeObservedAt: matchSeconds !== null ? observedAt : null,
+    hero: item.hero || "-",
+    status: item.status || "",
+  };
+};
 
 const formatDuration = (minutesTotal: number | null | undefined) => {
   if (!minutesTotal && minutesTotal !== 0) return "-";
@@ -163,25 +195,19 @@ const getCountdownLabel = (
   const hours = Math.floor(totalSeconds / 3600);
   const minutesLeft = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return `${hours} ч ${minutesLeft} мин ${seconds} сек`;
+  return `${hours} \u0447 ${minutesLeft} \u043c\u0438\u043d ${seconds} \u0441\u0435\u043a`;
 };
 
-const statusPill = (status?: string) => {
-  const lower = (status || "").toLowerCase();
-  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
-  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
-  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
-  if (lower.includes("online") || lower === "1" || lower === "true")
-    return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
-  if (lower.includes("idle") || lower.includes("away"))
-    return { className: "bg-amber-50 text-amber-600", label: "Idle" };
-  if (lower.includes("off") || lower === "" || lower === "0")
-    return { className: "bg-rose-50 text-rose-600", label: "Offline" };
-  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
-};
-
-type DashboardPageProps = {
-  onToast?: (message: string, isError?: boolean) => void;
+const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => {
+  if (!row) return "-";
+  if (row.matchTimeSeconds === null || row.matchTimeSeconds === undefined) {
+    return row.matchTime || "-";
+  }
+  if (!row.matchTimeObservedAt) {
+    return formatMatchTime(row.matchTimeSeconds);
+  }
+  const elapsed = Math.max(0, Math.floor((nowMs - row.matchTimeObservedAt) / 1000));
+  return formatMatchTime(row.matchTimeSeconds + elapsed);
 };
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
@@ -234,7 +260,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setLoadingRentals(true);
     try {
       const res = await api.listActiveRentals();
-      setRentals(res.items.map(mapRental));
+      const observedAt = Date.now();
+      setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
       setRentals([]);
     } finally {
@@ -603,7 +630,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       ? getCountdownLabel(accountById.get(selectedRental.id), selectedRental.timeLeft, now)
                       : "-"}
                   </span>
-                    <span>Match time: {selectedRental.matchTime || "-"}</span>
+                    <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
                     <span>Hero: {selectedRental.hero || "-"}</span>
                     <span>Workspace: Default</span>
                     <span>Started: {selectedRental.started || "-"}</span>
@@ -784,10 +811,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>Account</span>
                 <span>Buyer</span>
                 <span>Started</span>
-                <span>Time Left</span>
-                <span>Match Time</span>
-                <span>Hero</span>
-                <span>Status</span>
+                  <span className="text-right">Time Left</span>
+                  <span className="text-right">Match Time</span>
+                  <span>Hero</span>
+                  <span className="justify-self-end">Status</span>
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {rentals.map((row, idx) => {
@@ -823,12 +850,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       </div>
                       <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
-                      <span className="min-w-0 truncate font-mono text-neutral-900">
+                      <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
                         {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
                       </span>
-                      <span className="min-w-0 truncate font-mono text-neutral-900">{row.matchTime}</span>
+                      <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
+                        {getMatchTimeLabel(row, now)}
+                      </span>
                       <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <span className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
                           {pill.label}
                         </span>
