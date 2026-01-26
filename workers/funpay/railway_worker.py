@@ -735,6 +735,7 @@ def fetch_lot_alias(
     lot_number: int,
     workspace_id: int | None = None,
 ) -> str | None:
+    workspace_id = None
     """
     Return a FunPay URL for the given lot_number, preferring the caller's workspace alias.
     """
@@ -781,6 +782,8 @@ def fetch_available_lot_accounts(
     user_id: int | None,
     workspace_id: int | None = None,
 ) -> list[dict]:
+    # Shared inventory: ignore workspace scoping.
+    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -862,6 +865,7 @@ def fetch_lot_account(
     lot_number: int,
     workspace_id: int | None = None,
 ) -> dict | None:
+    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -942,6 +946,7 @@ def extend_rental_for_buyer(
     add_minutes: int,
     workspace_id: int | None = None,
 ) -> dict | None:
+    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -1034,6 +1039,7 @@ def fetch_owner_accounts(
     owner: str,
     workspace_id: int | None = None,
 ) -> list[dict]:
+    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
@@ -1071,6 +1077,7 @@ def start_rental_for_owner(
     owner: str,
     workspace_id: int | None = None,
 ) -> int:
+    workspace_id = None
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor()
