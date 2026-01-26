@@ -90,6 +90,13 @@ export type WorkspaceItem = {
   key_hint?: string | null;
 };
 
+export type WorkspaceProxyCheck = {
+  ok: boolean;
+  direct_ip?: string | null;
+  proxy_ip?: string | null;
+  error?: string | null;
+};
+
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
@@ -206,4 +213,6 @@ export const api = {
     request<{ ok: boolean }>(`/workspaces/${workspaceId}/default`, { method: "POST" }),
   deleteWorkspace: (workspaceId: number) =>
     request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
+  checkWorkspaceProxy: (workspaceId: number) =>
+    request<WorkspaceProxyCheck>(`/workspaces/${workspaceId}/proxy-check`, { method: "POST" }),
 };

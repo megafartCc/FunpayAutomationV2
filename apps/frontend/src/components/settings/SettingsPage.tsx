@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 
-import { api, WorkspaceItem } from "../../services/api";
+import { api, WorkspaceItem, WorkspaceProxyCheck } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 type SettingsPageProps = {
@@ -60,6 +60,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const [editProxyUrl, setEditProxyUrl] = useState("");
   const [editProxyUsername, setEditProxyUsername] = useState("");
   const [editProxyPassword, setEditProxyPassword] = useState("");
+  const [proxyChecks, setProxyChecks] = useState<Record<number, WorkspaceProxyCheck & { status: string }>>({});
 
   const isEditing = (id: number) => editingId === id;
 
@@ -174,6 +175,34 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     }
   };
 
+  const handleCheckProxy = async (id: number) => {
+    if (proxyChecks[id]?.status === "loading") return;
+    setProxyChecks((prev) => ({ ...prev, [id]: { status: "loading", ok: false } }));
+    try {
+      const result = await api.checkWorkspaceProxy(id);
+      const status = result.ok ? "success" : "error";
+      setProxyChecks((prev) => ({
+        ...prev,
+        [id]: {
+          ...result,
+          status,
+        },
+      }));
+      if (!result.ok) {
+        onToast?.(result.error || "Proxy check failed.", true);
+      } else {
+        onToast?.("Proxy check passed.");
+      }
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to check proxy.";
+      setProxyChecks((prev) => ({
+        ...prev,
+        [id]: { status: "error", ok: false, error: message },
+      }));
+      onToast?.(message, true);
+    }
+  };
+
   const workspaceList = useMemo(() => workspaces || [], [workspaces]);
 
   return (
@@ -255,6 +284,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
           ) : workspaceList.length ? (
             workspaceList.map((item) => {
               const editing = isEditing(item.id);
+              const proxyCheck = proxyChecks[item.id];
               return (
                 <div key={item.id} className="rounded-xl border border-neutral-200 bg-white p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -345,7 +375,30 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         >
                           Cancel
                         </button>
+                        <button
+                          onClick={() => handleCheckProxy(item.id)}
+                          disabled={proxyCheck?.status === "loading"}
+                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {proxyCheck?.status === "loading" ? "Checking..." : "Check proxy"}
+                        </button>
                       </div>
+                      {proxyCheck?.status && proxyCheck.status !== "loading" && (
+                        <div
+                          className={`rounded-lg border px-3 py-2 text-xs ${
+                            proxyCheck.ok
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-rose-200 bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          <div className="font-semibold">
+                            {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
+                          </div>
+                          <div>Before: {proxyCheck.direct_ip || "—"}</div>
+                          <div>After: {proxyCheck.proxy_ip || "—"}</div>
+                          {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
