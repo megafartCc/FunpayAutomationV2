@@ -174,6 +174,61 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS order_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                order_id VARCHAR(32) NOT NULL,
+                owner VARCHAR(255) NOT NULL,
+                account_name VARCHAR(255) NULL,
+                account_id BIGINT NULL,
+                rental_minutes INT NULL,
+                lot_number INT NULL,
+                amount INT DEFAULT 1,
+                price DECIMAL(10,2) NULL,
+                action VARCHAR(32) NOT NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_order_user_order (user_id, order_id),
+                INDEX idx_order_owner_created (owner, created_at),
+                INDEX idx_order_workspace (workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS blacklist (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                owner VARCHAR(255) NOT NULL,
+                reason TEXT NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_blacklist_owner_user_ws (owner, user_id, workspace_id),
+                INDEX idx_blacklist_owner (owner),
+                INDEX idx_blacklist_user_ws (user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS blacklist_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                owner VARCHAR(255) NOT NULL,
+                action VARCHAR(32) NOT NULL,
+                reason TEXT NULL,
+                details TEXT NULL,
+                amount INT NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_bl_logs_user_ws (user_id, workspace_id),
+                INDEX idx_bl_logs_owner (owner, user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()

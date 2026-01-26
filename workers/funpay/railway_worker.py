@@ -128,6 +128,7 @@ class RentalMonitorState:
     expire_delay_since: dict[int, datetime] = field(default_factory=dict)
     expire_delay_next_check: dict[int, datetime] = field(default_factory=dict)
     expire_delay_notified: set[int] = field(default_factory=set)
+    expire_soon_notified: dict[int, int] = field(default_factory=dict)
 
 
 def detect_command(text: str | None) -> str | None:
@@ -206,6 +207,65 @@ def format_duration_minutes(total_minutes: int | None) -> str:
     if hours:
         return f"{hours} \u0447"
     return f"{mins} \u043c\u0438\u043d"
+
+
+def format_hours_label(hours: int) -> str:
+    value = int(hours)
+    if 11 <= (value % 100) <= 14:
+        return "\u0447\u0430\u0441\u043e\u0432"
+    last = value % 10
+    if last == 1:
+        return "\u0447\u0430\u0441"
+    if 2 <= last <= 4:
+        return "\u0447\u0430\u0441\u0430"
+    return "\u0447\u0430\u0441\u043e\u0432"
+
+
+def format_penalty_label(total_minutes: int | None) -> str:
+    minutes = int(total_minutes or 0)
+    if minutes > 0 and minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours} {format_hours_label(hours)}"
+    return format_duration_minutes(minutes)
+
+
+def normalize_owner_name(owner: str | None) -> str:
+    return str(owner or "").strip().lower()
+
+
+def format_time_left(seconds_left: int) -> str:
+    total = max(0, int(seconds_left))
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
+    if hours:
+        return f"{hours} \u0447 {minutes} \u043c\u0438\u043d {seconds} \u0441\u0435\u043a"
+    if minutes:
+        return f"{minutes} \u043c\u0438\u043d {seconds} \u0441\u0435\u043a"
+    return f"{seconds} \u0441\u0435\u043a"
+
+
+def build_expire_soon_message(account_row: dict, seconds_left: int) -> str:
+    account_id = account_row.get("id")
+    name = account_row.get("account_name") or account_row.get("login") or f"ID {account_id}"
+    label = f"{name} (ID {account_id})" if account_id is not None else name
+    time_left = format_time_left(seconds_left)
+    lot_number = account_row.get("lot_number")
+    lot_url = account_row.get("lot_url")
+    if lot_number and lot_url:
+        lot_label = f"\u041b\u043e\u0442 \u2116{lot_number}: {lot_url}"
+    elif lot_number:
+        lot_label = f"\u041b\u043e\u0442 \u2116{lot_number}"
+    elif lot_url:
+        lot_label = f"\u041b\u043e\u0442: {lot_url}"
+    else:
+        lot_label = "\u043b\u043e\u0442, \u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u043f\u0440\u0438\u0432\u044f\u0437\u0430\u043d \u043a \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0443"
+
+    return (
+        f"\u23f3 \u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 {label} \u0441\u043a\u043e\u0440\u043e \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u0441\u044f.\n"
+        f"\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {time_left}.\n"
+        f"\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u2014 \u043f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430 \u043e\u043f\u043b\u0430\u0442\u0438\u0442\u0435 \u044d\u0442\u043e\u0442 {lot_label}."
+    )
 
 
 def parse_lot_number(text: str | None) -> int | None:
@@ -542,22 +602,279 @@ def fetch_active_rentals_for_monitor(
         cursor = conn.cursor(dictionary=True)
         has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_lots = table_exists(cursor, "lots")
+        has_lot_number = has_lots and column_exists(cursor, "lots", "lot_number")
+        has_lot_url = has_lots and column_exists(cursor, "lots", "lot_url")
+        has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
+        has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
+        has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
+
+        workspace_expr = "a.workspace_id"
+        if has_last_rented:
+            workspace_expr = "COALESCE(a.last_rented_workspace_id, a.workspace_id)"
+
         params: list = [user_id]
         workspace_clause = ""
-        if workspace_id is not None and has_last_rented:
-            workspace_clause = " AND last_rented_workspace_id = %s"
+        if workspace_id is not None:
+            workspace_clause = f" AND {workspace_expr} = %s"
             params.append(workspace_id)
+
+        lot_join = ""
+        lot_fields = ""
+        if has_lots:
+            lot_join = "LEFT JOIN lots l ON l.account_id = a.id"
+            if has_lot_user_id:
+                lot_join += " AND l.user_id = a.user_id"
+            if has_lot_workspace:
+                lot_join += f" AND l.workspace_id = {workspace_expr}"
+            if has_lot_number:
+                lot_fields += ", l.lot_number AS lot_number"
+            if has_lot_url and has_account_lot_url:
+                lot_fields += ", COALESCE(l.lot_url, a.lot_url) AS lot_url"
+            elif has_lot_url:
+                lot_fields += ", l.lot_url AS lot_url"
+            elif has_account_lot_url:
+                lot_fields += ", a.lot_url AS lot_url"
+        elif has_account_lot_url:
+            lot_fields += ", a.lot_url AS lot_url"
         cursor.execute(
             f"""
-            SELECT id, owner, rental_start, rental_duration, rental_duration_minutes,
-                   account_name, login, password, mafile_json, account_frozen, rental_frozen
+            SELECT a.id, a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   a.account_name, a.login, a.password, a.mafile_json, a.account_frozen, a.rental_frozen
                    {', rental_frozen_at' if has_frozen_at else ''}
-            FROM accounts
-            WHERE user_id = %s AND owner IS NOT NULL AND owner != ''{workspace_clause}
+                   {lot_fields}
+            FROM accounts a
+            {lot_join}
+            WHERE a.user_id = %s AND a.owner IS NOT NULL AND a.owner != ''{workspace_clause}
             """,
             tuple(params),
         )
         return list(cursor.fetchall() or [])
+    finally:
+        conn.close()
+
+
+def is_blacklisted(
+    mysql_cfg: dict,
+    owner: str | None,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> bool:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return False
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "blacklist"):
+            return False
+        params: list = [owner_key, int(user_id)]
+        workspace_clause = ""
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"SELECT 1 FROM blacklist WHERE owner = %s AND user_id = %s{workspace_clause} LIMIT 1",
+            tuple(params),
+        )
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def log_blacklist_event(
+    mysql_cfg: dict,
+    *,
+    owner: str,
+    action: str,
+    reason: str | None = None,
+    details: str | None = None,
+    amount: int | None = None,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "blacklist_logs"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO blacklist_logs (owner, action, reason, details, amount, user_id, workspace_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                owner_key,
+                action,
+                reason,
+                details,
+                int(amount) if amount is not None else None,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def log_order_history(
+    mysql_cfg: dict,
+    *,
+    order_id: str,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None = None,
+    account_id: int | None = None,
+    account_name: str | None = None,
+    rental_minutes: int | None = None,
+    lot_number: int | None = None,
+    amount: int | None = None,
+    price: float | None = None,
+    action: str = "purchase",
+) -> None:
+    order_key = str(order_id or "").strip()
+    if order_key.startswith("#"):
+        order_key = order_key[1:]
+    owner_key = normalize_owner_name(owner)
+    if not order_key or not owner_key:
+        return
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO order_history (
+                order_id, owner, account_name, account_id, rental_minutes,
+                lot_number, amount, price, action, user_id, workspace_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                order_key,
+                owner_key,
+                account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                int(account_id) if account_id is not None else None,
+                int(rental_minutes) if rental_minutes is not None else None,
+                int(lot_number) if lot_number is not None else None,
+                int(amount) if amount is not None else None,
+                float(price) if price is not None else None,
+                action,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_blacklist_compensation_total(
+    mysql_cfg: dict,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> int:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return 0
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "blacklist_logs"):
+            return 0
+        params: list = [owner_key, int(user_id)]
+        workspace_clause = ""
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT COALESCE(SUM(amount), 0)
+            FROM blacklist_logs
+            WHERE owner = %s AND user_id = %s AND action = 'blacklist_comp'{workspace_clause}
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        conn.close()
+
+
+def remove_blacklist_entry(
+    mysql_cfg: dict,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> bool:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return False
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "blacklist"):
+            return False
+        params: list = [owner_key, int(user_id)]
+        workspace_clause = ""
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"DELETE FROM blacklist WHERE owner = %s AND user_id = %s{workspace_clause}",
+            tuple(params),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def fetch_lot_mapping(
+    mysql_cfg: dict,
+    user_id: int,
+    lot_number: int,
+    workspace_id: int | None = None,
+) -> dict | None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "lots"):
+            return None
+        params: list = [int(user_id), int(lot_number)]
+        where_workspace = ""
+        order_clause = " ORDER BY a.id"
+        has_workspace = column_exists(cursor, "lots", "workspace_id")
+        if has_workspace and workspace_id is not None:
+            where_workspace = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
+            params.append(int(workspace_id))
+            order_clause = " ORDER BY CASE WHEN l.workspace_id = %s THEN 0 ELSE 1 END, a.id"
+        cursor.execute(
+            f"""
+            SELECT a.id, a.account_name, a.login, a.rental_duration, a.rental_duration_minutes,
+                   l.lot_number, l.lot_url
+            FROM lots l
+            JOIN accounts a ON a.id = l.account_id
+            WHERE l.user_id = %s AND l.lot_number = %s
+                  {where_workspace}
+            {order_clause}
+            LIMIT 1
+            """,
+            tuple(params + ([int(workspace_id)] if has_workspace and workspace_id is not None else [])),
+        )
+        return cursor.fetchone()
     finally:
         conn.close()
 
@@ -757,6 +1074,10 @@ def process_rental_monitor(
         }
     if state.expire_delay_notified:
         state.expire_delay_notified = {k for k in state.expire_delay_notified if k in active_ids}
+    if state.expire_soon_notified:
+        state.expire_soon_notified = {
+            k: v for k, v in state.expire_soon_notified.items() if k in active_ids
+        }
 
     for row in rentals:
         account_id = int(row.get("id"))
@@ -793,8 +1114,10 @@ def process_rental_monitor(
         owner = row.get("owner")
         if not owner:
             _clear_expire_delay_state(state, account_id)
+            state.expire_soon_notified.pop(account_id, None)
             continue
         if row.get("rental_frozen"):
+            state.expire_soon_notified.pop(account_id, None)
             continue
         started = _parse_datetime(row.get("rental_start"))
         total_minutes = row.get("rental_duration_minutes")
@@ -806,10 +1129,22 @@ def process_rental_monitor(
             total_minutes_int = 0
         if not started or total_minutes_int <= 0:
             _clear_expire_delay_state(state, account_id)
+            state.expire_soon_notified.pop(account_id, None)
             continue
         expiry_time = started + timedelta(minutes=total_minutes_int)
         if now < expiry_time:
             _clear_expire_delay_state(state, account_id)
+            remind_minutes = env_int("RENTAL_EXPIRE_REMIND_MINUTES", 10)
+            if remind_minutes > 0:
+                seconds_left = int((expiry_time - now).total_seconds())
+                expiry_ts = int(expiry_time.timestamp())
+                if 0 < seconds_left <= remind_minutes * 60:
+                    if state.expire_soon_notified.get(account_id) != expiry_ts:
+                        message = build_expire_soon_message(row, seconds_left)
+                        send_message_by_owner(logger, account, owner, message)
+                        state.expire_soon_notified[account_id] = expiry_ts
+                else:
+                    state.expire_soon_notified.pop(account_id, None)
             continue
         if _should_delay_expire(logger, account, owner, row, state, now):
             continue
@@ -1602,6 +1937,89 @@ def handle_order_purchased(
         logger.warning("Order %s skipped: user id missing.", order_id)
         return
 
+    try:
+        amount = int(getattr(order, "amount", None) or 1)
+    except Exception:
+        amount = 1
+    if amount <= 0:
+        amount = 1
+
+    log_order_history(
+        mysql_cfg,
+        order_id=order_id,
+        owner=buyer,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+        lot_number=lot_number,
+        amount=amount,
+        action="purchase",
+    )
+
+    if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
+        comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
+        if comp_threshold_minutes <= 0:
+            comp_threshold_minutes = max(env_int("BLACKLIST_COMP_HOURS", 5), 0) * 60
+        unit_minutes_default = env_int("BLACKLIST_COMP_UNIT_MINUTES", 60)
+        lot_mapping = fetch_lot_mapping(mysql_cfg, int(user_id), int(lot_number), workspace_id)
+        unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
+        paid_minutes = max(0, int(unit_minutes) * int(amount))
+        log_blacklist_event(
+            mysql_cfg,
+            owner=buyer,
+            action="blacklist_comp",
+            details=f"order={order_id}; lot={lot_number}; amount={amount}",
+            amount=paid_minutes,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+        total_paid = get_blacklist_compensation_total(mysql_cfg, buyer, int(user_id), workspace_id)
+        if total_paid >= comp_threshold_minutes:
+            removed = remove_blacklist_entry(mysql_cfg, buyer, int(user_id), workspace_id)
+            log_blacklist_event(
+                mysql_cfg,
+                owner=buyer,
+                action="auto_unblacklist",
+                details=f"total_minutes={total_paid}/{comp_threshold_minutes}; order={order_id}; lot={lot_number}",
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+            if removed:
+                send_chat_message(
+                    logger,
+                    account,
+                    chat_id,
+                    f"\u041e\u043f\u043b\u0430\u0442\u0430 \u0448\u0442\u0440\u0430\u0444\u0430 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0430 ({format_duration_minutes(total_paid)}). \u0414\u043e\u0441\u0442\u0443\u043f \u0440\u0430\u0437\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d.",
+                )
+            mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+            return
+
+        remaining = max(comp_threshold_minutes - total_paid, 0)
+        lot_url = lot_mapping.get("lot_url") if lot_mapping else None
+        lot_label = f"\u043b\u043e\u0442 \u2116{lot_number}"
+        if lot_url:
+            lot_label = f"\u043b\u043e\u0442 {lot_url}"
+        send_chat_message(
+            logger,
+            account,
+            chat_id,
+            "\u0412\u044b \u0432 \u0447\u0435\u0440\u043d\u043e\u043c \u0441\u043f\u0438\u0441\u043a\u0435.\n"
+            f"\u041e\u043f\u043b\u0430\u0442\u0438\u0442\u0435 \u0448\u0442\u0440\u0430\u0444 {format_penalty_label(comp_threshold_minutes)}, "
+            "\u0447\u0442\u043e\u0431\u044b \u0440\u0430\u0437\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0434\u043e\u0441\u0442\u0443\u043f.\n"
+            f"\u041e\u043f\u043b\u0430\u0447\u0435\u043d\u043e: {format_duration_minutes(total_paid)}. "
+            f"\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {format_duration_minutes(remaining)}.\n"
+            f"\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u2014 \u043f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430 \u043e\u043f\u043b\u0430\u0442\u0438\u0442\u0435 \u044d\u0442\u043e\u0442 {lot_label}.",
+        )
+        log_blacklist_event(
+            mysql_cfg,
+            owner=buyer,
+            action="blocked_order",
+            details=f"order={order_id}; lot={lot_number}; amount={amount}; paid={total_paid}; remaining={remaining}",
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+        return
+
     mapping = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id=workspace_id)
     if not mapping:
         send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
@@ -1618,13 +2036,6 @@ def handle_order_purchased(
         send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
-
-    try:
-        amount = int(getattr(order, "amount", None) or 1)
-    except Exception:
-        amount = 1
-    if amount <= 0:
-        amount = 1
 
     unit_minutes = get_unit_minutes(mapping)
     total_minutes = unit_minutes * amount

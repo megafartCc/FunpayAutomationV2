@@ -277,7 +277,7 @@ const formatWorkspaceLabel = (
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
-  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingRentals, setLoadingRentals] = useState(true);
@@ -295,37 +295,35 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const filteredAccounts = useMemo(() => {
     if (selectedWorkspaceId === "all") {
-      return accounts;
+      return allAccounts;
     }
     const workspaceId = selectedWorkspaceId as number;
-    return accounts.filter((acc) => {
+    return allAccounts.filter((acc) => {
       const scopedId = acc.lastRentedWorkspaceId ?? acc.workspaceId ?? null;
       return scopedId === workspaceId;
     });
-  }, [accounts, selectedWorkspaceId]);
+  }, [allAccounts, selectedWorkspaceId]);
 
   const filteredRentals = useMemo(() => {
-    if (selectedWorkspaceId === "all") {
-      return rentals;
-    }
-    const workspaceId = selectedWorkspaceId as number;
-    return rentals.filter((row) => (row.workspaceId ?? null) === workspaceId);
-  }, [rentals, selectedWorkspaceId]);
+    return rentals;
+  }, [rentals]);
 
-  const accountByKey = useMemo(
-    () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
-    [accounts],
+  const accountById = useMemo(
+    () => new Map(allAccounts.map((acc) => [acc.id, acc])),
+    [allAccounts],
   );
   const selectedRental = useMemo(
     () => filteredRentals.find((row) => row.rowKey === selectedRowKey) ?? null,
     [filteredRentals, selectedRowKey],
   );
   const selectedAccount = useMemo(() => {
+    const direct = filteredAccounts.find((acc) => acc.rowKey === selectedRowKey) ?? null;
+    if (direct) return direct;
     if (selectedRental) {
-      return accountByKey.get(selectedRental.accountKey) ?? null;
+      return accountById.get(selectedRental.id) ?? null;
     }
-    return accounts.find((acc) => acc.rowKey === selectedRowKey) ?? null;
-  }, [accounts, accountByKey, selectedRental, selectedRowKey]);
+    return null;
+  }, [filteredAccounts, selectedRental, accountById, selectedRowKey]);
 
   const statCards = useMemo<StatCardProps[]>(() => {
     const totalAccounts = filteredAccounts.length;
@@ -348,14 +346,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     try {
       if (selectedWorkspaceId === "all") {
         const res = await api.listAccounts();
-        setAccounts((res.items || []).map(mapAccount));
-        return;
-      }
-      const workspaceId = selectedWorkspaceId as number;
-      const res = await api.listAccounts(workspaceId);
-      setAccounts((res.items || []).map(mapAccount));
+        setAllAccounts((res.items || []).map(mapAccount));
     } catch {
-      setAccounts([]);
+      setAllAccounts([]);
     } finally {
       if (!silent) setLoadingAccounts(false);
     }
@@ -433,7 +426,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         ? "Loading accounts..."
         : "No accounts loaded yet.";
   const emptyRentalMessage = loadingRentals ? "Loading rentals..." : "No active rentals yet.";
-  const inventoryAccounts = selectedWorkspaceId === "all" ? [] : accounts;
+  const inventoryAccounts = selectedWorkspaceId === "all" ? [] : filteredAccounts;
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
@@ -816,7 +809,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       Time left:{" "}
                       {selectedRental
                         ? getCountdownLabel(
-                            accountByKey.get(selectedRental.accountKey),
+                            accountById.get(selectedRental.id),
                             selectedRental.timeLeft,
                             now,
                           )
@@ -1043,7 +1036,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 {filteredRentals.map((row, idx) => {
                   const isSelected = selectedRowKey === row.rowKey;
                   const pill = statusPill(row.status);
-                  const account = accountByKey.get(row.accountKey);
+                  const account = accountById.get(row.id);
                   const workspaceLabel = resolveWorkspaceName(
                     row.workspaceId ?? account?.workspaceId,
                     row.workspaceName ?? account?.workspaceName,
@@ -1092,7 +1085,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
-                        {getCountdownLabel(accountByKey.get(row.accountKey), row.timeLeft, now)}
+                        {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
                       </span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
                         {getMatchTimeLabel(row, now)}
