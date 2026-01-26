@@ -198,11 +198,7 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno not in (errorcode.ER_CANT_DROP_FIELD_OR_KEY, errorcode.ER_DUP_KEYNAME):
                 raise
-        try:
-            cursor.execute("ALTER TABLE lots DROP INDEX uniq_account_user;")
-        except mysql.connector.Error as exc:
-            if exc.errno not in (errorcode.ER_CANT_DROP_FIELD_OR_KEY, errorcode.ER_DUP_KEYNAME):
-                raise
+        # Keep existing index that supports FK; do not drop if referenced.
         try:
             cursor.execute(
                 "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_account_user (user_id, lot_number, account_id)"
@@ -295,14 +291,6 @@ def ensure_schema() -> None:
             cursor.execute(
                 "ALTER TABLE accounts ADD UNIQUE KEY uniq_account_workspace_name (workspace_id, account_name)"
             )
-        except mysql.connector.Error:
-            pass
-        try:
-            cursor.execute("ALTER TABLE lots DROP INDEX uniq_lot_user;")
-        except mysql.connector.Error:
-            pass
-        try:
-            cursor.execute("ALTER TABLE lots DROP INDEX uniq_account_user;")
         except mysql.connector.Error:
             pass
         try:
