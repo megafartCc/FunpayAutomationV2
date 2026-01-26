@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, ActiveRentalRecord
 from services.rentals_cache import RentalsCache
+from services.presence_service import fetch_presence, presence_status_label
 from services.steam_service import deauthorize_sessions, SteamWorkerError
 
 
@@ -69,6 +71,21 @@ def _account_label(record: ActiveRentalRecord) -> str:
     return name
 
 
+def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
+    if not mafile_json:
+        return None
+    try:
+        data = json.loads(mafile_json) if isinstance(mafile_json, str) else mafile_json
+        steam_value = (data or {}).get("Session", {}).get("SteamID")
+        if steam_value is None:
+            steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+        if steam_value is not None:
+            return str(int(steam_value))
+    except Exception:
+        return None
+    return None
+
+
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
@@ -86,6 +103,14 @@ def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
         )
         started_at = _parse_datetime(record.rental_start)
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
+        steam_id = _steam_id_from_mafile(record.mafile_json)
+        presence = fetch_presence(steam_id)
+        status = presence_status_label(presence)
+        hero = ""
+        match_time = ""
+        if presence:
+            hero = str(presence.get("hero_name") or presence.get("hero") or "")
+            match_time = str(presence.get("match_time") or "")
         items.append(
             ActiveRentalItem(
                 id=record.id,
@@ -93,9 +118,9 @@ def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
                 buyer=record.owner,
                 started=started_label,
                 time_left=time_left_label,
-                match_time="",
-                hero="",
-                status="",
+                match_time=match_time,
+                hero=hero,
+                status=status,
             )
         )
     rentals_cache.set(user_id, [item.model_dump() for item in items])

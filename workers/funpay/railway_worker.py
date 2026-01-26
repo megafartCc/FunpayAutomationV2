@@ -10,6 +10,7 @@ import struct
 import sys
 import threading
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import sha1
 from pathlib import Path
@@ -27,6 +28,7 @@ from FunPayAPI.common.utils import RegularExpressions  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
+import requests  # noqa: E402
 
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -70,11 +72,34 @@ COMMANDS_RU = (
     "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430 <ID> \u2014 \u0437\u0430\u043c\u0435\u043d\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 (10 \u043c\u0438\u043d\u0443\u0442 \u043f\u043e\u0441\u043b\u0435 !\u043a\u043e\u0434)\n"
     "!\u043e\u0442\u043c\u0435\u043d\u0430 <ID> \u2014 \u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443"
 )
+RENTAL_FROZEN_MESSAGE = (
+    "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u0437\u0430\u043c\u043e\u0440\u043e\u0437\u0438\u043b \u0432\u0430\u0448\u0443 \u0430\u0440\u0435\u043d\u0434\u0443. \u0414\u043e\u0441\u0442\u0443\u043f \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043f\u0440\u0438\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d."
+)
+RENTAL_UNFROZEN_MESSAGE = (
+    "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u0440\u0430\u0437\u043c\u043e\u0440\u043e\u0437\u0438\u043b \u0432\u0430\u0448\u0443 \u0430\u0440\u0435\u043d\u0434\u0443. \u0414\u043e\u0441\u0442\u0443\u043f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d."
+)
+RENTAL_EXPIRED_MESSAGE = "\u0410\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c. \u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043a\u0440\u044b\u0442."
+RENTAL_EXPIRE_DELAY_MESSAGE = (
+    "\u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c, \u043d\u043e \u043c\u044b \u0432\u0438\u0434\u0438\u043c, \u0447\u0442\u043e \u0432\u044b \u0432 \u0438\u0433\u0440\u0435.\n"
+    "\u0423 \u0432\u0430\u0441 \u0435\u0441\u0442\u044c \u0432\u0440\u0435\u043c\u044f, \u0447\u0442\u043e\u0431\u044b \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u044c \u043c\u0430\u0442\u0447. \u0427\u0435\u0440\u0435\u0437 1 \u043c\u0438\u043d\u0443\u0442\u0443 \u044f \u043f\u0440\u043e\u0432\u0435\u0440\u044e \u0441\u043d\u043e\u0432\u0430.\n"
+    "\u0414\u043e\u0441\u0442\u0443\u043f \u0431\u0443\u0434\u0435\u0442 \u0437\u0430\u043a\u0440\u044b\u0442 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438, \u0435\u0441\u043b\u0438 \u043c\u0430\u0442\u0447 \u0443\u0436\u0435 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u0441\u044f.\n"
+    "\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u2014 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u0443:\n"
+    "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c <\u0447\u0430\u0441\u044b> <ID \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430>"
+)
 ORDER_ID_RE = RegularExpressions().ORDER_ID
 LOT_NUMBER_RE = re.compile(r"(?:\u2116|#)\s*(\d+)")
 
 _processed_orders: dict[str, set[str]] = {}
 _processed_orders_lock = threading.Lock()
+
+
+@dataclass
+class RentalMonitorState:
+    last_check_ts: float = 0.0
+    freeze_cache: dict[int, bool] = field(default_factory=dict)
+    expire_delay_since: dict[int, datetime] = field(default_factory=dict)
+    expire_delay_next_check: dict[int, datetime] = field(default_factory=dict)
+    expire_delay_notified: set[int] = field(default_factory=set)
 
 
 def detect_command(text: str | None) -> str | None:
@@ -305,6 +330,263 @@ def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, te
     except Exception as exc:
         logger.warning("Failed to send chat message: %s", exc)
         return False
+
+
+def send_message_by_owner(logger: logging.Logger, account: Account, owner: str | None, text: str) -> bool:
+    if not owner:
+        return False
+    try:
+        chat = account.get_chat_by_name(owner, True)
+    except Exception as exc:
+        logger.warning("Failed to resolve chat for %s: %s", owner, exc)
+        return False
+    chat_id = getattr(chat, "id", None)
+    if not chat_id:
+        logger.warning("Chat not found for %s.", owner)
+        return False
+    return send_chat_message(logger, account, int(chat_id), text)
+
+
+def _steam_id_from_mafile(mafile_json: str | dict | None) -> str | None:
+    if not mafile_json:
+        return None
+    try:
+        data = mafile_json if isinstance(mafile_json, dict) else json.loads(mafile_json)
+        steam_value = (data or {}).get("Session", {}).get("SteamID")
+        if steam_value is None:
+            steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+        if steam_value is not None:
+            return str(int(steam_value))
+    except Exception:
+        return None
+    return None
+
+
+def fetch_presence(steam_id: str | None) -> dict:
+    if not steam_id:
+        return {}
+    base = os.getenv("STEAM_PRESENCE_URL", "").strip() or os.getenv("STEAM_BRIDGE_URL", "").strip()
+    if not base:
+        return {}
+    base = base.rstrip("/")
+    if base.endswith("/presence"):
+        url = f"{base}/{steam_id}"
+    else:
+        url = f"{base}/presence/{steam_id}"
+    try:
+        resp = requests.get(url, timeout=5)
+    except requests.RequestException:
+        return {}
+    if not resp.ok:
+        return {}
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def fetch_active_rentals_for_monitor(mysql_cfg: dict, user_id: int) -> list[dict]:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, owner, rental_start, rental_duration, rental_duration_minutes,
+                   account_name, login, password, mafile_json, account_frozen, rental_frozen
+            FROM accounts
+            WHERE user_id = %s AND owner IS NOT NULL AND owner != ''
+            """,
+            (user_id,),
+        )
+        return list(cursor.fetchall() or [])
+    finally:
+        conn.close()
+
+
+def release_account_in_db(mysql_cfg: dict, account_id: int, user_id: int) -> bool:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+        if has_frozen_at:
+            updates.append("rental_frozen_at = NULL")
+        cursor.execute(
+            f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            (account_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def deauthorize_account_sessions(
+    logger: logging.Logger,
+    account_row: dict,
+) -> bool:
+    base = os.getenv("STEAM_WORKER_URL", "").strip()
+    if not base:
+        return False
+    login = account_row.get("login") or account_row.get("account_name")
+    password = account_row.get("password") or ""
+    mafile_json = account_row.get("mafile_json")
+    if not login or not password or not mafile_json:
+        return False
+    url = f"{base.rstrip('/')}/api/steam/deauthorize"
+    timeout = env_int("STEAM_WORKER_TIMEOUT", 90)
+    payload = {
+        "steam_login": login,
+        "steam_password": password,
+        "mafile_json": mafile_json,
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=timeout)
+    except requests.RequestException as exc:
+        logger.warning("Steam worker request failed: %s", exc)
+        return False
+    if resp.ok:
+        return True
+    logger.warning("Steam worker error (status %s).", resp.status_code)
+    return False
+
+
+def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> None:
+    state.expire_delay_since.pop(account_id, None)
+    state.expire_delay_next_check.pop(account_id, None)
+    state.expire_delay_notified.discard(account_id)
+
+
+def _should_delay_expire(
+    logger: logging.Logger,
+    account: Account,
+    owner: str,
+    account_row: dict,
+    state: RentalMonitorState,
+    now: datetime,
+) -> bool:
+    if not env_bool("DOTA_MATCH_DELAY_EXPIRE", True):
+        return False
+    account_id = int(account_row.get("id"))
+    next_check = state.expire_delay_next_check.get(account_id)
+    if next_check and now < next_check:
+        return True
+
+    steam_id = _steam_id_from_mafile(account_row.get("mafile_json"))
+    presence = fetch_presence(steam_id)
+    in_game = bool(presence.get("in_match") or presence.get("in_game"))
+    if not in_game:
+        _clear_expire_delay_state(state, account_id)
+        return False
+
+    since = state.expire_delay_since.get(account_id)
+    if since is None:
+        state.expire_delay_since[account_id] = now
+        since = now
+
+    grace_minutes = env_int("DOTA_MATCH_GRACE_MINUTES", 90)
+    if now - since >= timedelta(minutes=grace_minutes):
+        _clear_expire_delay_state(state, account_id)
+        return False
+
+    state.expire_delay_next_check[account_id] = now + timedelta(minutes=1)
+    if account_id not in state.expire_delay_notified:
+        extra = ""
+        display = presence.get("presence_display") or presence.get("presence_state")
+        if display:
+            extra = f"\n\u0421\u0442\u0430\u0442\u0443\u0441: {display}"
+        send_message_by_owner(logger, account, owner, f"{RENTAL_EXPIRE_DELAY_MESSAGE}{extra}")
+        state.expire_delay_notified.add(account_id)
+    return True
+
+
+def process_rental_monitor(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    state: RentalMonitorState,
+) -> None:
+    interval = env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30)
+    now_ts = time.time()
+    if now_ts - state.last_check_ts < interval:
+        return
+    state.last_check_ts = now_ts
+
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        return
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            return
+    if user_id is None:
+        return
+
+    rentals = fetch_active_rentals_for_monitor(mysql_cfg, int(user_id))
+    now = datetime.utcnow()
+    active_ids = {int(row.get("id")) for row in rentals}
+    if state.freeze_cache:
+        state.freeze_cache = {k: v for k, v in state.freeze_cache.items() if k in active_ids}
+    if state.expire_delay_since:
+        state.expire_delay_since = {k: v for k, v in state.expire_delay_since.items() if k in active_ids}
+    if state.expire_delay_next_check:
+        state.expire_delay_next_check = {
+            k: v for k, v in state.expire_delay_next_check.items() if k in active_ids
+        }
+    if state.expire_delay_notified:
+        state.expire_delay_notified = {k for k in state.expire_delay_notified if k in active_ids}
+
+    for row in rentals:
+        account_id = int(row.get("id"))
+        owner = row.get("owner")
+        frozen = bool(row.get("rental_frozen"))
+        prev = state.freeze_cache.get(account_id)
+        if prev is None:
+            state.freeze_cache[account_id] = frozen
+        elif prev != frozen:
+            state.freeze_cache[account_id] = frozen
+            message = RENTAL_FROZEN_MESSAGE if frozen else RENTAL_UNFROZEN_MESSAGE
+            send_message_by_owner(logger, account, owner, message)
+
+    for row in rentals:
+        account_id = int(row.get("id"))
+        owner = row.get("owner")
+        if not owner:
+            _clear_expire_delay_state(state, account_id)
+            continue
+        if row.get("rental_frozen"):
+            continue
+        started = _parse_datetime(row.get("rental_start"))
+        total_minutes = row.get("rental_duration_minutes")
+        if total_minutes is None:
+            total_minutes = int(row.get("rental_duration") or 0) * 60
+        try:
+            total_minutes_int = int(total_minutes or 0)
+        except Exception:
+            total_minutes_int = 0
+        if not started or total_minutes_int <= 0:
+            _clear_expire_delay_state(state, account_id)
+            continue
+        expiry_time = started + timedelta(minutes=total_minutes_int)
+        if now < expiry_time:
+            _clear_expire_delay_state(state, account_id)
+            continue
+        if _should_delay_expire(logger, account, owner, row, state, now):
+            continue
+
+        if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
+            deauthorize_account_sessions(logger, row)
+        released = release_account_in_db(mysql_cfg, account_id, int(user_id))
+        if released:
+            send_message_by_owner(logger, account, owner, RENTAL_EXPIRED_MESSAGE)
+        _clear_expire_delay_state(state, account_id)
 
 
 def get_user_id_by_username(mysql_cfg: dict, username: str) -> int | None:
@@ -1152,9 +1434,15 @@ def run_single_user(logger: logging.Logger) -> None:
 
     runner = Runner(account, disable_message_requests=False)
     logger.info("Listening for new messages...")
-    for event in runner.listen(requests_delay=poll_seconds):
-        if isinstance(event, NewMessageEvent):
-            log_message(logger, account, account.username, None, event)
+    state = RentalMonitorState()
+    while True:
+        updates = runner.get_updates()
+        events = runner.parse_updates(updates)
+        for event in events:
+            if isinstance(event, NewMessageEvent):
+                log_message(logger, account, account.username, None, event)
+        process_rental_monitor(logger, account, account.username, None, state)
+        time.sleep(poll_seconds)
 
 
 def user_worker_loop(
@@ -1168,6 +1456,7 @@ def user_worker_loop(
     golden_key = user.get("golden_key")
     label = f"[{site_username}]"
 
+    state = RentalMonitorState()
     while not stop_event.is_set():
         try:
             if not golden_key:
@@ -1192,6 +1481,7 @@ def user_worker_loop(
                         break
                     if isinstance(event, NewMessageEvent):
                         log_message(logger, account, site_username, user.get("id"), event)
+                process_rental_monitor(logger, account, site_username, user.get("id"), state)
                 time.sleep(poll_seconds)
         except Exception as exc:
             # Avoid logging full HTML bodies from failed FunPay requests.

@@ -47,6 +47,7 @@ class ActiveRentalRecord:
     rental_duration: int
     rental_duration_minutes: Optional[int]
     lot_number: Optional[int]
+    mafile_json: Optional[str]
 
 
 class MySQLAccountRepo:
@@ -244,7 +245,7 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT a.id, a.account_name, a.login, a.owner,
+                SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        l.lot_number
                 FROM accounts a
@@ -265,6 +266,7 @@ class MySQLAccountRepo:
                     rental_duration=int(row.get("rental_duration") or 0),
                     rental_duration_minutes=row.get("rental_duration_minutes"),
                     lot_number=row.get("lot_number"),
+                    mafile_json=row.get("mafile_json"),
                 )
                 for row in rows
             ]
