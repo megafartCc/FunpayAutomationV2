@@ -66,25 +66,6 @@ export type LotCreatePayload = {
   lot_url: string;
 };
 
-export type LotAliasItem = {
-  id: number;
-  lot_number: number;
-  funpay_url: string;
-  workspace_id?: number | null;
-};
-
-export type LotAliasCreatePayload = {
-  lot_number: number;
-  funpay_url: string;
-  workspace_id?: number | null;
-};
-
-export type LotAliasReplacePayload = {
-  lot_number: number;
-  urls: string[];
-  workspace_id?: number | null;
-};
-
 export type ActiveRentalItem = {
   id: number;
   account: string;
@@ -212,16 +193,6 @@ export const api = {
       workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
       { method: "DELETE" },
     ),
-  listLotAliases: (workspaceId?: number) =>
-    request<{ items: LotAliasItem[] }>(withWorkspace("/lot-aliases", workspaceId), { method: "GET" }),
-  createLotAlias: (payload: LotAliasCreatePayload) =>
-    request<LotAliasItem>("/lot-aliases", { method: "POST", body: payload }),
-  deleteLotAlias: (aliasId: number, workspaceId?: number | null) =>
-    request<{ ok: boolean }>(withWorkspace(`/lot-aliases/${aliasId}`, workspaceId), {
-      method: "DELETE",
-    }),
-  replaceLotAliases: (payload: LotAliasReplacePayload) =>
-    request<{ items: LotAliasItem[] }>("/lot-aliases/replace", { method: "POST", body: payload }),
   listActiveRentals: (workspaceId?: number) =>
     request<{ items: ActiveRentalItem[] }>(withWorkspace("/rentals/active", workspaceId), { method: "GET" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),

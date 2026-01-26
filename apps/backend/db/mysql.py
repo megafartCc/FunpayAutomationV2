@@ -217,52 +217,6 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
     except mysql.connector.Error:
         pass
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS lot_aliases (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            workspace_id BIGINT NULL,
-            lot_number INT NOT NULL,
-            funpay_url TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_alias_workspace_url (workspace_id, funpay_url(191)),
-            INDEX idx_alias_user_lot (user_id, lot_number)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        """
-    )
-    try:
-        idx_cursor = conn.cursor(dictionary=True)
-        idx_cursor.execute("SHOW INDEX FROM lot_aliases")
-        index_cols: dict[str, list[tuple[int, str]]] = {}
-        index_unique: dict[str, bool] = {}
-        for row in idx_cursor.fetchall() or []:
-            key = row["Key_name"]
-            index_unique[key] = row["Non_unique"] == 0
-            index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
-        desired_alias_unique = ["workspace_id", "funpay_url"]
-        for key, cols in index_cols.items():
-            if key == "PRIMARY":
-                continue
-            if not index_unique.get(key, False):
-                continue
-            columns = [col for _, col in sorted(cols)]
-            if columns == desired_alias_unique:
-                continue
-            try:
-                cursor.execute(f"ALTER TABLE lot_aliases DROP INDEX `{key}`")
-            except mysql.connector.Error:
-                pass
-    except mysql.connector.Error:
-        pass
-    try:
-        cursor.execute(
-            "ALTER TABLE lot_aliases ADD UNIQUE KEY uniq_alias_workspace_url "
-            "(workspace_id, funpay_url(191))"
-        )
-    except mysql.connector.Error:
-        pass
-
 
 def _table_exists(conn: mysql.connector.MySQLConnection, schema: str, table: str) -> bool:
     cursor = conn.cursor()
@@ -292,7 +246,7 @@ def _migrate_workspace_data(
     base_db_q = _quote_identifier(base_db)
     ws_db_q = _quote_identifier(workspace_db)
     cursor = conn.cursor()
-    for table in ("accounts", "lots", "lot_aliases"):
+    for table in ("accounts", "lots"):
         if not _table_exists(conn, base_db, table):
             continue
         if not _table_exists(conn, workspace_db, table):
@@ -543,56 +497,6 @@ def ensure_schema() -> None:
         except mysql.connector.Error:
             pass
 
-        # Aliases: multiple FunPay URLs per logical lot_number.
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS lot_aliases (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                workspace_id BIGINT NULL,
-                lot_number INT NOT NULL,
-                funpay_url TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uniq_alias_workspace_url (workspace_id, funpay_url(191)),
-                INDEX idx_alias_user_lot (user_id, lot_number),
-                CONSTRAINT fk_alias_user FOREIGN KEY (user_id)
-                    REFERENCES users(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """
-        )
-        # Ensure alias uniqueness is workspace-scoped.
-        try:
-            idx_cursor = conn.cursor(dictionary=True)
-            idx_cursor.execute("SHOW INDEX FROM lot_aliases")
-            index_cols: dict[str, list[tuple[int, str]]] = {}
-            index_unique: dict[str, bool] = {}
-            for row in idx_cursor.fetchall() or []:
-                key = row["Key_name"]
-                index_unique[key] = row["Non_unique"] == 0
-                index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
-            desired_alias_unique = ["workspace_id", "funpay_url"]
-            for key, cols in index_cols.items():
-                if key == "PRIMARY":
-                    continue
-                if not index_unique.get(key, False):
-                    continue
-                columns = [col for _, col in sorted(cols)]
-                if columns == desired_alias_unique:
-                    continue
-                try:
-                    cursor.execute(f"ALTER TABLE lot_aliases DROP INDEX `{key}`")
-                except mysql.connector.Error:
-                    pass
-        except mysql.connector.Error:
-            pass
-        try:
-            cursor.execute(
-                "ALTER TABLE lot_aliases ADD UNIQUE KEY uniq_alias_workspace_url "
-                "(workspace_id, funpay_url(191))"
-            )
-        except mysql.connector.Error:
-            pass
-
         # Seed default workspaces for legacy users.
         cursor.execute("SELECT id, username, golden_key FROM users")
         for row in cursor.fetchall() or []:
@@ -628,25 +532,6 @@ def ensure_schema() -> None:
             JOIN accounts a ON a.id = l.account_id
             SET l.workspace_id = a.workspace_id
             WHERE l.workspace_id IS NULL
-            """
-        )
-
-        # Backfill aliases from existing lot_url columns.
-        cursor.execute(
-            """
-            INSERT IGNORE INTO lot_aliases (user_id, workspace_id, lot_number, funpay_url)
-            SELECT l.user_id, l.workspace_id, l.lot_number, l.lot_url
-            FROM lots l
-            WHERE l.lot_url IS NOT NULL AND l.lot_url <> ''
-            """
-        )
-        cursor.execute(
-            """
-            INSERT IGNORE INTO lot_aliases (user_id, workspace_id, lot_number, funpay_url)
-            SELECT a.user_id, a.workspace_id, l.lot_number, a.lot_url
-            FROM accounts a
-            JOIN lots l ON l.account_id = a.id
-            WHERE a.lot_url IS NOT NULL AND a.lot_url <> ''
             """
         )
 

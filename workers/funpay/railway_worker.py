@@ -731,54 +731,6 @@ def column_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str, column
     return cursor.fetchone() is not None
 
 
-def fetch_lot_alias(
-    mysql_cfg: dict,
-    user_id: int,
-    lot_number: int,
-    workspace_id: int | None = None,
-) -> str | None:
-    """
-    Return a FunPay URL for the given lot_number, preferring the caller's workspace alias.
-    """
-    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
-    conn = mysql.connector.connect(**cfg)
-    try:
-        cursor = conn.cursor()
-        params: list = [user_id, lot_number]
-        workspace_clause = ""
-        if workspace_id is not None:
-            workspace_clause = " AND workspace_id = %s"
-            params.append(workspace_id)
-        cursor.execute(
-            f"""
-            SELECT funpay_url FROM lot_aliases
-            WHERE user_id = %s AND lot_number = %s{workspace_clause}
-            ORDER BY id ASC
-            LIMIT 1
-            """,
-            tuple(params),
-        )
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-        # Fallback to any alias for this lot_number.
-        cursor.execute(
-            """
-            SELECT funpay_url FROM lot_aliases
-            WHERE user_id = %s AND lot_number = %s
-            ORDER BY id ASC
-            LIMIT 1
-            """,
-            (user_id, lot_number),
-        )
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-        return None
-    finally:
-        conn.close()
-
-
 def fetch_available_lot_accounts(
     mysql_cfg: dict,
     user_id: int | None,
@@ -1165,20 +1117,6 @@ def handle_stock_command(
     try:
         accounts = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
 
-        # Enrich with workspace-specific alias if present.
-        if accounts:
-            cache_alias: dict[int, str] = {}
-            for acc in accounts:
-                lot_num = acc.get("lot_number")
-                if lot_num is None:
-                    continue
-                if lot_num in cache_alias:
-                    acc["lot_url"] = cache_alias[lot_num]
-                    continue
-                url = fetch_lot_alias(mysql_cfg, user_id, int(lot_num), workspace_id)
-                if url:
-                    cache_alias[lot_num] = url
-                    acc["lot_url"] = url
     except mysql.connector.Error as exc:
         logger.warning("Stock query failed: %s", exc)
         send_chat_message(logger, account, chat_id, STOCK_DB_MISSING)
