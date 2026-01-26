@@ -138,14 +138,6 @@ LOGGER_CONFIG = {
             "handlers": ["cli_handler", "file_handler"],
             "level": "DEBUG"
         },
-        "TGBot": {
-            "handlers": ["cli_handler", "file_handler"],
-            "level": "DEBUG"
-        },
-        "TeleBot": {
-            "handlers": ["file_handler"],
-            "level": "ERROR",
-            "propagate": "False"
-        }
+        
     }
 }

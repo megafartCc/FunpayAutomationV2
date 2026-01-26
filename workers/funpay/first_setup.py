@@ -5,9 +5,8 @@
 import os
 from configparser import ConfigParser
 import time
-import telebot
 from colorama import Fore, Style
-from Utils.cardinal_tools import validate_proxy, hash_password
+from Utils.cardinal_tools import validate_proxy
 
 # locale#locale#locale
 default_config = {
@@ -22,12 +21,6 @@ default_config = {
         "autoDisable": "0",
         "oldMsgGetMode": "0",
         "locale": "ru"
-    },
-    "Telegram": {
-        "enabled": "0",
-        "token": "",
-        "secretKeyHash": "ХешСекретногоПароля",
-        "blockLogin": "0"
     },
 
     "BlockList": {
@@ -160,42 +153,6 @@ def first_setup():
             config.set("FunPay", "user_agent", user_agent)
         break
 
-    while True:
-        print(
-            f"\n{Fore.MAGENTA}{Style.BRIGHT}┌── {Fore.CYAN}Введи API-токен Telegram-бота (получить его можно у @BotFather). "
-            f"@username бота должен начинаться с \"funpay\". {Fore.RED}(._.){Style.RESET_ALL}")
-        token = input(f"{Fore.MAGENTA}{Style.BRIGHT}└───> {Style.RESET_ALL}").strip()
-        try:
-            if not token or not token.split(":")[0].isdigit():
-                raise Exception("Неправильный формат токена")
-            username = telebot.TeleBot(token).get_me().username
-            if not username.lower().startswith("funpay"):
-                print(
-                    f"\n{Fore.CYAN}{Style.BRIGHT}@username бота должен начинаться с \"funpay\"! {Fore.RED}\(!!˚0˚)/{Style.RESET_ALL}")
-                continue
-        except Exception as ex:
-            s = ""
-            if str(ex):
-                s = f" ({str(ex)})"
-            print(f"\n{Fore.CYAN}{Style.BRIGHT}Попробуй еще раз!{s} {Fore.RED}\(!!˚0˚)/{Style.RESET_ALL}")
-            continue
-        break
-
-    while True:
-        print(
-            f"\n{Fore.MAGENTA}{Style.BRIGHT}┌── {Fore.CYAN}Придумай пароль (его потребует Telegram-бот). Пароль должен содержать более 8 символов, заглавные, строчные буквы и хотя бы одну цифру "
-            f" {Fore.RED}ᴖ̮ ̮ᴖ{Style.RESET_ALL}")
-        password = input(f"{Fore.MAGENTA}{Style.BRIGHT}└───> {Style.RESET_ALL}").strip()
-        if len(password) < 8 or password.lower() == password or password.upper() == password or not any(
-                [i.isdigit() for i in password]):
-            print(
-                f"\n{Fore.CYAN}{Style.BRIGHT}Это плохой пароль. Попробуй еще раз! {Fore.RED}\(!!˚0˚)/{Style.RESET_ALL}")
-            continue
-        break
-
-    config.set("Telegram", "enabled", "1")
-    config.set("Telegram", "token", token)
-    config.set("Telegram", "secretKeyHash", hash_password(password))
 
     while True:
         print(f"\n{Fore.MAGENTA}{Style.BRIGHT}┌── {Fore.CYAN}"
@@ -222,7 +179,6 @@ def first_setup():
 
     print(f"\n{Fore.CYAN}{Style.BRIGHT}Готово! Сейчас я сохраню конфиг и завершу программу! "
           f"{Fore.RED}ʘ>ʘ{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}Запусти меня снова и напиши своему Telegram-боту. "
           f"Все остальное ты сможешь настроить через него. {Fore.RED}ʕ•ᴥ•ʔ{Style.RESET_ALL}")
     with open("configs/_main.cfg", "w", encoding="utf-8") as f:
         config.write(f)

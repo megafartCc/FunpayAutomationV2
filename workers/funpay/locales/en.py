@@ -64,7 +64,7 @@ ar_to_ar = "🤖 Back to autoresponse settings"
 ar_to_mm = "📋 Back to main menu"
 ar_edit_response = "✏️ Edit response"
 ar_edit_notification = "✏️ Edit notification text"
-ar_notification = "{} Telegram notification"
+ar_notification = "{}  notification"
 ar_add_more = "➕ Add more"
 ar_add_another = "➕ Add another"
 
@@ -186,7 +186,7 @@ access_granted = "🔓 Access granted!\n\n" \
                  "🔔 You can set up notifications for <b><u>this chat</u></b> in the settings menu.\n\n" \
                  "⚙️ To open the <i>FunPay Cardinal</i> settings menu, send me /menu."
 
-access_granted_notification = "<b>🚨 ATTENTION! 🚨\n\n\n</b>" * 3 + "\n\n\n🔐 \"<a href=\"tg://user?id={1}\"> {0} </a>\" <b>(ID: {1}) has just accessed the Telegram Control Panel! 🔓</b>"
+access_granted_notification = "<b>🚨 ATTENTION! 🚨\n\n\n</b>" * 3 + "\n\n\n🔐 \"<a href=\"\"> {0} </a>\" <b>(ID: {1}) has just accessed the  Control Panel! 🔓</b>"
 
 param_disabled = "❌ This parameter is disabled globally and cannot be changed for this lot.\n\n" \
                  "❔ Switching global parameters is available in the global switch menu " \
@@ -194,7 +194,7 @@ param_disabled = "❌ This parameter is disabled globally and cannot be changed 
 
 old_mode_help = """<b>New Message Receiving Mode</b>
 ✅ <i>FPC</i> gets the full chat history and sees all data about all new messages.
-✅ <i>FPC</i> can see images in chat and forward them to <i>Telegram</i> chat.
+✅ <i>FPC</i> can see images in chat and forward them to <i></i> chat.
 ✅ <i>FPC</i> can determine exactly who wrote, whether it was you, your interlocutor, or a 3rd party (arbitrator).
 ❌ Because <i>FPC</i> gets the full chat history to detect new messages, the chat becomes "read" (not lit orange).
 
@@ -202,13 +202,13 @@ old_mode_help = """<b>New Message Receiving Mode</b>
 ✅ Chats that you have not personally read remain unread (lit orange).
 ✅ Works a little bit faster than the new mode.
 ❌ <i>FPC</i> doesn't get the full chat history, so it sees only the last message. If the user quickly writes several messages, <i>FPC</i> will see only the last one.
-❌ <i>FPC</i> cannot see images in chat and forward them to <i>Telegram</i> chat.
+❌ <i>FPC</i> cannot see images in chat and forward them to <i></i> chat.
 ❌ <i>FPC</i> cannot determine exactly who wrote: you or the person you are chatting with. If the chat is not read, then the message is from the interlocutor, otherwise it is from you. However, if you are viewing the chat when you receive messages, this logic can sometimes fail. Also, <i>FPC</i> will not be able to determine if a 3rd party (arbitrator) wrote into the chat.
 
 ❗ If you click the <code>More</code> button in a new message notification, <i>FPC</i> will "read" the chat and show the last 15 messages, including images. <i>FPC</i> will also be able to determine who the author of the messages is."""
 
-bot_started = """✅ Telegram bot is running!\n
-✅ You can <b><u>customize configurations</u></b> and <b><u>make full use of the <i>Telegram</i> bot's functionality.</u></b>.\n
+bot_started = """✅  bot is running!\n
+✅ You can <b><u>customize configurations</u></b> and <b><u>make full use of the <i></i> bot's functionality.</u></b>.\n
 ❌ <i>FunPay Cardinal</i> is not initialized yet and none of its functions work.\n
 🔃 As soon as <i>FunPay Cardinal</i> is initialized, this message will change.\n
 📋 If <i>FPC</i> does not initialize for a long time, check the logs with /logs"""
@@ -219,7 +219,7 @@ fpc_init = """✅ <b><u>FunPay Cardinal initialized!</u></b>\n
 💰 <b><i>Balance:</i></b> <code>{}₽, {}$, {}€</code>
 📊 <b><i>Active orders:</i></b>  <code>{}</code>
 
-💬 <b><i>Telegram chat:</i></b> @funpay_cardinal
+💬 <b><i> chat:</i></b> @funpay_cardinal
 🔄 <b><i>Updates:</i></b> @fpc_updates
 🧩 <b><i>Plugins:</i></b> @fpc_plugins
 👨‍💻 <b><i>Developer:</i></b> @woopertail, @sidor0912
@@ -232,7 +232,7 @@ Send the command from below to chat with the user to whom you want to deliver th
 <code>!автовыдача {}</code>"""
 
 about = """<b>🐦 FunPay Cardinal 🐦 v{}</b>\n
-<i>Telegram chat:</i> @funpay_cardinal
+<i> chat:</i> @funpay_cardinal
 <i>Updates:</i> @fpc_updates
 <i>Plugins:</i> @fpc_plugins
 <i>Developer:</i> @woopertail, @sidor0912
@@ -280,7 +280,7 @@ act_edit_watermark = "Enter a new watermark text. For example:\n{}\n" \
                      "<code>FunPay Cardinal</code>\n<code>[FunPay / Cardinal]</code>\n" \
                      "<code>🤖</code>\n<code>🐦</code>\n\n" \
                      "You can tap on the examples to copy and edit them to your liking.\nNote that on FunPay, the emoji " \
-                     "🐦 looks different than in Telegram." \
+                     "🐦 looks different than in ." \
                      "\n\nTo remove the watermark, send <code>-</code>."
 watermark_changed = "✅ The message watermark has been changed."
 watermark_deleted = "✅ The message watermark has been deleted."
@@ -311,7 +311,7 @@ send_backup = "Send me the backup.\n\n<b>⚠️ WARNING! Uploading backups from 
 
 restarting = "Restarting..."
 power_off_0 = """<b><u>Are you sure you want to turn me off?</u></b>\n
-You <b><u>wont be able</u></b> to turn me on via <i>Telegram</i>!"""
+You <b><u>wont be able</u></b> to turn me on via <i></i>!"""
 power_off_1 = "I'll ask again, just in case.\n\n<b><u>Are you sure about this?</u></b>"
 power_off_2 = """Just for the record:
 you have to go to the server or go to your computer (or wherever you have me) and run me manually!"""
@@ -430,8 +430,8 @@ adv_description = """🐦 FunPay Cardinal v{}🐦
 🔄 Auto-recovery of lots after sale
 📦 Auto-deactivation of lots if products are out of stock
 🔝 Permanent online presence
-📲 Notifications in Telegram
-🕹️ Full control panel in Telegram
+📲 Notifications in 
+🕹️ Full control panel in 
 🧩 Plugins
 🌟 And much more...
 
@@ -445,7 +445,7 @@ desc_main = "Select a settings category."
 desc_lang = desc_main
 desc_gs = "Here you can turn the basic <i>FPC</i> functions on and off."
 desc_ns = """Here you can configure notifications.\n
-<b><u>Settings are separate for each <i>Telegram</i> chat!</u></b>\n
+<b><u>Settings are separate for each <i></i> chat!</u></b>\n
 Current chat ID: <code>{}</code>"""
 desc_bl = "Here you can set restrictions for blacklisted users."
 desc_ar = "Here you can add commands or edit existing ones."
@@ -468,7 +468,7 @@ desc_tmplt = "Here you can add and delete answer templates."
 desc_pl = "Here you can get information about the plugins, as well as configure them.\n\n" \
           "⚠️ <b><u>After activating / deactivating / adding / removing a plugin, you must restart the bot!</u></b>" \
           " (/restart)"
-desc_au = "Here you can configure authorization in the Telegram control panel."
+desc_au = "Here you can configure authorization in the  control panel."
 desc_proxy = "Here you can set up the proxy."
 
 # - Commands desc
@@ -503,7 +503,7 @@ v_edit_order_confirm_text = "Enter the text of the order confirmation response."
 v_edit_review_reply_text = "Enter the {} review response text."
 v_edit_delivery_text = "Enter a new delivery text."
 v_edit_response_text = "Enter a new response text."
-v_edit_notification_text = "Enter a new Telegram notification text."
+v_edit_notification_text = "Enter a new  notification text."
 V_new_template = "Enter a text of the new answer template."
 v_list = "Variables list"
 v_date = "<code>$date</code> - current date in <i>DD.MM.YYYY</i> format."
@@ -545,10 +545,10 @@ exc_cfg_parse_err = "Error in {} config, in the [{}] section: {}"
 exc_plugin_field_not_found = "Failed to load the plugin \"{}\": required field \"{}\" does not exists."
 
 # Logs
-log_tg_initialized = "$MAGENTATelegram bot initialized."
-log_tg_started = "$CYANTelegram bot $YELLOW@{}$CYAN started."
-log_tg_handler_error = "An error occurred while executing the Telegram bot handler."
-log_tg_update_error = "An error ({}) occurred while getting Telegram updates (probably an invalid token?)."
+log_tg_initialized = "$MAGENTA bot initialized."
+log_tg_started = "$CYAN bot $YELLOW@{}$CYAN started."
+log_tg_handler_error = "An error occurred while executing the  bot handler."
+log_tg_update_error = "An error ({}) occurred while getting  updates (probably an invalid token?)."
 log_tg_notification_error = "An error occurred while sending a notification to chat $YELLOW{}$RESET."
 log_access_attempt = "$MAGENTA@{} (ID: {})$RESET tried to access the control panel. I'm holding him back as best I can!"
 log_click_attempt = "$MAGENTA@{} (ID: {})$RESET presses the control panel buttons in $MAGENTA@{} (ID: {})$RESET. He won't make it!"
@@ -613,7 +613,7 @@ crd_profile_get_timeout_err = "Failed to load account lots data: timeout exceede
 crd_profile_get_unexpected_err = "An unexpected error occurred while retrieving data about the account's lots."
 crd_profile_get_too_many_attempts_err = "An error occurred while getting data about the lots of the account: the number of attempts ({}) was exceeded."
 crd_profile_updated = "Updated the information about profile lots $YELLOW({})$RESET and categories $YELLOW({})$RESET."
-crd_tg_profile_updated = "Updated the information about profile lots $YELLOW({})$RESET and categories $YELLOW({})$RESET (Telegram Control Panel)."
+crd_tg_profile_updated = "Updated the information about profile lots $YELLOW({})$RESET and categories $YELLOW({})$RESET ( Control Panel)."
 crd_raise_time_err = "The $CYAN\"{}\"$RESET category lots could not be raised. FunPay says: \"{}\". Next attempt in {}."
 crd_raise_unexpected_err = "An unexpected error occurred while trying to raise $CYAN\"{}\"$RESET catgory lots. Pause for 10 seconds."
 crd_raise_status_code_err = "Error {} when raising lots of the $CYAN\"{}\"$RESET category. Pause for 1 minute..."
@@ -638,3 +638,4 @@ crd_uuid_already_registered = "UUID {} ({}) is already registered."
 crd_handlers_registered = "The handlers from $YELLOW{}.py$RESET are registered."
 crd_handler_err = "An error occurred in the handler's execution."
 crd_tg_au_err = "Failed to update the message with user information: {}. I will try without a link."
+

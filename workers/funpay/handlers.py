@@ -13,7 +13,6 @@ from FunPayAPI.types import OrderShortcut, Order
 from FunPayAPI import exceptions, utils as fp_utils
 from FunPayAPI.updater.events import *
 
-from tg_bot import utils, keyboards
 from Utils import cardinal_tools
 from locales.localizer import Localizer
 from threading import Thread
@@ -208,122 +207,6 @@ def send_response_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChang
     Thread(target=c.send_message, args=(chat_id, response_text, chat_name), daemon=True).start()
 
 
-def old_send_new_msg_notification_handler(c: Cardinal, e: LastChatMessageChangedEvent):
-    if any([not c.old_mode_enabled, not c.telegram, not e.chat.unread,
-            c.bl_msg_notification_enabled and e.chat.name in c.blacklist,
-            e.chat.last_message_type is not MessageTypes.NON_SYSTEM, str(e.chat).strip().lower() in c.AR_CFG.sections(),
-            str(e.chat).startswith("!автовыдача")]):
-        return
-    user = e.chat.name
-    if user in c.blacklist:
-        user = f"🚷 {user}"
-    elif e.chat.last_by_bot:
-        user = f"🐦 {user}"
-    else:
-        user = f"👤 {user}"
-    text = f"<i><b>{user}: </b></i><code>{utils.escape(str(e.chat))}</code>"
-    kb = keyboards.reply(e.chat.id, e.chat.name, extend=True)
-    Thread(target=c.telegram.send_notification, args=(text, kb, utils.NotificationTypes.new_message),
-           daemon=True).start()
-
-
-def send_new_msg_notification_handler(c: Cardinal, e: NewMessageEvent) -> None:
-    """
-    Отправляет уведомление о новом сообщении в телеграм.
-    """
-    global LAST_STACK_ID
-    if not c.telegram or e.stack.id() == LAST_STACK_ID:
-        return
-    LAST_STACK_ID = e.stack.id()
-
-    chat_id, chat_name = e.message.chat_id, e.message.chat_name
-    if c.bl_msg_notification_enabled and chat_name in c.blacklist:
-        return
-
-    events = []
-    nm, m, f, b = False, False, False, False
-    for i in e.stack.get_stack():
-        if i.message.author_id == 0:
-            if c.include_fp_msg_enabled:
-                events.append(i)
-                f = True
-        elif i.message.by_bot:
-            if c.include_bot_msg_enabled:
-                events.append(i)
-                b = True
-        elif i.message.author_id == c.account.id:
-            if c.include_my_msg_enabled:
-                events.append(i)
-                m = True
-        else:
-            events.append(i)
-            nm = True
-    if not events:
-        return
-
-    if [m, f, b, nm].count(True) == 1 and \
-            any([m and not c.only_my_msg_enabled, f and not c.only_fp_msg_enabled, b and not c.only_bot_msg_enabled]):
-        return
-
-    text = ""
-    last_message_author_id = -1
-    last_by_bot = False
-    last_badge = None
-    last_by_vertex = False
-    for i in events:
-        message_text = str(e.message)
-        if message_text.strip().lower() in c.AR_CFG.sections() and len(events) < 2:
-            return
-        elif message_text.startswith("!автовыдача") and len(events) < 2:
-            return
-        if i.message.author_id == last_message_author_id and i.message.by_bot == last_by_bot and \
-                i.message.badge == last_badge and i.message.by_vertex == last_by_vertex:
-            author = ""
-        elif i.message.author_id == c.account.id:
-            author = f"<i><b>🤖 {_('you')} (<i>FPC</i>):</b></i> " if i.message.by_bot else f"<i><b>🫵 {_('you')}:</b></i> "
-            if i.message.is_autoreply:
-                author = f"<i><b>📦 {_('you')} ({i.message.badge}):</b></i> "
-        elif i.message.author_id == 0:
-            author = f"<i><b>🔵 {i.message.author}: </b></i>"
-        elif i.message.is_employee:
-            author = f"<i><b>🆘 {i.message.author} ({i.message.badge}): </b></i>"
-        elif i.message.author == i.message.chat_name:
-            author = f"<i><b>👤 {i.message.author}: </b></i>"
-            if i.message.is_autoreply:
-                author = f"<i><b>🛍️ {i.message.author} ({i.message.badge}):</b></i> "
-            elif i.message.author in c.blacklist:
-                author = f"<i><b>🚷 {i.message.author}: </b></i>"
-            elif i.message.by_bot:
-                author = f"<i><b>🐦 {i.message.author}: </b></i>"
-            elif i.message.by_vertex:
-                author = f"<i><b>🐺 {i.message.author}: </b></i>"
-        else:
-            author = f"<i><b>🆘 {i.message.author} {_('support')}: </b></i>"
-        msg_text = f"<code>{utils.escape(i.message.text)}</code>" if i.message.text else \
-            f"<a href=\"{i.message.image_link}\">" \
-            f"{c.show_image_name and not (i.message.author_id == c.account.id and i.message.by_bot) and i.message.image_name or _('photo')}</a>"
-        text += f"{author}{msg_text}\n\n"
-        last_message_author_id = i.message.author_id
-        last_by_bot = i.message.by_bot
-        last_by_vertex = i.message.by_vertex
-        last_badge = i.message.badge
-    kb = keyboards.reply(chat_id, chat_name, extend=True)
-    Thread(target=c.telegram.send_notification, args=(text, kb, utils.NotificationTypes.new_message),
-           daemon=True).start()
-
-
-def send_review_notification(c: Cardinal, order: Order, chat_id: int, reply_text: str | None):
-    if not c.telegram:
-        return
-    reply_text = _("ntfc_review_reply_text").format(utils.escape(reply_text)) if reply_text else ""
-    Thread(target=c.telegram.send_notification,
-           args=(_("ntfc_new_review").format('⭐' * order.review.stars, order.id, utils.escape(order.review.text),
-                                             reply_text),
-                 keyboards.new_order(order.id, order.buyer_username, chat_id),
-                 utils.NotificationTypes.review),
-           daemon=True).start()
-
-
 def process_review_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChangedEvent):
     if not c.old_mode_enabled:
         if isinstance(e, LastChatMessageChangedEvent):
@@ -387,40 +270,8 @@ def process_review_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChan
             except:
                 logger.error(f"Произошла ошибка при ответе на отзыв {order.id}.")  # locale
                 logger.debug("TRACEBACK", exc_info=True)
-        send_review_notification(c, order, chat_id, reply_text)
 
     Thread(target=send_reply, daemon=True).start()
-
-
-def send_command_notification_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChangedEvent):
-    """
-    Отправляет уведомление о введенной команде в телеграм.
-    """
-    if not c.telegram:
-        return
-    if not c.old_mode_enabled:
-        if isinstance(e, LastChatMessageChangedEvent):
-            return
-        obj, message_text = e.message, str(e.message)
-        chat_id, chat_name, username = e.message.chat_id, e.message.chat_name, e.message.author
-    else:
-        obj, message_text = e.chat, str(e.chat)
-        chat_id, chat_name, username = obj.id, obj.name, obj.name if obj.unread else c.account.username
-
-    if c.bl_cmd_notification_enabled and username in c.blacklist:
-        return
-    command = message_text.strip().lower()
-    if (command not in c.AR_CFG or not c.AR_CFG[command].getboolean("telegramNotification")
-            or not c.AR_CFG[command].getboolean("enabled")):
-        return
-
-    if not c.AR_CFG[command].get("notificationText"):
-        text = f"🧑‍💻 Пользователь <b><i>{username}</i></b> ввел команду <code>{utils.escape(command)}</code>."  # locale
-    else:
-        text = cardinal_tools.format_msg_text(c.AR_CFG[command]["notificationText"], obj)
-
-    Thread(target=c.telegram.send_notification, args=(text, keyboards.reply(chat_id, chat_name),
-                                                      utils.NotificationTypes.command), daemon=True).start()
 
 
 def test_auto_delivery_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChangedEvent):
@@ -462,20 +313,6 @@ def test_auto_delivery_handler(c: Cardinal, e: NewMessageEvent | LastChatMessage
     c.run_handlers(c.new_order_handlers, (c, fake_event,))
 
 
-def send_categories_raised_notification_handler(c: Cardinal, cat: types.Category, error_text: str = "") -> None:
-    """
-    Отправляет уведомление о поднятии лотов в Telegram.
-    """
-    if not c.telegram:
-        return
-
-    text = f"""⤴️<b><i>Поднял все лоты категории</i></b> <code>{cat.name}</code>\n<tg-spoiler>{error_text}</tg-spoiler>"""  # locale
-    Thread(target=c.telegram.send_notification,
-           args=(text,),
-           kwargs={"notification_type": utils.NotificationTypes.lots_raise}, daemon=True).start()
-
-
-# Изменен список ордеров (REGISTER_TO_ORDERS_LIST_CHANGED)
 def get_lot_config_by_name(c: Cardinal, name: str) -> configparser.SectionProxy | None:
     """
     Ищет секцию лота в конфиге автовыдачи.
@@ -552,38 +389,6 @@ def setup_event_attributes_handler(c: Cardinal, e: NewOrderEvent, *args):
         logger.info("Лот найден в конфиге авто-выдачи!")  # todo
 
 
-def send_new_order_notification_handler(c: Cardinal, e: NewOrderEvent, *args):
-    """
-    Отправляет уведомления о новом заказе в телеграм.
-    """
-    if not c.telegram:
-        return
-    if e.order.buyer_username in c.blacklist and c.MAIN_CFG["BlockList"].getboolean("blockNewOrderNotification"):
-        return
-    if not (config_obj := getattr(e, "config_section_obj")):
-        delivery_info = _("ntfc_new_order_not_in_cfg")
-    else:
-        if not c.autodelivery_enabled:
-            delivery_info = _("ntfc_new_order_ad_disabled")
-        elif config_obj.getboolean("disable"):
-            delivery_info = _("ntfc_new_order_ad_disabled_for_lot")
-        elif c.bl_delivery_enabled and e.order.buyer_username in c.blacklist:
-            delivery_info = _("ntfc_new_order_user_blocked")
-        else:
-            delivery_info = _("ntfc_new_order_will_be_delivered")
-    text = _("ntfc_new_order", f"{utils.escape(e.order.description)}, {utils.escape(e.order.subcategory_name)}",
-             e.order.buyer_username, f"{e.order.price} {e.order.currency}", e.order.id, delivery_info)
-
-    chat = c.account.get_chat_by_name(e.order.buyer_username)
-    if chat:
-        chat_id = chat.id
-    else:
-        chat_id = e.order.chat_id
-    keyboard = keyboards.new_order(e.order.id, e.order.buyer_username, chat_id)
-    Thread(target=c.telegram.send_notification, args=(text, keyboard, utils.NotificationTypes.new_order),
-           daemon=True).start()
-
-
 def deliver_goods(c: Cardinal, e: NewOrderEvent, *args):
     chat = c.account.get_chat_by_name(e.order.buyer_username)
     if chat:
@@ -647,25 +452,6 @@ def deliver_product_handler(c: Cardinal, e: NewOrderEvent, *args) -> None:
 
 
 # REGISTER_TO_POST_DELIVERY
-def send_delivery_notification_handler(c: Cardinal, e: NewOrderEvent):
-    """
-    Отправляет уведомление в телеграм об отправке товара.
-    """
-    if c.telegram is None:
-        return
-
-    if getattr(e, "error"):
-        text = f"""❌ <code>{getattr(e, "error_text")}</code>"""
-    else:
-        amount = "<b>∞</b>" if getattr(e, "goods_left") == -1 else f"<code>{getattr(e, 'goods_left')}</code>"
-        text = f"""✅ Успешно выдал товар для ордера <code>{e.order.id}</code>.\n
-🛒 <b><i>Товар:</i></b>
-<code>{utils.escape(getattr(e, "delivery_text"))}</code>\n
-📋 <b><i>Осталось товаров: </i></b>{amount}"""  # locale
-
-    Thread(target=c.telegram.send_notification, args=(text,),
-           kwargs={"notification_type": utils.NotificationTypes.delivery}, daemon=True).start()
-
 def update_current_lots(c: Cardinal, e: NewOrderEvent):
     logger.info("Получаю информацию о лотах...")  # locale
     attempts = 3
@@ -796,22 +582,6 @@ def update_lots_states(cardinal: Cardinal, event: NewOrderEvent):
                     restored.append(lot.description)
             time.sleep(0.5)
 
-    if deactivated:
-        lots = "\n".join(deactivated)  # locale
-        text = f"""🔴 <b>Деактивировал лоты:</b>
-        
-<code>{lots}</code>"""
-        Thread(target=cardinal.telegram.send_notification, args=(text,),
-               kwargs={"notification_type": utils.NotificationTypes.lots_deactivate}, daemon=True).start()
-    if restored:
-        lots = "\n".join(restored)  # locale
-        text = f"""🟢 <b>Активировал лоты:</b>
-
-<code>{lots}</code>"""
-        Thread(target=cardinal.telegram.send_notification, args=(text,),
-               kwargs={"notification_type": utils.NotificationTypes.lots_restore}, daemon=True).start()
-
-
 def update_profiles_handler(cardinal: Cardinal, event: NewOrderEvent | OrdersListChangedEvent, *args):
     """Обновляет информацию о профилях и состояния лотов в отдельном потоке."""
     def f(c: Cardinal, e: NewOrderEvent):
@@ -844,74 +614,43 @@ def send_thank_u_message_handler(cardinal: Cardinal, event: OrderStatusChangedEv
            kwargs={'watermark': cardinal.MAIN_CFG["OrderConfirm"].getboolean("watermark")}, daemon=True).start()
 
 
-def send_order_confirmed_notification_handler(cardinal: Cardinal, event: OrderStatusChangedEvent):
-    """
-    Отправляет уведомление о подтверждении заказа в Telegram.
-    """
-    if not event.order.status == types.OrderStatuses.CLOSED:
-        return
-
-    chat = cardinal.account.get_chat_by_name(event.order.buyer_username)
-    if chat:
-        chat_id = chat.id
-    else:
-        chat_id = event.order.chat_id
-    Thread(target=cardinal.telegram.send_notification,  # locale
-           args=(
-               f"""🪙 Пользователь <a href="https://funpay.com/chat/?node={chat_id}">{event.order.buyer_username}</a> """
-               f"""подтвердил выполнение заказа <code>{event.order.id}</code>. (<code>{event.order.price} {event.order.currency}</code>)""",
-               keyboards.new_order(event.order.id, event.order.buyer_username, chat_id),
-               utils.NotificationTypes.order_confirmed),
-           daemon=True).start()
-
-
-def send_bot_started_notification_handler(c: Cardinal, *args):
-    """
-    Отправляет уведомление о запуске бота в телеграм.
-    """
-    if c.telegram is None:
-        return
-    text = _("fpc_init", c.VERSION, c.account.username, c.account.id,
-             c.balance.total_rub, c.balance.total_usd, c.balance.total_eur, c.account.active_sales)
-    for i in c.telegram.init_messages:
-        try:
-            c.telegram.bot.edit_message_text(text, i[0], i[1])
-        except:
-            continue
-
-
 BIND_TO_INIT_MESSAGE = [save_init_chats_handler, update_threshold_on_initial_chat]
 
-BIND_TO_LAST_CHAT_MESSAGE_CHANGED = [old_log_msg_handler,
-                                     greetings_handler,
-                                     update_threshold_on_last_message_change,
-                                     add_old_user_handler,
-                                     send_response_handler,
-                                     process_review_handler,
-                                     old_send_new_msg_notification_handler,
-                                     send_command_notification_handler,
-                                     test_auto_delivery_handler]
+BIND_TO_LAST_CHAT_MESSAGE_CHANGED = [
+    old_log_msg_handler,
+    greetings_handler,
+    update_threshold_on_last_message_change,
+    add_old_user_handler,
+    send_response_handler,
+    process_review_handler,
+    test_auto_delivery_handler,
+]
 
-BIND_TO_NEW_MESSAGE = [log_msg_handler,
-                       greetings_handler,
-                       update_threshold_on_last_message_change,
-                       add_old_user_handler,
-                       send_response_handler,
-                       process_review_handler,
-                       send_new_msg_notification_handler,
-                       send_command_notification_handler,
-                       test_auto_delivery_handler]
+BIND_TO_NEW_MESSAGE = [
+    log_msg_handler,
+    greetings_handler,
+    update_threshold_on_last_message_change,
+    add_old_user_handler,
+    send_response_handler,
+    process_review_handler,
+    test_auto_delivery_handler,
+]
 
-BIND_TO_POST_LOTS_RAISE = [send_categories_raised_notification_handler]
+BIND_TO_POST_LOTS_RAISE: list = []
 
 # BIND_TO_ORDERS_LIST_CHANGED = [update_profiles_handler]
 
-BIND_TO_NEW_ORDER = [log_new_order_handler, setup_event_attributes_handler,
-                     send_new_order_notification_handler, deliver_product_handler,
-                     update_profiles_handler]
+BIND_TO_NEW_ORDER = [
+    log_new_order_handler,
+    setup_event_attributes_handler,
+    deliver_product_handler,
+    update_profiles_handler,
+]
 
-BIND_TO_ORDER_STATUS_CHANGED = [send_thank_u_message_handler, send_order_confirmed_notification_handler]
+BIND_TO_ORDER_STATUS_CHANGED = [send_thank_u_message_handler]
 
-BIND_TO_POST_DELIVERY = [send_delivery_notification_handler]
+BIND_TO_POST_DELIVERY: list = []
 
-BIND_TO_POST_START = [send_bot_started_notification_handler]
+BIND_TO_POST_START: list = []
+
+

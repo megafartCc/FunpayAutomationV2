@@ -9,7 +9,6 @@ import os
 from Utils.exceptions import (ParamNotFoundError, EmptyValueError, ValueNotValidError, SectionNotFoundError,
                               ConfigParseError, ProductsFileNotFoundError, NoProductVarError,
                               SubCommandAlreadyExists, DuplicateSectionErrorWrapper)
-from Utils.cardinal_tools import hash_password
 
 
 def check_param(param_name: str, section: SectionProxy, valid_values: list[str | None] | None = None,
@@ -79,13 +78,6 @@ def load_main_config(config_path: str):
             "oldMsgGetMode": ["0", "1"],
             "keepSentMessagesUnread": ["0", "1"],
             "locale": ["ru", "en", "uk"]
-        },
-
-        "Telegram": {
-            "enabled": ["0", "1"],
-            "token": "any+empty",
-            "secretKeyHash": "any",
-            "blockLogin": ["0", "1"]
         },
 
         "BlockList": {
@@ -200,17 +192,6 @@ def load_main_config(config_path: str):
                 config.set("NewMessageView", "showImageName", "1")
                 with open("configs/_main.cfg", "w", encoding="utf-8") as f:
                     config.write(f)
-            elif section_name == "Telegram" and param_name == "blockLogin" and \
-                    param_name not in config[section_name]:
-                config.set("Telegram", "blockLogin", "0")
-                with open("configs/_main.cfg", "w", encoding="utf-8") as f:
-                    config.write(f)
-            elif section_name == "Telegram" and param_name == "secretKeyHash" and \
-                    param_name not in config[section_name]:
-                config.set(section_name, "secretKeyHash", hash_password(config[section_name]["secretKey"]))
-                config.remove_option(section_name, "secretKey")
-                with open("configs/_main.cfg", "w", encoding="utf-8") as f:
-                    config.write(f)
             elif section_name == "FunPay" and param_name == "locale" and \
                     param_name not in config[section_name]:
                 config.set(section_name, "locale", "ru")
@@ -259,7 +240,6 @@ def load_auto_response_config(config_path: str):
     for command in config.sections():
         try:
             check_param("response", config[command])
-            check_param("telegramNotification", config[command], valid_values=["0", "1"], raise_if_not_exists=False)
             check_param("enabled", config[command], valid_values=["0", "1"], raise_if_not_exists=False)
             check_param("notificationText", config[command], raise_if_not_exists=False)
         except (ParamNotFoundError, EmptyValueError, ValueNotValidError) as e:

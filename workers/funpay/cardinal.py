@@ -7,8 +7,6 @@ from FunPayAPI.common.enums import SubCategoryTypes
 if TYPE_CHECKING:
     from configparser import ConfigParser
 
-from tg_bot import auto_response_cp, config_loader_cp, auto_delivery_cp, templates_cp, plugins_cp, file_uploader, \
-    authorized_users_cp, proxy_cp, default_cp
 from types import ModuleType
 import Utils.exceptions
 from uuid import UUID
@@ -22,14 +20,11 @@ import random
 import time
 import sys
 import os
-from pip._internal.cli.main import main
 import FunPayAPI
 import handlers
-import announcements
 from locales.localizer import Localizer
 from FunPayAPI import utils as fp_utils
 from Utils import cardinal_tools
-import tg_bot.bot
 
 from threading import Thread
 
@@ -126,7 +121,6 @@ class Cardinal(object):
                                          self.MAIN_CFG["FunPay"]["user_agent"],
                                          proxy=self.proxy)
         self.runner: FunPayAPI.Runner | None = None
-        self.telegram: tg_bot.bot.TGBot | None = None
 
         self.running = False
         self.run_id = 0
@@ -137,8 +131,6 @@ class Cardinal(object):
         self.raised_time = {}  # Время последнего поднятия категории {id игры: время последнего поднятия}
         self.__exchange_rates = {}  # Курс валют {(валюта1, валюта2): (курс, время обновления)}
         self.profile: FunPayAPI.types.UserProfile | None = None  # FunPay профиль для всего кардинала (+ хэндлеров)
-        self.tg_profile: FunPayAPI.types.UserProfile | None = None  # FunPay профиль (для Telegram-ПУ)
-        self.last_tg_profile_update = datetime.datetime.now()  # Последнее время обновления профиля для TG-ПУ
         self.curr_profile: FunPayAPI.types.UserProfile | None = None  # Текущий профиль (для восст. / деакт. лотов.)
         # Тег последнего event'а, после которого обновлялся self.current_profile
         self.curr_profile_last_tag: str | None = None
@@ -228,7 +220,7 @@ class Cardinal(object):
             logger.warning(_("crd_try_again_in_n_secs", 2))
             time.sleep(2)
 
-    def __update_profile(self, infinite_polling: bool = True, attempts: int = 0, update_telegram_profile: bool = True,
+    def __update_profile(self, infinite_polling: bool = True, attempts: int = 0,
                          update_main_profile: bool = True) -> bool:
         """
         Загружает данные о лотах категориях аккаунта
@@ -236,7 +228,6 @@ class Cardinal(object):
         :param infinite_polling: бесконечно посылать запросы, пока не будет получен ответ (игнорировать макс. кол-во
         попыток)
         :param attempts: максимальное кол-во попыток.
-        :param update_telegram_profile: обновить ли информацию о профиле для TG ПУ?
         :param update_main_profile: обновить ли информацию о профиле для всего кардинала (+ хэндлеров)?
 
         :return: True, если информация обновлена, False, если превышено макс. кол-во попыток.
@@ -267,18 +258,7 @@ class Cardinal(object):
             self.curr_profile = profile
             self.lots_ids = [i.id for i in profile.get_lots()]
             logger.info(_("crd_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
-        if update_telegram_profile:
-            self.tg_profile = profile
-            self.last_telegram_lots_update = datetime.datetime.now()
-            logger.info(_("crd_tg_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
         return True
-
-    def __init_telegram(self) -> None:
-        """
-        Инициализирует Telegram бота.
-        """
-        self.telegram = tg_bot.bot.TGBot(self)
-        self.telegram.init()
 
     def get_balance(self, attempts: int = 3) -> FunPayAPI.types.Balance:
         subcategories = self.account.get_sorted_subcategories()[FunPayAPI.enums.SubCategoryTypes.COMMON]
@@ -635,40 +615,13 @@ class Cardinal(object):
     # Управление процессом
     def init(self):
         """
-        Инициализирует кардинал: регистрирует хэндлеры, инициализирует и запускает Telegram бота,
-        получает данные аккаунта и профиля.
+        Инициализирует кардинал: регистрирует хэндлеры, получает данные аккаунта и профиля.
         """
         self.add_handlers_from_plugin(handlers)
-        self.add_handlers_from_plugin(announcements)
         self.load_plugins()
         self.add_handlers()
 
-        if self.MAIN_CFG["Telegram"].getboolean("enabled"):
-            self.__init_telegram()
-            for module in [auto_response_cp, auto_delivery_cp, config_loader_cp, templates_cp, plugins_cp,
-                           file_uploader, authorized_users_cp, proxy_cp, default_cp]:
-                self.add_handlers_from_plugin(module)
-
         self.run_handlers(self.pre_init_handlers, (self,))
-
-        if self.MAIN_CFG["Telegram"].getboolean("enabled"):
-            self.telegram.setup_commands()
-            try:
-                self.telegram.edit_bot()
-            except AttributeError:  # todo убрать когда-то
-                logger.warning("Произошла ошибка при изменении бота Telegram. Обновляю библиотеку...")
-                logger.debug("TRACEBACK", exc_info=True)
-                try:
-                    main(["install", "-U", "pytelegrambotapi==4.15.2"])
-                    logger.info("Библиотека обновлена.")
-                except:
-                    logger.warning("Произошла ошибка при обновлении библиотеки.")
-                    logger.debug("TRACEBACK", exc_info=True)
-            except:
-                logger.warning("Произошла ошибка при изменении бота Telegram.")
-                logger.debug("TRACEBACK", exc_info=True)
-
-            Thread(target=self.telegram.run, daemon=True).start()
 
         self.__init_account()
         self.runner = FunPayAPI.Runner(self.account, self.old_mode_enabled)
@@ -874,25 +827,6 @@ class Cardinal(object):
                 logger.debug("TRACEBACK", exc_info=True)
                 continue
 
-    def add_telegram_commands(self, uuid: str, commands: list[tuple[str, str, bool]]):
-        """
-        Добавляет команды в список команд плагина.
-        [
-            ("команда1", "описание команды", Добавлять ли в меню команд (True / False)),
-            ("команда2", "описание команды", Добавлять ли в меню команд (True / False))
-        ]
-
-        :param uuid: UUID плагина.
-        :param commands: список команд (без "/")
-        """
-        if uuid not in self.plugins:
-            return
-
-        for i in commands:
-            self.plugins[uuid].commands[i[0]] = i[1]
-            if i[2] and self.telegram:
-                self.telegram.add_command_to_menu(i[0], i[1])
-
     def toggle_plugin(self, uuid):
         """
         Активирует / деактивирует плагин.
@@ -986,6 +920,3 @@ class Cardinal(object):
     def only_bot_msg_enabled(self) -> bool:
         return self.MAIN_CFG["NewMessageView"].getboolean("notifyOnlyBotMessages")
 
-    @property
-    def block_tg_login(self) -> bool:
-        return self.MAIN_CFG["Telegram"].getboolean("blockLogin")
