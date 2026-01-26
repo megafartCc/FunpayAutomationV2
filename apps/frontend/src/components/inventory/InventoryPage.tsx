@@ -13,6 +13,8 @@ type AccountRow = {
   mmr: number | string;
   workspaceId?: number | null;
   workspaceName?: string | null;
+  lastRentedWorkspaceId?: number | null;
+  lastRentedWorkspaceName?: string | null;
   owner?: string | null;
   rentalStart?: string | null;
   rentalDuration?: number;
@@ -34,6 +36,8 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   mmr: item.mmr ?? "-",
   workspaceId: item.workspace_id ?? null,
   workspaceName: item.workspace_name ?? null,
+  lastRentedWorkspaceId: item.last_rented_workspace_id ?? null,
+  lastRentedWorkspaceName: item.last_rented_workspace_name ?? null,
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
   rentalDuration: item.rental_duration ?? 0,
@@ -80,6 +84,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     return "Workspace";
   };
 
+  const formatWorkspaceLabel = (workspaceName?: string | null, workspaceId?: number | null) => {
+    const label = resolveWorkspaceName(workspaceName, workspaceId);
+    return workspaceId ? `${label} (ID ${workspaceId})` : label;
+  };
+
   const selectedAccount = useMemo(
     () => accounts.find((acc) => acc.id === selectedId) ?? null,
     [accounts, selectedId],
@@ -89,8 +98,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setLoading(true);
     try {
       if (selectedWorkspaceId === "all") {
-        setAccounts([]);
-        setError("Select a workspace to view accounts.");
+        const res = await api.listAccounts();
+        setAccounts((res.items || []).map(mapAccount));
+        setError(null);
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
@@ -156,7 +166,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     }
     setAccountActionBusy(true);
     try {
-      await api.assignAccount(selectedAccount.id, owner, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.assignAccount(selectedAccount.id, owner, workspaceId);
       onToast?.("Rental assigned.");
       setAssignOwner("");
       await loadAccounts();
@@ -199,7 +213,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
     setAccountActionBusy(true);
     try {
-      await api.updateAccount(selectedAccount.id, payload, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.updateAccount(selectedAccount.id, payload, workspaceId);
       onToast?.("Account updated.");
       await loadAccounts();
     } catch (err) {
@@ -218,7 +236,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     if (accountControlBusy) return;
     setAccountControlBusy(true);
     try {
-      await api.freezeAccount(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.freezeAccount(selectedAccount.id, nextFrozen, workspaceId);
       onToast?.(nextFrozen ? "Account frozen." : "Account unfrozen.");
       await loadAccounts();
     } catch (err) {
@@ -238,7 +260,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     if (!window.confirm(`Delete ${selectedAccount.name}?`)) return;
     setAccountControlBusy(true);
     try {
-      await api.deleteAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.deleteAccount(selectedAccount.id, workspaceId);
       onToast?.("Account deleted.");
       await loadAccounts();
     } catch (err) {
@@ -301,8 +327,15 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     <span>Login: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
+                    <span>Home workspace: {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}</span>
                     <span>
-                      Workspace: {resolveWorkspaceName(selectedAccount.workspaceName, selectedAccount.workspaceId)}
+                      Last rented:{" "}
+                      {selectedAccount.lastRentedWorkspaceId
+                        ? formatWorkspaceLabel(
+                            selectedAccount.lastRentedWorkspaceName,
+                            selectedAccount.lastRentedWorkspaceId,
+                          )
+                        : "-"}
                     </span>
                     <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
                     <span>Duration: {hoursLabel}</span>
@@ -358,7 +391,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
                       <div className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                        {resolveWorkspaceName(selectedAccount.workspaceName, selectedAccount.workspaceId)}
+                        {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}
                       </div>
                     </div>
                     <input
@@ -526,9 +559,17 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                         <div className="truncate font-semibold leading-tight text-neutral-900" title={acc.name || "Account"}>
                           {acc.name || "Account"}
                         </div>
-                        <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          {resolveWorkspaceName(acc.workspaceName, acc.workspaceId)}
-                        </span>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Home: {formatWorkspaceLabel(acc.workspaceName, acc.workspaceId)}
+                          </span>
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Last rented:{" "}
+                            {acc.lastRentedWorkspaceId
+                              ? formatWorkspaceLabel(acc.lastRentedWorkspaceName, acc.lastRentedWorkspaceId)
+                              : "-"}
+                          </span>
+                        </div>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.login || ""}>
                         {acc.login || ""}
