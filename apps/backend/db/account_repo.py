@@ -6,7 +6,7 @@ from typing import List, Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import _pool
+from db.mysql import get_workspace_connection, list_workspace_ids_for_user
 
 
 @dataclass
@@ -56,6 +56,9 @@ class ActiveRentalRecord:
 
 
 class MySQLAccountRepo:
+    def _get_conn(self, workspace_id: int) -> mysql.connector.MySQLConnection:
+        return get_workspace_connection(workspace_id)
+
     def _column_exists(self, cursor: mysql.connector.cursor.MySQLCursor, column: str) -> bool:
         cursor.execute(
             "SELECT 1 FROM information_schema.columns "
@@ -64,14 +67,16 @@ class MySQLAccountRepo:
         )
         return cursor.fetchone() is not None
 
-    def get_by_id(self, account_id: int, user_id: int) -> Optional[dict]:
-        conn = _pool.get_connection()
+    def get_by_id(self, account_id: int, user_id: int, workspace_id: int | None = None) -> Optional[dict]:
+        if workspace_id is None:
+            return None
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
             cursor = conn.cursor(dictionary=True)
             columns = (
-                "a.id, a.user_id, a.workspace_id, w.name AS workspace_name, "
+                "a.id, a.user_id, a.workspace_id, "
                 "a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json, "
                 "owner, rental_start, rental_duration, rental_duration_minutes, account_frozen, rental_frozen"
             )
@@ -79,68 +84,30 @@ class MySQLAccountRepo:
                 columns += ", rental_frozen_at"
             cursor.execute(
                 f"SELECT {columns} FROM accounts a "
-                "LEFT JOIN workspaces w ON w.id = a.workspace_id "
-                "WHERE a.id = %s AND a.user_id = %s LIMIT 1",
-                (account_id, user_id),
+                "WHERE a.id = %s AND a.user_id = %s AND a.workspace_id = %s LIMIT 1",
+                (account_id, user_id, workspace_id),
             )
             return cursor.fetchone()
         finally:
             conn.close()
 
     def list_by_user(self, user_id: int) -> List[AccountRecord]:
-        conn = _pool.get_connection()
-        try:
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(
-                """
-                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
-                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
-                       a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen
-                FROM accounts a
-                LEFT JOIN workspaces w ON w.id = a.workspace_id
-                WHERE a.user_id = %s
-                ORDER BY a.id DESC
-                """,
-                (user_id,),
-            )
-            rows = cursor.fetchall() or []
-            return [
-                AccountRecord(
-                    id=int(row["id"]),
-                    user_id=int(row["user_id"]),
-                    workspace_id=row.get("workspace_id"),
-                    workspace_name=row.get("workspace_name"),
-                    account_name=row["account_name"],
-                    login=row["login"],
-                    password=row["password"],
-                    lot_url=row.get("lot_url"),
-                    mmr=row.get("mmr"),
-                    owner=row.get("owner"),
-                    rental_start=row.get("rental_start"),
-                    rental_duration=int(row.get("rental_duration") or 0),
-                    rental_duration_minutes=row.get("rental_duration_minutes"),
-                    account_frozen=int(row.get("account_frozen") or 0),
-                    rental_frozen=int(row.get("rental_frozen") or 0),
-                    mafile_json=row.get("mafile_json"),
-                )
-                for row in rows
-            ]
-        finally:
-            conn.close()
+        records: list[AccountRecord] = []
+        for workspace_id in list_workspace_ids_for_user(user_id):
+            records.extend(self.list_by_workspace(user_id, workspace_id))
+        return records
 
     def list_by_workspace(self, user_id: int, workspace_id: int) -> List[AccountRecord]:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
+                SELECT a.id, a.user_id, a.workspace_id,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        a.account_frozen, a.rental_frozen
                 FROM accounts a
-                LEFT JOIN workspaces w ON w.id = a.workspace_id
                 WHERE a.user_id = %s AND a.workspace_id = %s
                 ORDER BY a.id DESC
                 """,
@@ -152,7 +119,7 @@ class MySQLAccountRepo:
                     id=int(row["id"]),
                     user_id=int(row["user_id"]),
                     workspace_id=row.get("workspace_id"),
-                    workspace_name=row.get("workspace_name"),
+                    workspace_name=None,
                     account_name=row["account_name"],
                     login=row["login"],
                     password=row["password"],
@@ -185,7 +152,7 @@ class MySQLAccountRepo:
         rental_duration: int,
         rental_duration_minutes: int,
     ) -> Optional[AccountRecord]:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             has_mafile_json = self._column_exists(cursor, "mafile_json")
@@ -239,12 +206,11 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
+                SELECT a.id, a.user_id, a.workspace_id,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        a.account_frozen, a.rental_frozen
                 FROM accounts a
-                LEFT JOIN workspaces w ON w.id = a.workspace_id
                 WHERE a.id = %s LIMIT 1
                 """,
                 (account_id,),
@@ -256,7 +222,7 @@ class MySQLAccountRepo:
                 id=int(row["id"]),
                 user_id=int(row["user_id"]),
                 workspace_id=row.get("workspace_id"),
-                workspace_name=row.get("workspace_name"),
+                workspace_name=None,
                 account_name=row["account_name"],
                 login=row["login"],
                 password=row["password"],
@@ -272,18 +238,18 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
-    def get_for_steam(self, account_id: int, user_id: int) -> Optional[AccountSteamRecord]:
-        conn = _pool.get_connection()
+    def get_for_steam(self, account_id: int, user_id: int, workspace_id: int) -> Optional[AccountSteamRecord]:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
                 SELECT id, user_id, workspace_id, account_name, login, password, mafile_json
                 FROM accounts
-                WHERE id = %s AND user_id = %s
+                WHERE id = %s AND user_id = %s AND workspace_id = %s
                 LIMIT 1
                 """,
-                (account_id, user_id),
+                (account_id, user_id, workspace_id),
             )
             row = cursor.fetchone()
             if not row:
@@ -301,27 +267,23 @@ class MySQLAccountRepo:
             conn.close()
 
     def list_active_rentals(self, user_id: int, workspace_id: int | None = None) -> List[ActiveRentalRecord]:
-        conn = _pool.get_connection()
+        if workspace_id is None:
+            return []
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
-            params: list = [user_id]
-            workspace_clause = ""
-            if workspace_id is not None:
-                workspace_clause = " AND a.workspace_id = %s"
-                params.append(workspace_id)
             cursor.execute(
-                f"""
+                """
                 SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.workspace_id, w.name AS workspace_name,
+                       a.workspace_id,
                        l.lot_number
                 FROM accounts a
                 LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
-                LEFT JOIN workspaces w ON w.id = a.workspace_id
-                WHERE a.user_id = %s{workspace_clause} AND a.owner IS NOT NULL AND a.owner != ''
+                WHERE a.user_id = %s AND a.workspace_id = %s AND a.owner IS NOT NULL AND a.owner != ''
                 ORDER BY a.rental_start DESC, a.id DESC
                 """,
-                tuple(params),
+                (user_id, workspace_id),
             )
             rows = cursor.fetchall() or []
             return [
@@ -336,15 +298,15 @@ class MySQLAccountRepo:
                     lot_number=row.get("lot_number"),
                     mafile_json=row.get("mafile_json"),
                     workspace_id=row.get("workspace_id"),
-                    workspace_name=row.get("workspace_name"),
+                    workspace_name=None,
                 )
                 for row in rows
             ]
         finally:
             conn.close()
 
-    def set_account_owner(self, account_id: int, user_id: int, owner: str) -> bool:
-        conn = _pool.get_connection()
+    def set_account_owner(self, account_id: int, user_id: int, workspace_id: int, owner: str) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             cursor.execute(
@@ -352,17 +314,17 @@ class MySQLAccountRepo:
                 UPDATE accounts
                 SET owner = %s,
                     rental_start = NULL
-                WHERE id = %s AND user_id = %s AND (owner IS NULL OR owner = '')
+                WHERE id = %s AND user_id = %s AND workspace_id = %s AND (owner IS NULL OR owner = '')
                 """,
-                (owner, account_id, user_id),
+                (owner, account_id, user_id, workspace_id),
             )
             conn.commit()
             return cursor.rowcount > 0
         finally:
             conn.close()
 
-    def release_account(self, account_id: int, user_id: int) -> bool:
-        conn = _pool.get_connection()
+    def release_account(self, account_id: int, user_id: int, workspace_id: int) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
@@ -370,21 +332,24 @@ class MySQLAccountRepo:
             if has_frozen_at:
                 updates.append("rental_frozen_at = NULL")
             cursor.execute(
-                f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
-                (account_id, user_id),
+                f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s AND workspace_id = %s",
+                (account_id, user_id, workspace_id),
             )
             conn.commit()
             return cursor.rowcount > 0
         finally:
             conn.close()
 
-    def extend_rental_duration(self, account_id: int, user_id: int, add_hours: int, add_minutes: int) -> bool:
-        conn = _pool.get_connection()
+    def extend_rental_duration(
+        self, account_id: int, user_id: int, workspace_id: int, add_hours: int, add_minutes: int
+    ) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                "SELECT rental_duration, rental_duration_minutes FROM accounts WHERE id = %s AND user_id = %s LIMIT 1",
-                (account_id, user_id),
+                "SELECT rental_duration, rental_duration_minutes FROM accounts "
+                "WHERE id = %s AND user_id = %s AND workspace_id = %s LIMIT 1",
+                (account_id, user_id, workspace_id),
             )
             row = cursor.fetchone()
             if not row:
@@ -401,22 +366,22 @@ class MySQLAccountRepo:
                 UPDATE accounts
                 SET rental_duration = %s,
                     rental_duration_minutes = %s
-                WHERE id = %s AND user_id = %s
+                WHERE id = %s AND user_id = %s AND workspace_id = %s
                 """,
-                (total_hours, total_minutes, account_id, user_id),
+                (total_hours, total_minutes, account_id, user_id, workspace_id),
             )
             conn.commit()
             return cursor.rowcount > 0
         finally:
             conn.close()
 
-    def set_account_frozen(self, account_id: int, user_id: int, frozen: bool) -> bool:
-        conn = _pool.get_connection()
+    def set_account_frozen(self, account_id: int, user_id: int, workspace_id: int, frozen: bool) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE accounts SET account_frozen = %s WHERE id = %s AND user_id = %s",
-                (1 if frozen else 0, account_id, user_id),
+                "UPDATE accounts SET account_frozen = %s WHERE id = %s AND user_id = %s AND workspace_id = %s",
+                (1 if frozen else 0, account_id, user_id, workspace_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -427,12 +392,13 @@ class MySQLAccountRepo:
         self,
         account_id: int,
         user_id: int,
+        workspace_id: int,
         frozen: bool,
         *,
         rental_start: Optional[str] = None,
         frozen_at: Optional[str] = None,
     ) -> bool:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
@@ -445,8 +411,9 @@ class MySQLAccountRepo:
                 updates.append("rental_start = %s")
                 values.append(rental_start)
             values.extend([account_id, user_id])
+            values.extend([workspace_id])
             cursor.execute(
-                f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+                f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s AND workspace_id = %s",
                 tuple(values),
             )
             conn.commit()
@@ -454,10 +421,10 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
-    def update_account(self, account_id: int, user_id: int, fields: dict) -> bool:
+    def update_account(self, account_id: int, user_id: int, workspace_id: int, fields: dict) -> bool:
         if not fields:
             return False
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             columns = []
@@ -466,8 +433,9 @@ class MySQLAccountRepo:
                 columns.append(f"{key} = %s")
                 values.append(value)
             values.extend([account_id, user_id])
+            values.extend([workspace_id])
             cursor.execute(
-                f"UPDATE accounts SET {', '.join(columns)} WHERE id = %s AND user_id = %s",
+                f"UPDATE accounts SET {', '.join(columns)} WHERE id = %s AND user_id = %s AND workspace_id = %s",
                 tuple(values),
             )
             conn.commit()
@@ -475,11 +443,14 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
-    def delete_account_by_id(self, account_id: int, user_id: int) -> bool:
-        conn = _pool.get_connection()
+    def delete_account_by_id(self, account_id: int, user_id: int, workspace_id: int) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM accounts WHERE id = %s AND user_id = %s", (account_id, user_id))
+            cursor.execute(
+                "DELETE FROM accounts WHERE id = %s AND user_id = %s AND workspace_id = %s",
+                (account_id, user_id, workspace_id),
+            )
             conn.commit()
             return cursor.rowcount > 0
         finally:

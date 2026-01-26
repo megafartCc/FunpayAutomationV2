@@ -6,7 +6,7 @@ from typing import List, Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import _pool
+from db.mysql import get_workspace_connection
 
 
 @dataclass
@@ -19,23 +19,23 @@ class LotAliasRecord:
 
 
 class MySQLLotAliasRepo:
+    def _get_conn(self, workspace_id: int) -> mysql.connector.MySQLConnection:
+        return get_workspace_connection(workspace_id)
+
     def list_by_user(self, user_id: int, workspace_id: int | None = None) -> List[LotAliasRecord]:
-        conn = _pool.get_connection()
+        if workspace_id is None:
+            return []
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
-            params: list = [user_id]
-            workspace_clause = ""
-            if workspace_id is not None:
-                workspace_clause = " AND workspace_id = %s"
-                params.append(workspace_id)
             cursor.execute(
-                f"""
+                """
                 SELECT id, user_id, workspace_id, lot_number, funpay_url
                 FROM lot_aliases
-                WHERE user_id = %s{workspace_clause}
+                WHERE user_id = %s AND workspace_id = %s
                 ORDER BY lot_number, id
                 """,
-                tuple(params),
+                (user_id, workspace_id),
             )
             rows = cursor.fetchall() or []
             return [
@@ -59,7 +59,9 @@ class MySQLLotAliasRepo:
         lot_number: int,
         funpay_url: str,
     ) -> Optional[LotAliasRecord]:
-        conn = _pool.get_connection()
+        if workspace_id is None:
+            return None
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             try:
@@ -87,10 +89,16 @@ class MySQLLotAliasRepo:
             conn.close()
 
     def delete(self, alias_id: int, user_id: int) -> bool:
-        conn = _pool.get_connection()
+        return False
+
+    def delete_in_workspace(self, alias_id: int, user_id: int, workspace_id: int) -> bool:
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM lot_aliases WHERE id = %s AND user_id = %s", (alias_id, user_id))
+            cursor.execute(
+                "DELETE FROM lot_aliases WHERE id = %s AND user_id = %s AND workspace_id = %s",
+                (alias_id, user_id, workspace_id),
+            )
             conn.commit()
             return cursor.rowcount > 0
         finally:
@@ -99,19 +107,15 @@ class MySQLLotAliasRepo:
     def replace_for_lot(
         self, *, user_id: int, workspace_id: int | None, lot_number: int, urls: list[str]
     ) -> None:
-        conn = _pool.get_connection()
+        if workspace_id is None:
+            return
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
-            if workspace_id is None:
-                cursor.execute(
-                    "DELETE FROM lot_aliases WHERE user_id = %s AND lot_number = %s AND workspace_id IS NULL",
-                    (user_id, lot_number),
-                )
-            else:
-                cursor.execute(
-                    "DELETE FROM lot_aliases WHERE user_id = %s AND lot_number = %s AND workspace_id = %s",
-                    (user_id, lot_number, workspace_id),
-                )
+            cursor.execute(
+                "DELETE FROM lot_aliases WHERE user_id = %s AND lot_number = %s AND workspace_id = %s",
+                (user_id, lot_number, workspace_id),
+            )
             for url in urls:
                 cursor.execute(
                     """

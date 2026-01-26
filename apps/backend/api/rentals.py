@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, ActiveRentalRecord
+from db.workspace_repo import MySQLWorkspaceRepo
 from services.rentals_cache import RentalsCache
 from services.presence_service import fetch_presence, presence_status_label
 from services.steam_service import deauthorize_sessions, SteamWorkerError
@@ -16,6 +17,7 @@ from services.steam_service import deauthorize_sessions, SteamWorkerError
 router = APIRouter()
 accounts_repo = MySQLAccountRepo()
 rentals_cache = RentalsCache()
+workspace_repo = MySQLWorkspaceRepo()
 
 
 class ActiveRentalItem(BaseModel):
@@ -91,6 +93,11 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(workspace_id: int | None = None, user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="workspace_id is required")
+    workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for rentals.")
     cached_items = rentals_cache.get(user_id, workspace_id)
     if cached_items is not None:
         return ActiveRentalResponse(items=[ActiveRentalItem(**item) for item in cached_items])
@@ -132,8 +139,18 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
 
 
 @router.post("/rentals/{account_id}/freeze")
-def freeze_rental(account_id: int, payload: FreezeRequest, user=Depends(get_current_user)) -> dict:
-    account = accounts_repo.get_by_id(account_id, int(user.id))
+def freeze_rental(
+    account_id: int,
+    payload: FreezeRequest,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> dict:
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="workspace_id is required")
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for rentals.")
+    account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if not account or not account.get("owner"):
         raise HTTPException(status_code=404, detail="Rental not found")
 
@@ -144,6 +161,7 @@ def freeze_rental(account_id: int, payload: FreezeRequest, user=Depends(get_curr
         ok = accounts_repo.set_rental_freeze_state(
             account_id,
             int(user.id),
+            int(workspace_id),
             True,
             frozen_at=now.strftime("%Y-%m-%d %H:%M:%S"),
         )
@@ -185,6 +203,7 @@ def freeze_rental(account_id: int, payload: FreezeRequest, user=Depends(get_curr
     ok = accounts_repo.set_rental_freeze_state(
         account_id,
         int(user.id),
+        int(workspace_id),
         False,
         rental_start=new_start.strftime("%Y-%m-%d %H:%M:%S") if new_start else None,
         frozen_at=None,

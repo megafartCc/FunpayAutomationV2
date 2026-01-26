@@ -478,7 +478,8 @@ def fetch_active_rentals_for_monitor(
     user_id: int,
     workspace_id: int | None = None,
 ) -> list[dict]:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
@@ -507,7 +508,8 @@ def release_account_in_db(
     user_id: int,
     workspace_id: int | None = None,
 ) -> bool:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
@@ -738,7 +740,8 @@ def fetch_lot_alias(
     """
     Return a FunPay URL for the given lot_number, preferring the caller's workspace alias.
     """
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
         params: list = [user_id, lot_number]
@@ -781,7 +784,8 @@ def fetch_available_lot_accounts(
     user_id: int | None,
     workspace_id: int | None = None,
 ) -> list[dict]:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         if not table_exists(cursor, "accounts"):
@@ -862,7 +866,8 @@ def fetch_lot_account(
     lot_number: int,
     workspace_id: int | None = None,
 ) -> dict | None:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         params: list = [user_id, lot_number]
@@ -907,7 +912,8 @@ def assign_account_to_buyer(
     total_minutes: int,
     workspace_id: int | None = None,
 ) -> None:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
@@ -942,7 +948,8 @@ def extend_rental_for_buyer(
     add_minutes: int,
     workspace_id: int | None = None,
 ) -> dict | None:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
@@ -1034,7 +1041,8 @@ def fetch_owner_accounts(
     owner: str,
     workspace_id: int | None = None,
 ) -> list[dict]:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
@@ -1071,7 +1079,8 @@ def start_rental_for_owner(
     owner: str,
     workspace_id: int | None = None,
 ) -> int:
-    conn = mysql.connector.connect(**mysql_cfg)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
@@ -1542,6 +1551,38 @@ def get_mysql_config() -> dict:
         "password": password,
         "database": database,
     }
+
+
+_WORKSPACE_DB_CACHE: dict[int, str] = {}
+
+
+def get_workspace_db_name(mysql_cfg: dict, workspace_id: int) -> str | None:
+    cached = _WORKSPACE_DB_CACHE.get(workspace_id)
+    if cached:
+        return cached
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT db_name FROM workspaces WHERE id = %s", (workspace_id,))
+        row = cursor.fetchone()
+        db_name = (row or {}).get("db_name") or ""
+        if db_name:
+            _WORKSPACE_DB_CACHE[workspace_id] = db_name
+            return db_name
+        return None
+    finally:
+        conn.close()
+
+
+def resolve_workspace_mysql_cfg(mysql_cfg: dict, workspace_id: int | None) -> dict:
+    if workspace_id is None:
+        return mysql_cfg
+    db_name = get_workspace_db_name(mysql_cfg, int(workspace_id))
+    if not db_name:
+        return mysql_cfg
+    cfg = dict(mysql_cfg)
+    cfg["database"] = db_name
+    return cfg
 
 
 def normalize_proxy_url(raw: str | None) -> str:

@@ -110,6 +110,12 @@ export type WorkspaceItem = {
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
+const withWorkspace = (path: string, workspaceId?: number | null) => {
+  if (!workspaceId) return path;
+  const joiner = path.includes("?") ? "&" : "?";
+  return `${path}${joiner}workspace_id=${workspaceId}`;
+};
+
 const buildUrl = (path: string) => {
   const base = API_BASE.replace(/\/$/, "");
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -157,37 +163,44 @@ export const api = {
   me: () => request<AuthResponse>("/auth/me", { method: "GET" }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   listAccounts: (workspaceId?: number) =>
-    request<{ items: AccountItem[] }>(
-      workspaceId ? `/accounts?workspace_id=${workspaceId}` : "/accounts",
-      { method: "GET" },
-    ),
+    request<{ items: AccountItem[] }>(withWorkspace("/accounts", workspaceId), { method: "GET" }),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
-  updateAccount: (accountId: number, payload: AccountUpdatePayload) =>
-    request<AccountItem>(`/accounts/${accountId}`, { method: "PATCH", body: payload }),
-  deleteAccount: (accountId: number) =>
-    request<{ status: string }>(`/accounts/${accountId}`, { method: "DELETE" }),
-  assignAccount: (accountId: number, owner: string) =>
-    request<{ status: string }>(`/accounts/${accountId}/assign`, { method: "POST", body: { owner } }),
-  releaseAccount: (accountId: number) =>
-    request<{ status: string }>(`/accounts/${accountId}/release`, { method: "POST" }),
-  extendAccount: (accountId: number, hours: number, minutes: number) =>
-    request<{ status: string }>(`/accounts/${accountId}/extend`, {
+  updateAccount: (accountId: number, payload: AccountUpdatePayload, workspaceId?: number | null) =>
+    request<AccountItem>(withWorkspace(`/accounts/${accountId}`, workspaceId), {
+      method: "PATCH",
+      body: payload,
+    }),
+  deleteAccount: (accountId: number, workspaceId?: number | null) =>
+    request<{ status: string }>(withWorkspace(`/accounts/${accountId}`, workspaceId), { method: "DELETE" }),
+  assignAccount: (accountId: number, owner: string, workspaceId?: number | null) =>
+    request<{ status: string }>(withWorkspace(`/accounts/${accountId}/assign`, workspaceId), {
+      method: "POST",
+      body: { owner },
+    }),
+  releaseAccount: (accountId: number, workspaceId?: number | null) =>
+    request<{ status: string }>(withWorkspace(`/accounts/${accountId}/release`, workspaceId), {
+      method: "POST",
+    }),
+  extendAccount: (accountId: number, hours: number, minutes: number, workspaceId?: number | null) =>
+    request<{ status: string }>(withWorkspace(`/accounts/${accountId}/extend`, workspaceId), {
       method: "POST",
       body: { hours, minutes },
     }),
-  freezeAccount: (accountId: number, frozen: boolean) =>
-    request<{ success: boolean; frozen: boolean }>(`/accounts/${accountId}/freeze`, {
+  freezeAccount: (accountId: number, frozen: boolean, workspaceId?: number | null) =>
+    request<{ success: boolean; frozen: boolean }>(withWorkspace(`/accounts/${accountId}/freeze`, workspaceId), {
       method: "POST",
       body: { frozen },
     }),
-  freezeRental: (accountId: number, frozen: boolean) =>
-    request<{ success: boolean; frozen: boolean }>(`/rentals/${accountId}/freeze`, {
+  freezeRental: (accountId: number, frozen: boolean, workspaceId?: number | null) =>
+    request<{ success: boolean; frozen: boolean }>(withWorkspace(`/rentals/${accountId}/freeze`, workspaceId), {
       method: "POST",
       body: { frozen },
     }),
-  deauthorizeSteam: (accountId: number) =>
-    request<{ success: boolean }>(`/accounts/${accountId}/steam/deauthorize`, { method: "POST" }),
+  deauthorizeSteam: (accountId: number, workspaceId?: number | null) =>
+    request<{ success: boolean }>(withWorkspace(`/accounts/${accountId}/steam/deauthorize`, workspaceId), {
+      method: "POST",
+    }),
   listLots: (workspaceId?: number) =>
     request<{ items: LotItem[] }>(
       workspaceId ? `/lots?workspace_id=${workspaceId}` : "/lots",
@@ -200,21 +213,17 @@ export const api = {
       { method: "DELETE" },
     ),
   listLotAliases: (workspaceId?: number) =>
-    request<{ items: LotAliasItem[] }>(
-      workspaceId ? `/lot-aliases?workspace_id=${workspaceId}` : "/lot-aliases",
-      { method: "GET" },
-    ),
+    request<{ items: LotAliasItem[] }>(withWorkspace("/lot-aliases", workspaceId), { method: "GET" }),
   createLotAlias: (payload: LotAliasCreatePayload) =>
     request<LotAliasItem>("/lot-aliases", { method: "POST", body: payload }),
-  deleteLotAlias: (aliasId: number) =>
-    request<{ ok: boolean }>(`/lot-aliases/${aliasId}`, { method: "DELETE" }),
+  deleteLotAlias: (aliasId: number, workspaceId?: number | null) =>
+    request<{ ok: boolean }>(withWorkspace(`/lot-aliases/${aliasId}`, workspaceId), {
+      method: "DELETE",
+    }),
   replaceLotAliases: (payload: LotAliasReplacePayload) =>
     request<{ items: LotAliasItem[] }>("/lot-aliases/replace", { method: "POST", body: payload }),
   listActiveRentals: (workspaceId?: number) =>
-    request<{ items: ActiveRentalItem[] }>(
-      workspaceId ? `/rentals/active?workspace_id=${workspaceId}` : "/rentals/active",
-      { method: "GET" },
-    ),
+    request<{ items: ActiveRentalItem[] }>(withWorkspace("/rentals/active", workspaceId), { method: "GET" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
   createWorkspace: (payload: { name: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
     request<WorkspaceItem>("/workspaces", { method: "POST", body: payload }),

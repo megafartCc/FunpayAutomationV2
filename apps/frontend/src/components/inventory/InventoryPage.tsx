@@ -88,8 +88,13 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
-      const res = await api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined);
+      if (selectedWorkspaceId === "all") {
+        setAccounts([]);
+        setError("Select a workspace to view accounts.");
+        return;
+      }
+      const workspaceId = selectedWorkspaceId as number;
+      const res = await api.listAccounts(workspaceId);
       setAccounts((res.items || []).map(mapAccount));
       setError(null);
     } catch (err) {
@@ -151,7 +156,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     }
     setAccountActionBusy(true);
     try {
-      await api.assignAccount(selectedAccount.id, owner);
+      await api.assignAccount(selectedAccount.id, owner, selectedAccount.workspaceId ?? undefined);
       onToast?.("Rental assigned.");
       setAssignOwner("");
       await loadAccounts();
@@ -194,7 +199,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
     setAccountActionBusy(true);
     try {
-      await api.updateAccount(selectedAccount.id, payload);
+      await api.updateAccount(selectedAccount.id, payload, selectedAccount.workspaceId ?? undefined);
       onToast?.("Account updated.");
       await loadAccounts();
     } catch (err) {
@@ -213,7 +218,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     if (accountControlBusy) return;
     setAccountControlBusy(true);
     try {
-      await api.freezeAccount(selectedAccount.id, nextFrozen);
+      await api.freezeAccount(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
       onToast?.(nextFrozen ? "Account frozen." : "Account unfrozen.");
       await loadAccounts();
     } catch (err) {
@@ -233,7 +238,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     if (!window.confirm(`Delete ${selectedAccount.name}?`)) return;
     setAccountControlBusy(true);
     try {
-      await api.deleteAccount(selectedAccount.id);
+      await api.deleteAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
       onToast?.("Account deleted.");
       await loadAccounts();
     } catch (err) {

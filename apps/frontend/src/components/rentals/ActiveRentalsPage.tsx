@@ -205,8 +205,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
-      const res = await api.listActiveRentals(typeof workspaceId === "number" ? workspaceId : undefined);
+      if (selectedWorkspaceId === "all") {
+        setRentals([]);
+        return;
+      }
+      const workspaceId = selectedWorkspaceId as number;
+      const res = await api.listActiveRentals(workspaceId);
       const observedAt = Date.now();
       setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
@@ -218,8 +222,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const loadAccounts = async () => {
     try {
-      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
-      const res = await api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined);
+      if (selectedWorkspaceId === "all") {
+        setAccounts([]);
+        return;
+      }
+      const workspaceId = selectedWorkspaceId as number;
+      const res = await api.listAccounts(workspaceId);
       setAccounts(res.items.map(mapAccount));
     } catch {
       setAccounts([]);
@@ -286,7 +294,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     }
     setAccountActionBusy(true);
     try {
-      await api.assignAccount(selectedAccount.id, owner);
+      await api.assignAccount(selectedAccount.id, owner, selectedAccount.workspaceId ?? undefined);
       onToast?.("Rental assigned.");
       setAssignOwner("");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -329,7 +337,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
     setAccountActionBusy(true);
     try {
-      await api.updateAccount(selectedAccount.id, payload);
+      await api.updateAccount(selectedAccount.id, payload, selectedAccount.workspaceId ?? undefined);
       onToast?.("Account updated.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -358,7 +366,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     }
     setRentalActionBusy(true);
     try {
-      await api.extendAccount(selectedAccount.id, hours, minutes);
+      await api.extendAccount(selectedAccount.id, hours, minutes, selectedAccount.workspaceId ?? undefined);
       onToast?.("Rental extended.");
       setRentalExtendHours("");
       setRentalExtendMinutes("");
@@ -379,7 +387,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(selectedAccount.id);
+      await api.releaseAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
       onToast?.("Rental released.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -398,7 +406,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedAccount.id, nextFrozen);
+      await api.freezeRental(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
       onToast?.(nextFrozen ? "Rental frozen." : "Rental unfrozen.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {

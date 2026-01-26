@@ -7,7 +7,7 @@ from typing import List, Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import _pool
+from db.mysql import get_workspace_connection
 
 
 @dataclass
@@ -45,8 +45,11 @@ def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
 
 
 class MySQLLotRepo:
+    def _get_conn(self, workspace_id: int) -> mysql.connector.MySQLConnection:
+        return get_workspace_connection(workspace_id)
+
     def list_by_user(self, user_id: int, workspace_id: int) -> List[LotRecord]:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
@@ -82,7 +85,7 @@ class MySQLLotRepo:
         account_id: int,
         lot_url: Optional[str],
     ) -> LotRecord:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor_dict = conn.cursor(dictionary=True)
             cursor_dict.execute(
@@ -151,7 +154,7 @@ class MySQLLotRepo:
             conn.close()
 
     def delete(self, user_id: int, lot_number: int, workspace_id: int) -> bool:
-        conn = _pool.get_connection()
+        conn = self._get_conn(workspace_id)
         try:
             cursor = conn.cursor()
             cursor.execute(

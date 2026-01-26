@@ -42,10 +42,17 @@ def _to_item(record: LotRecord) -> LotItem:
     )
 
 
-@router.get("/lots", response_model=LotListResponse)
-def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -> LotListResponse:
+def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
     if workspace_id is None:
         raise HTTPException(status_code=400, detail="workspace_id is required")
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for this lot.")
+
+
+@router.get("/lots", response_model=LotListResponse)
+def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -> LotListResponse:
+    _ensure_workspace(workspace_id, int(user.id))
     items = lots_repo.list_by_user(int(user.id), int(workspace_id))
     return LotListResponse(items=[_to_item(item) for item in items])
 
@@ -54,9 +61,7 @@ def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
     if not payload.lot_url.strip():
         raise HTTPException(status_code=400, detail="Lot URL is required")
-    workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
-    if not workspace:
-        raise HTTPException(status_code=400, detail="Select a workspace for this lot.")
+    _ensure_workspace(payload.workspace_id, int(user.id))
     try:
         created = lots_repo.create(
             user_id=int(user.id),
@@ -84,8 +89,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
 
 @router.delete("/lots/{lot_number}", status_code=status.HTTP_200_OK)
 def delete_lot(lot_number: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
-    if workspace_id is None:
-        raise HTTPException(status_code=400, detail="workspace_id is required")
+    _ensure_workspace(workspace_id, int(user.id))
     ok = lots_repo.delete(int(user.id), int(lot_number), int(workspace_id))
     if not ok:
         raise HTTPException(status_code=404, detail="Lot not found")

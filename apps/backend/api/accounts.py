@@ -113,12 +113,18 @@ def _to_item(record: AccountRecord) -> AccountItem:
     )
 
 
+def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="workspace_id is required")
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for this account.")
+
+
 @router.get("/accounts", response_model=AccountListResponse)
 def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user)) -> AccountListResponse:
-    if workspace_id is not None:
-        items = accounts_repo.list_by_workspace(int(user.id), int(workspace_id))
-    else:
-        items = accounts_repo.list_by_user(int(user.id))
+    _ensure_workspace(workspace_id, int(user.id))
+    items = accounts_repo.list_by_workspace(int(user.id), int(workspace_id))
     return AccountListResponse(items=[_to_item(item) for item in items])
 
 
@@ -152,8 +158,14 @@ def create_account(payload: AccountCreate, user=Depends(get_current_user)) -> Ac
 
 
 @router.patch("/accounts/{account_id}", response_model=AccountItem)
-def update_account(account_id: int, payload: AccountUpdate, user=Depends(get_current_user)) -> AccountItem:
-    current = accounts_repo.get_by_id(account_id, int(user.id))
+def update_account(
+    account_id: int,
+    payload: AccountUpdate,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> AccountItem:
+    _ensure_workspace(workspace_id, int(user.id))
+    current = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if not current:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -188,18 +200,18 @@ def update_account(account_id: int, payload: AccountUpdate, user=Depends(get_cur
     if not fields:
         raise HTTPException(status_code=400, detail="No changes provided")
 
-    success = accounts_repo.update_account(account_id, int(user.id), fields)
+    success = accounts_repo.update_account(account_id, int(user.id), int(workspace_id), fields)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update account")
 
-    updated = accounts_repo.get_by_id(account_id, int(user.id))
+    updated = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if not updated:
         raise HTTPException(status_code=404, detail="Account not found")
     return _to_item(AccountRecord(
         id=int(updated["id"]),
         user_id=int(updated["user_id"]),
         workspace_id=updated.get("workspace_id"),
-        workspace_name=updated.get("workspace_name"),
+        workspace_name=None,
         account_name=updated["account_name"],
         login=updated["login"],
         password=updated["password"],
@@ -216,51 +228,76 @@ def update_account(account_id: int, payload: AccountUpdate, user=Depends(get_cur
 
 
 @router.delete("/accounts/{account_id}")
-def delete_account(account_id: int, user=Depends(get_current_user)) -> dict:
-    success = accounts_repo.delete_account_by_id(account_id, int(user.id))
+def delete_account(account_id: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    success = accounts_repo.delete_account_by_id(account_id, int(user.id), int(workspace_id))
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
     return {"status": "ok"}
 
 
 @router.post("/accounts/{account_id}/assign")
-def assign_account(account_id: int, payload: AssignRequest, user=Depends(get_current_user)) -> dict:
-    success = accounts_repo.set_account_owner(account_id, int(user.id), payload.owner.strip())
+def assign_account(
+    account_id: int,
+    payload: AssignRequest,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    success = accounts_repo.set_account_owner(
+        account_id, int(user.id), int(workspace_id), payload.owner.strip()
+    )
     if not success:
         raise HTTPException(status_code=400, detail="Account already assigned")
     return {"status": "ok"}
 
 
 @router.post("/accounts/{account_id}/release")
-def release_account(account_id: int, user=Depends(get_current_user)) -> dict:
-    success = accounts_repo.release_account(account_id, int(user.id))
+def release_account(account_id: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    success = accounts_repo.release_account(account_id, int(user.id), int(workspace_id))
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
     return {"status": "ok"}
 
 
 @router.post("/accounts/{account_id}/extend")
-def extend_account(account_id: int, payload: ExtendRequest, user=Depends(get_current_user)) -> dict:
+def extend_account(
+    account_id: int,
+    payload: ExtendRequest,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
     total_minutes = payload.hours * 60 + payload.minutes
     if total_minutes <= 0:
         raise HTTPException(status_code=400, detail="Extension must be greater than 0")
-    success = accounts_repo.extend_rental_duration(account_id, int(user.id), payload.hours, payload.minutes)
+    success = accounts_repo.extend_rental_duration(
+        account_id, int(user.id), int(workspace_id), payload.hours, payload.minutes
+    )
     if not success:
         raise HTTPException(status_code=400, detail="Failed to extend rental")
     return {"status": "ok"}
 
 
 @router.post("/accounts/{account_id}/freeze")
-def freeze_account(account_id: int, payload: FreezeRequest, user=Depends(get_current_user)) -> dict:
-    success = accounts_repo.set_account_frozen(account_id, int(user.id), payload.frozen)
+def freeze_account(
+    account_id: int,
+    payload: FreezeRequest,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    success = accounts_repo.set_account_frozen(account_id, int(user.id), int(workspace_id), payload.frozen)
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
     return {"success": True, "frozen": payload.frozen}
 
 
 @router.post("/accounts/{account_id}/steam/deauthorize")
-def steam_deauthorize(account_id: int, user=Depends(get_current_user)) -> dict:
-    account = accounts_repo.get_for_steam(account_id, int(user.id))
+def steam_deauthorize(account_id: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    account = accounts_repo.get_for_steam(account_id, int(user.id), int(workspace_id))
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
     if not account.mafile_json:

@@ -6,7 +6,7 @@ from typing import Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import _pool
+from db.mysql import _pool, provision_workspace_schema
 
 
 @dataclass
@@ -18,6 +18,7 @@ class WorkspaceRecord:
     proxy_url: str
     is_default: int
     created_at: Optional[str] = None
+    db_name: Optional[str] = None
 
 
 class MySQLWorkspaceRepo:
@@ -27,7 +28,7 @@ class MySQLWorkspaceRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at
+                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at, db_name
                 FROM workspaces
                 WHERE user_id = %s
                 ORDER BY is_default DESC, id DESC
@@ -44,6 +45,7 @@ class MySQLWorkspaceRepo:
                     proxy_url=row.get("proxy_url") or "",
                     is_default=int(row.get("is_default") or 0),
                     created_at=str(row.get("created_at")) if row.get("created_at") is not None else None,
+                    db_name=row.get("db_name"),
                 )
                 for row in rows
             ]
@@ -56,7 +58,7 @@ class MySQLWorkspaceRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at
+                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at, db_name
                 FROM workspaces
                 WHERE id = %s AND user_id = %s
                 LIMIT 1
@@ -74,6 +76,7 @@ class MySQLWorkspaceRepo:
                 proxy_url=row.get("proxy_url") or "",
                 is_default=int(row.get("is_default") or 0),
                 created_at=str(row.get("created_at")) if row.get("created_at") is not None else None,
+                db_name=row.get("db_name"),
             )
         finally:
             conn.close()
@@ -110,6 +113,7 @@ class MySQLWorkspaceRepo:
                     return None
                 raise
 
+            provision_workspace_schema(int(workspace_id))
             return self.get_by_id(int(workspace_id), user_id)
         finally:
             conn.close()

@@ -62,7 +62,11 @@ const AliasSection: React.FC<Props> = ({ aliases, onCreated, onDeleted, loading 
 
   const handleDelete = async (id: number) => {
     try {
-      await api.deleteLotAlias(id);
+      if (selectedWorkspaceId === "all") {
+        setStatus({ message: "Select a workspace to delete alias.", isError: true });
+        return;
+      }
+      await api.deleteLotAlias(id, selectedWorkspaceId as number);
       onDeleted(id);
     } catch (err) {
       setStatus({
@@ -179,4 +183,3 @@ const AliasSection: React.FC<Props> = ({ aliases, onCreated, onDeleted, loading 
 };
 
 export default AliasSection;
-
