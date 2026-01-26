@@ -7,7 +7,7 @@ from typing import List, Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import get_workspace_connection
+from db.mysql import get_base_connection
 
 
 @dataclass
@@ -44,12 +44,64 @@ def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
     return dup_key.endswith(f".{expected}")
 
 
+def _handle_primary_duplicate(
+    cursor: mysql.connector.cursor.MySQLCursorDict,
+    *,
+    workspace_id: int,
+    lot_number: int,
+    account_id: int,
+) -> None:
+    cursor.execute(
+        "SELECT 1 FROM lots WHERE workspace_id = %s AND lot_number = %s LIMIT 1",
+        (workspace_id, lot_number),
+    )
+    if cursor.fetchone():
+        raise LotCreateError("duplicate_lot_number")
+    cursor.execute(
+        "SELECT 1 FROM lots WHERE workspace_id = %s AND account_id = %s LIMIT 1",
+        (workspace_id, account_id),
+    )
+    if cursor.fetchone():
+        raise LotCreateError("account_already_mapped")
+    raise LotCreateError("duplicate")
+
+
+def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
+    try:
+        idx_cursor = conn.cursor(dictionary=True)
+        idx_cursor.execute("SHOW INDEX FROM lots")
+        index_cols: dict[str, list[tuple[int, str]]] = {}
+        index_unique: dict[str, bool] = {}
+        for row in idx_cursor.fetchall() or []:
+            key = row["Key_name"]
+            index_unique[key] = row["Non_unique"] == 0
+            index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
+        desired_lot_unique = ["workspace_id", "lot_number"]
+        desired_account_unique = ["workspace_id", "account_id"]
+        cursor = conn.cursor()
+        for key, cols in index_cols.items():
+            if key == "PRIMARY":
+                continue
+            if not index_unique.get(key, False):
+                continue
+            columns = [col for _, col in sorted(cols)]
+            if columns in (desired_lot_unique, desired_account_unique):
+                continue
+            try:
+                cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+            except mysql.connector.Error:
+                pass
+        conn.commit()
+    except mysql.connector.Error:
+        pass
+
+
 class MySQLLotRepo:
-    def _get_conn(self, workspace_id: int) -> mysql.connector.MySQLConnection:
-        return get_workspace_connection(workspace_id)
+    def _get_conn(self) -> mysql.connector.MySQLConnection:
+        return get_base_connection()
 
     def list_by_user(self, user_id: int, workspace_id: int) -> List[LotRecord]:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
@@ -85,7 +137,7 @@ class MySQLLotRepo:
         account_id: int,
         lot_url: Optional[str],
     ) -> LotRecord:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor_dict = conn.cursor(dictionary=True)
             cursor_dict.execute(
@@ -95,19 +147,6 @@ class MySQLLotRepo:
             account = cursor_dict.fetchone()
             if not account:
                 raise LotCreateError("account_not_found")
-            # auto-attach account to workspace if it was missing
-            account_workspace_id = account.get("workspace_id")
-            if account_workspace_id is None:
-                cursor_update = conn.cursor()
-                cursor_update.execute(
-                    "UPDATE accounts SET workspace_id = %s WHERE id = %s AND user_id = %s",
-                    (workspace_id, account_id, user_id),
-                )
-                conn.commit()
-                account_workspace_id = workspace_id
-                account["workspace_id"] = workspace_id
-            if int(account_workspace_id or 0) != int(workspace_id):
-                raise LotCreateError("account_wrong_workspace")
 
             cursor_dict.execute(
                 "SELECT 1 FROM lots WHERE workspace_id = %s AND lot_number = %s LIMIT 1",
@@ -140,8 +179,24 @@ class MySQLLotRepo:
                         raise LotCreateError("duplicate_lot_number")
                     if _dup_key_matches(dup_key, "uniq_account_workspace"):
                         raise LotCreateError("account_already_mapped")
-                    raise LotCreateError("duplicate")
-                raise
+                    if _dup_key_matches(dup_key, "PRIMARY"):
+                        _handle_primary_duplicate(
+                            cursor_dict,
+                            workspace_id=workspace_id,
+                            lot_number=lot_number,
+                            account_id=account_id,
+                        )
+                    _cleanup_lot_unique_indexes(conn)
+                    cursor.execute(
+                        """
+                        INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (user_id, workspace_id, lot_number, account_id, lot_url),
+                    )
+                    conn.commit()
+                else:
+                    raise
 
             return LotRecord(
                 lot_number=int(lot_number),
@@ -154,7 +209,7 @@ class MySQLLotRepo:
             conn.close()
 
     def delete(self, user_id: int, lot_number: int, workspace_id: int) -> bool:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor = conn.cursor()
             cursor.execute(
