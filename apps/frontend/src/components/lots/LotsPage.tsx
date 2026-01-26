@@ -343,12 +343,6 @@ const handleDelete = async (lotNum: number) => {
         </div>
       </div>
 
-      <AliasSection
-        aliases={aliases}
-        loading={loading}
-        onCreated={(alias) => setAliases((prev) => [alias, ...prev])}
-        onDeleted={(id) => setAliases((prev) => prev.filter((item) => item.id !== id))}
-      />
     </div>
   );
 };
