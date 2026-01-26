@@ -90,12 +90,36 @@ class MySQLLotAliasRepo:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM lot_aliases WHERE id = %s AND user_id = %s",
-                (alias_id, user_id),
-            )
+            cursor.execute("DELETE FROM lot_aliases WHERE id = %s AND user_id = %s", (alias_id, user_id))
             conn.commit()
             return cursor.rowcount > 0
         finally:
             conn.close()
 
+    def replace_for_lot(
+        self, *, user_id: int, workspace_id: int | None, lot_number: int, urls: list[str]
+    ) -> None:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor()
+            if workspace_id is None:
+                cursor.execute(
+                    "DELETE FROM lot_aliases WHERE user_id = %s AND lot_number = %s AND workspace_id IS NULL",
+                    (user_id, lot_number),
+                )
+            else:
+                cursor.execute(
+                    "DELETE FROM lot_aliases WHERE user_id = %s AND lot_number = %s AND workspace_id = %s",
+                    (user_id, lot_number, workspace_id),
+                )
+            for url in urls:
+                cursor.execute(
+                    """
+                    INSERT IGNORE INTO lot_aliases (user_id, workspace_id, lot_number, funpay_url)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (user_id, workspace_id, lot_number, url),
+                )
+            conn.commit()
+        finally:
+            conn.close()

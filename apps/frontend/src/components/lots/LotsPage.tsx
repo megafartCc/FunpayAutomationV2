@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, AccountItem, LotItem, LotAliasItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
-import AliasSection from "./AliasSection";
 
 const LotsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
@@ -14,6 +13,8 @@ const LotsPage: React.FC = () => {
   const [lotNumber, setLotNumber] = useState("");
   const [accountId, setAccountId] = useState("");
   const [lotUrl, setLotUrl] = useState("");
+  const [editingLot, setEditingLot] = useState<number | null>(null);
+  const [urlsInput, setUrlsInput] = useState("");
 
   const accountOptions = useMemo(() => {
     return accounts.map((acc) => ({
@@ -92,16 +93,16 @@ const LotsPage: React.FC = () => {
       setLotNumber("");
       setAccountId("");
       setLotUrl("");
-      setStatus({ message: "Lot saved." });
-    } catch (err) {
-      setStatus({
-        message: (err as { message?: string })?.message || "Failed to save lot.",
-        isError: true,
-      });
-    }
-  };
+    setStatus({ message: "Lot saved." });
+  } catch (err) {
+    setStatus({
+      message: (err as { message?: string })?.message || "Failed to save lot.",
+      isError: true,
+    });
+  }
+};
 
-  const handleDelete = async (lotNum: number) => {
+const handleDelete = async (lotNum: number) => {
     try {
       const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
       await api.deleteLot(lotNum, typeof workspaceId === "number" ? workspaceId : undefined);
@@ -112,6 +113,56 @@ const LotsPage: React.FC = () => {
         isError: true,
       });
     }
+  };
+
+  const aliasesByLot = useMemo(() => {
+    const map: Record<number, string[]> = {};
+    aliases.forEach((a) => {
+      if (!map[a.lot_number]) map[a.lot_number] = [];
+      map[a.lot_number].push(a.funpay_url);
+    });
+    return map;
+  }, [aliases]);
+
+  const startEditUrls = (lotNum: number) => {
+    setEditingLot(lotNum);
+    const current = aliasesByLot[lotNum] || [];
+    setUrlsInput(current.join(", "));
+  };
+
+  const handleSaveUrls = async (lotNum: number) => {
+    if (selectedWorkspaceId === "all") {
+      setStatus({ message: "Pick a workspace to edit URLs.", isError: true });
+      return;
+    }
+    const urls = urlsInput
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    try {
+      const res = await api.replaceLotAliases({
+        lot_number: lotNum,
+        urls,
+        workspace_id: selectedWorkspaceId,
+      });
+      setAliases((prev) => {
+        // replace aliases for this lot with returned ones, keep others
+        const others = prev.filter((a) => a.lot_number !== lotNum);
+        return [...others, ...(res.items || [])];
+      });
+      setEditingLot(null);
+      setStatus({ message: "URLs updated." });
+    } catch (err) {
+      setStatus({
+        message: (err as { message?: string })?.message || "Failed to save URLs.",
+        isError: true,
+      });
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingLot(null);
+    setUrlsInput("");
   };
 
   return (
@@ -198,7 +249,8 @@ const LotsPage: React.FC = () => {
               <tr>
                 <th className="px-3 py-2 text-left">Lot</th>
                 <th className="px-3 py-2 text-left">Account</th>
-                <th className="px-3 py-2 text-left">URL</th>
+                <th className="px-3 py-2 text-left">Primary URL</th>
+                <th className="px-3 py-2 text-left">URLs (comma-separated)</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -221,6 +273,53 @@ const LotsPage: React.FC = () => {
                         "-"
                       )}
                     </td>
+                    <td className="px-3 py-3 text-neutral-700 align-top">
+                      {editingLot === lot.lot_number ? (
+                        <div className="space-y-2">
+                          <textarea
+                            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
+                            rows={2}
+                            value={urlsInput}
+                            onChange={(e) => setUrlsInput(e.target.value)}
+                            placeholder="https://funpay.com/lots/offer?id=..., https://funpay.com/lots/offer?id=..."
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-800"
+                              onClick={() => handleSaveUrls(lot.lot_number)}
+                            >
+                              Save URLs
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                              onClick={cancelEdit}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <div className="text-xs text-neutral-500">
+                            {aliasesByLot[lot.lot_number]?.length
+                              ? `${aliasesByLot[lot.lot_number].length} URL${aliasesByLot[lot.lot_number].length > 1 ? "s" : ""}`
+                              : "No aliases"}
+                          </div>
+                          {aliasesByLot[lot.lot_number]?.[0] ? (
+                            <span className="truncate text-neutral-700">{aliasesByLot[lot.lot_number][0]}</span>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="w-fit rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                            onClick={() => startEditUrls(lot.lot_number)}
+                          >
+                            Edit URLs
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="rounded-r-xl px-3 py-3 text-right">
                       <button
                         className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
@@ -234,7 +333,7 @@ const LotsPage: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                  <td colSpan={5} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                     {loading ? "Loading lots..." : "No lots configured yet."}
                   </td>
                 </tr>

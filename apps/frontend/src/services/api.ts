@@ -79,6 +79,12 @@ export type LotAliasCreatePayload = {
   workspace_id?: number | null;
 };
 
+export type LotAliasReplacePayload = {
+  lot_number: number;
+  urls: string[];
+  workspace_id?: number | null;
+};
+
 export type ActiveRentalItem = {
   id: number;
   account: string;
@@ -202,6 +208,8 @@ export const api = {
     request<LotAliasItem>("/lot-aliases", { method: "POST", body: payload }),
   deleteLotAlias: (aliasId: number) =>
     request<{ ok: boolean }>(`/lot-aliases/${aliasId}`, { method: "DELETE" }),
+  replaceLotAliases: (payload: LotAliasReplacePayload) =>
+    request<{ items: LotAliasItem[] }>("/lot-aliases/replace", { method: "POST", body: payload }),
   listActiveRentals: (workspaceId?: number) =>
     request<{ items: ActiveRentalItem[] }>(
       workspaceId ? `/rentals/active?workspace_id=${workspaceId}` : "/rentals/active",

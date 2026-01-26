@@ -17,6 +17,12 @@ class LotAliasCreate(BaseModel):
     funpay_url: str = Field(..., min_length=5)
 
 
+class LotAliasReplace(BaseModel):
+    workspace_id: int | None = Field(None, ge=1)
+    lot_number: int = Field(..., ge=1)
+    urls: list[str] = Field(default_factory=list)
+
+
 class LotAliasItem(BaseModel):
     id: int
     lot_number: int
@@ -65,3 +71,16 @@ def delete_lot_alias(alias_id: int, user=Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=404, detail="Alias not found")
     return {"ok": True}
 
+
+@router.post("/lot-aliases/replace", response_model=LotAliasListResponse, status_code=status.HTTP_200_OK)
+def replace_lot_aliases(payload: LotAliasReplace, user=Depends(get_current_user)) -> LotAliasListResponse:
+    urls = [u.strip() for u in payload.urls if u and u.strip()]
+    alias_repo.replace_for_lot(
+        user_id=int(user.id),
+        workspace_id=int(payload.workspace_id) if payload.workspace_id is not None else None,
+        lot_number=payload.lot_number,
+        urls=urls,
+    )
+    records = alias_repo.list_by_user(int(user.id), int(payload.workspace_id) if payload.workspace_id else None)
+    filtered = [r for r in records if r.lot_number == payload.lot_number]
+    return LotAliasListResponse(items=[_to_item(r) for r in filtered])
