@@ -1,45 +1,35 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { api, AccountItem, LotItem, LotAliasItem } from "../../services/api";
-import { useWorkspace } from "../../context/WorkspaceContext";
+import { api, AccountItem, LotAliasItem, LotItem } from "../../services/api";
 
+/**
+ * LotsPage — simplified shared-pool UI.
+ * All lots & aliases are global (workspace_id = null) so every workspace shares the same mappings.
+ */
 const LotsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [lots, setLots] = useState<LotItem[]>([]);
   const [aliases, setAliases] = useState<LotAliasItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
-  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
 
   const [lotNumber, setLotNumber] = useState("");
   const [accountId, setAccountId] = useState("");
   const [lotUrl, setLotUrl] = useState("");
   const [editingLot, setEditingLot] = useState<number | null>(null);
   const [urlsInput, setUrlsInput] = useState("");
-  const [isGlobal, setIsGlobal] = useState(false);
 
-  const accountOptions = useMemo(() => {
-    return accounts.map((acc) => ({
-      id: acc.id,
-      label: `${acc.account_name} (ID ${acc.id})`,
-    }));
-  }, [accounts]);
-
-  const currentWorkspaceLabel = useMemo(() => {
-    if (selectedWorkspaceId === "all") return "All workspaces";
-    const match = workspaces.find((item) => item.id === selectedWorkspaceId);
-    if (match) return match.is_default ? `${match.name} (Default)` : match.name;
-    const fallback = workspaces.find((item) => item.is_default);
-    return fallback ? `${fallback.name} (Default)` : "Workspace";
-  }, [selectedWorkspaceId, workspaces]);
+  const accountOptions = useMemo(
+    () =>
+      accounts.map((acc) => ({
+        id: acc.id,
+        label: `${acc.account_name} (ID ${acc.id})`,
+      })),
+    [accounts],
+  );
 
   useEffect(() => {
     let mounted = true;
-    const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
-    Promise.all([
-      api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined),
-      api.listLots(typeof workspaceId === "number" ? workspaceId : undefined),
-      api.listLotAliases(typeof workspaceId === "number" ? workspaceId : undefined),
-    ])
+    Promise.all([api.listAccounts(), api.listLots(), api.listLotAliases()])
       .then(([accountsRes, lotsRes, aliasRes]) => {
         if (!mounted) return;
         setAccounts(accountsRes.items || []);
@@ -48,11 +38,11 @@ const LotsPage: React.FC = () => {
       })
       .catch((err) => {
         if (!mounted) return;
-      setStatus({
-        message: (err as { message?: string })?.message || "Failed to load lots.",
-        isError: true,
-      });
-    })
+        setStatus({
+          message: (err as { message?: string })?.message || "Failed to load lots.",
+          isError: true,
+        });
+      })
       .finally(() => {
         if (!mounted) return;
         setLoading(false);
@@ -60,7 +50,7 @@ const LotsPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [selectedWorkspaceId]);
+  }, []);
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -77,35 +67,31 @@ const LotsPage: React.FC = () => {
     }
     try {
       const created = await api.createLot({
-        workspace_id: isGlobal || selectedWorkspaceId === "all" ? null : selectedWorkspaceId,
+        workspace_id: null, // shared pool
         lot_number: number,
         account_id: account,
         lot_url: lotUrl.trim(),
       });
       setLots((prev) => {
-        const next = prev.filter(
-          (item) => !(item.lot_number === created.lot_number && item.workspace_id === created.workspace_id),
-        );
+        const next = prev.filter((item) => item.lot_number !== created.lot_number);
         next.unshift(created);
         return next;
       });
       setLotNumber("");
       setAccountId("");
       setLotUrl("");
-      setIsGlobal(false);
-    setStatus({ message: "Lot saved." });
-  } catch (err) {
-    setStatus({
-      message: (err as { message?: string })?.message || "Failed to save lot.",
-      isError: true,
-    });
-  }
-};
+      setStatus({ message: "Lot saved." });
+    } catch (err) {
+      setStatus({
+        message: (err as { message?: string })?.message || "Failed to save lot.",
+        isError: true,
+      });
+    }
+  };
 
-const handleDelete = async (lotNum: number) => {
+  const handleDelete = async (lotNum: number) => {
     try {
-      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
-      await api.deleteLot(lotNum, typeof workspaceId === "number" ? workspaceId : undefined);
+      await api.deleteLot(lotNum, undefined);
       setLots((prev) => prev.filter((item) => item.lot_number !== lotNum));
     } catch (err) {
       setStatus({
@@ -131,10 +117,6 @@ const handleDelete = async (lotNum: number) => {
   };
 
   const handleSaveUrls = async (lotNum: number) => {
-    if (selectedWorkspaceId === "all") {
-      setStatus({ message: "Pick a workspace to edit URLs.", isError: true });
-      return;
-    }
     const urls = urlsInput
       .split(/[\n,]+/)
       .map((u) => u.trim())
@@ -143,10 +125,9 @@ const handleDelete = async (lotNum: number) => {
       const res = await api.replaceLotAliases({
         lot_number: lotNum,
         urls,
-        workspace_id: selectedWorkspaceId,
+        workspace_id: null,
       });
       setAliases((prev) => {
-        // replace aliases for this lot with returned ones, keep others
         const others = prev.filter((a) => a.lot_number !== lotNum);
         return [...others, ...(res.items || [])];
       });
@@ -171,16 +152,9 @@ const handleDelete = async (lotNum: number) => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Lots mapping</h3>
-            <p className="text-sm text-neutral-500">
-              Map FunPay lot numbers to accounts. Used by !сток and automation.
-            </p>
+            <p className="text-sm text-neutral-500">Shared across all workspaces. Used by !сток and automation.</p>
           </div>
-        
-          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
-            <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
-            <span className="text-xs font-semibold text-neutral-700">{currentWorkspaceLabel}</span>
-          </div>
-</div>
+        </div>
 
         {status ? (
           <div
@@ -233,17 +207,6 @@ const handleDelete = async (lotNum: number) => {
               required
             />
           </div>
-          <div className="flex items-end gap-3">
-            <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
-              <input
-                type="checkbox"
-                checked={isGlobal || selectedWorkspaceId === "all"}
-                onChange={(e) => setIsGlobal(e.target.checked)}
-                disabled={selectedWorkspaceId === "all"}
-              />
-              Global mapping (shared pool)
-            </label>
-          </div>
           <div className="flex items-end">
             <button
               className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800"
@@ -261,7 +224,6 @@ const handleDelete = async (lotNum: number) => {
                 <th className="px-3 py-2 text-left">Lot</th>
                 <th className="px-3 py-2 text-left">Account</th>
                 <th className="px-3 py-2 text-left">Primary URL</th>
-                <th className="px-3 py-2 text-left">Scope</th>
                 <th className="px-3 py-2 text-left">URLs (comma-separated)</th>
                 <th className="px-3 py-2"></th>
               </tr>
@@ -270,23 +232,23 @@ const handleDelete = async (lotNum: number) => {
               {lots.length ? (
                 lots.map((lot) => (
                   <tr key={lot.lot_number} className="bg-neutral-50">
-                    <td className="rounded-l-xl px-3 py-3 font-semibold text-neutral-900">
-                      #{lot.lot_number}
-                    </td>
+                    <td className="rounded-l-xl px-3 py-3 font-semibold text-neutral-900">#{lot.lot_number}</td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.account_name} (ID {lot.account_id})
                     </td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.lot_url ? (
-                        <a className="text-emerald-600 hover:underline" href={lot.lot_url} target="_blank" rel="noreferrer">
+                        <a
+                          className="text-emerald-600 hover:underline"
+                          href={lot.lot_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
                           {lot.lot_url}
                         </a>
                       ) : (
                         "-"
                       )}
-                    </td>
-                    <td className="px-3 py-3 text-neutral-700">
-                      {lot.workspace_id ? "Workspace" : "Global"}
                     </td>
                     <td className="px-3 py-3 text-neutral-700 align-top">
                       {editingLot === lot.lot_number ? (
@@ -319,7 +281,9 @@ const handleDelete = async (lotNum: number) => {
                         <div className="flex flex-col gap-1">
                           <div className="text-xs text-neutral-500">
                             {aliasesByLot[lot.lot_number]?.length
-                              ? `${aliasesByLot[lot.lot_number].length} URL${aliasesByLot[lot.lot_number].length > 1 ? "s" : ""}`
+                              ? `${aliasesByLot[lot.lot_number].length} URL${
+                                  aliasesByLot[lot.lot_number].length > 1 ? "s" : ""
+                                }`
                               : "No aliases"}
                           </div>
                           {aliasesByLot[lot.lot_number]?.[0] ? (
@@ -348,7 +312,10 @@ const handleDelete = async (lotNum: number) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                  <td
+                    colSpan={5}
+                    className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500"
+                  >
                     {loading ? "Loading lots..." : "No lots configured yet."}
                   </td>
                 </tr>
@@ -357,7 +324,6 @@ const handleDelete = async (lotNum: number) => {
           </table>
         </div>
       </div>
-
     </div>
   );
 };
