@@ -82,10 +82,39 @@ const formatDuration = (minutesTotal: number | null | undefined) => {
   return `${hours}h ${rem}m`;
 };
 
+const parseUtcMs = (value?: string | null) => {
+  if (!value) return null;
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized);
+  const ts = Date.parse(hasZone ? normalized : `${normalized}Z`);
+  return Number.isNaN(ts) ? null : ts;
+};
+
+const getCountdownLabel = (
+  account: AccountRow | null | undefined,
+  fallback: string,
+  nowMs: number,
+) => {
+  if (!account) return fallback || "-";
+  const minutes =
+    account.rentalDurationMinutes ?? (account.rentalDuration ? account.rentalDuration * 60 : 0);
+  if (!minutes || minutes <= 0) return fallback || "-";
+  const startMs = parseUtcMs(account.rentalStart ?? null);
+  if (!startMs) return fallback || "-";
+  const endMs = startMs + minutes * 60_000;
+  const remainingMs = Math.max(0, endMs - nowMs);
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutesLeft = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours} ч ${minutesLeft} мин ${seconds} сек`;
+};
+
 const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const [selectedRentalId, setSelectedRentalId] = useState<number | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
@@ -105,6 +134,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     () => accounts.find((acc) => acc.id === selectedRentalId) ?? null,
     [accounts, selectedRentalId],
   );
+  const accountById = useMemo(() => new Map(accounts.map((acc) => [acc.id, acc])), [accounts]);
 
   const loadRentals = async () => {
     setLoading(true);
@@ -130,6 +160,11 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadRentals();
     void loadAccounts();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -471,7 +506,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
                     <span>Buyer: {selectedRental.buyer || "-"}</span>
-                    <span>Time left: {selectedRental.timeLeft || "-"}</span>
+                  <span>
+                    Time left:{" "}
+                    {selectedRental
+                      ? getCountdownLabel(accountById.get(selectedRental.id), selectedRental.timeLeft, now)
+                      : "-"}
+                  </span>
                     <span>Match time: {selectedRental.matchTime || "-"}</span>
                     <span>Hero: {selectedRental.hero || "-"}</span>
                     <span>Workspace: Default</span>
@@ -609,7 +649,9 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     </div>
                     <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                     <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
-                    <span className="min-w-0 truncate font-mono text-neutral-900">{row.timeLeft}</span>
+                    <span className="min-w-0 truncate font-mono text-neutral-900">
+                      {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
+                    </span>
                     <span className="min-w-0 truncate font-mono text-neutral-900">{row.matchTime}</span>
                     <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
                     <div className="flex items-center gap-2">

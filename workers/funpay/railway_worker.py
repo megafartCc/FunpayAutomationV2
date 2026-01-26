@@ -29,6 +29,10 @@ from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
 from FunPayAPI.updater.runner import Runner  # noqa: E402
 from bs4 import BeautifulSoup  # noqa: E402
 import requests  # noqa: E402
+try:  # noqa: E402
+    import redis  # type: ignore
+except Exception:  # noqa: E402
+    redis = None
 
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -91,6 +95,7 @@ LOT_NUMBER_RE = re.compile(r"(?:\u2116|#)\s*(\d+)")
 
 _processed_orders: dict[str, set[str]] = {}
 _processed_orders_lock = threading.Lock()
+_redis_client = None
 
 
 @dataclass
@@ -362,9 +367,51 @@ def _steam_id_from_mafile(mafile_json: str | dict | None) -> str | None:
     return None
 
 
+def _get_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    if redis is None:
+        _redis_client = None
+        return None
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if not redis_url:
+        _redis_client = None
+        return None
+    try:
+        _redis_client = redis.from_url(redis_url, decode_responses=True)
+    except Exception:
+        _redis_client = None
+    return _redis_client
+
+
+def _presence_cache_key(steam_id: str) -> str:
+    return f"presence:{steam_id}"
+
+
+def _presence_cache_ttl_seconds() -> int:
+    return int(os.getenv("PRESENCE_CACHE_TTL_SECONDS", "15"))
+
+
+def _presence_cache_empty_ttl_seconds() -> int:
+    return int(os.getenv("PRESENCE_CACHE_EMPTY_TTL_SECONDS", "5"))
+
+
 def fetch_presence(steam_id: str | None) -> dict:
     if not steam_id:
         return {}
+    cache = _get_redis()
+    if cache:
+        try:
+            cached_raw = cache.get(_presence_cache_key(steam_id))
+        except Exception:
+            cached_raw = None
+        if cached_raw is not None:
+            try:
+                cached = json.loads(cached_raw)
+            except Exception:
+                cached = None
+            return cached if isinstance(cached, dict) else {}
     base = os.getenv("STEAM_PRESENCE_URL", "").strip() or os.getenv("STEAM_BRIDGE_URL", "").strip()
     if not base:
         return {}
@@ -378,12 +425,38 @@ def fetch_presence(steam_id: str | None) -> dict:
     except requests.RequestException:
         return {}
     if not resp.ok:
+        if cache:
+            try:
+                cache.set(_presence_cache_key(steam_id), "null", ex=_presence_cache_empty_ttl_seconds())
+            except Exception:
+                pass
         return {}
     try:
         data = resp.json()
     except Exception:
+        if cache:
+            try:
+                cache.set(_presence_cache_key(steam_id), "null", ex=_presence_cache_empty_ttl_seconds())
+            except Exception:
+                pass
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        if cache:
+            try:
+                cache.set(_presence_cache_key(steam_id), "null", ex=_presence_cache_empty_ttl_seconds())
+            except Exception:
+                pass
+        return {}
+    if cache:
+        try:
+            cache.set(
+                _presence_cache_key(steam_id),
+                json.dumps(data, ensure_ascii=False),
+                ex=_presence_cache_ttl_seconds(),
+            )
+        except Exception:
+            pass
+    return data
 
 
 def fetch_active_rentals_for_monitor(mysql_cfg: dict, user_id: int) -> list[dict]:
