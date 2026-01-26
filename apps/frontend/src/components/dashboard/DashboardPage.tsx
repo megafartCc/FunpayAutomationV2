@@ -344,9 +344,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const loadAccounts = async (silent = false) => {
     if (!silent) setLoadingAccounts(true);
     try {
-      if (selectedWorkspaceId === "all") {
-        const res = await api.listAccounts();
-        setAllAccounts((res.items || []).map(mapAccount));
+      const res = await api.listAccounts();
+      setAllAccounts((res.items || []).map(mapAccount));
     } catch {
       setAllAccounts([]);
     } finally {
@@ -419,14 +418,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     );
   }, [selectedAccount]);
 
-  const emptyAccountMessage =
-    selectedWorkspaceId === "all"
-      ? "Select a workspace to view inventory."
-      : loadingAccounts
-        ? "Loading accounts..."
-        : "No accounts loaded yet.";
+  const emptyAccountMessage = loadingAccounts ? "Loading accounts..." : "No accounts loaded yet.";
   const emptyRentalMessage = loadingRentals ? "Loading rentals..." : "No active rentals yet.";
-  const inventoryAccounts = selectedWorkspaceId === "all" ? [] : filteredAccounts;
+  const inventoryAccounts = selectedWorkspaceId === "all" ? allAccounts : filteredAccounts;
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
