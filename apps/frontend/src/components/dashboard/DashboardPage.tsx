@@ -72,6 +72,20 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
   </div>
 );
 
+const statusPill = (status?: string) => {
+  const lower = (status || "").toLowerCase();
+  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
+  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
+  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
+  if (lower.includes("online") || lower === "1" || lower === "true")
+    return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
+  if (lower.includes("idle") || lower.includes("away"))
+    return { className: "bg-amber-50 text-amber-600", label: "Idle" };
+  if (lower.includes("off") || lower === "" || lower === "0")
+    return { className: "bg-rose-50 text-rose-600", label: "Offline" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+};
+
 type AccountRow = {
   id: number;
   name: string;
@@ -211,13 +225,6 @@ const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => 
 };
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
-  const statCards: StatCardProps[] = [
-    { label: "Total Accounts", value: 20, delta: "+12%", deltaTone: "up", icon: <CardUsersIcon /> },
-    { label: "Active Rentals", value: 0, delta: "-3%", deltaTone: "down", icon: <CardUsersIcon /> },
-    { label: "Free Accounts", value: 20, delta: "+6%", deltaTone: "up", icon: <CardCloudCheckIcon /> },
-    { label: "Past 24h", value: 0, delta: "+2%", deltaTone: "up", icon: <CardBarsIcon /> },
-  ];
-
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -244,20 +251,36 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   );
   const accountById = useMemo(() => new Map(accounts.map((acc) => [acc.id, acc])), [accounts]);
 
-  const loadAccounts = async () => {
-    setLoadingAccounts(true);
+  const statCards = useMemo<StatCardProps[]>(() => {
+    const totalAccounts = accounts.length;
+    const activeRentals = rentals.length;
+    const freeAccounts = accounts.filter((acc) => !acc.owner && !acc.accountFrozen).length;
+    const past24h = accounts.filter((acc) => {
+      const startMs = parseUtcMs(acc.rentalStart ?? null);
+      return startMs !== null && now - startMs <= 24 * 60 * 60 * 1000;
+    }).length;
+    return [
+      { label: "Total Accounts", value: totalAccounts, icon: <CardUsersIcon /> },
+      { label: "Active Rentals", value: activeRentals, icon: <CardUsersIcon /> },
+      { label: "Free Accounts", value: freeAccounts, icon: <CardCloudCheckIcon /> },
+      { label: "Past 24h", value: past24h, icon: <CardBarsIcon /> },
+    ];
+  }, [accounts, rentals, now]);
+
+  const loadAccounts = async (silent = false) => {
+    if (!silent) setLoadingAccounts(true);
     try {
       const res = await api.listAccounts();
       setAccounts((res.items || []).map(mapAccount));
     } catch {
       setAccounts([]);
     } finally {
-      setLoadingAccounts(false);
+      if (!silent) setLoadingAccounts(false);
     }
   };
 
-  const loadRentals = async () => {
-    setLoadingRentals(true);
+  const loadRentals = async (silent = false) => {
+    if (!silent) setLoadingRentals(true);
     try {
       const res = await api.listActiveRentals();
       const observedAt = Date.now();
@@ -265,13 +288,21 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     } catch {
       setRentals([]);
     } finally {
-      setLoadingRentals(false);
+      if (!silent) setLoadingRentals(false);
     }
   };
 
   useEffect(() => {
     void loadAccounts();
     void loadRentals();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadAccounts(true);
+      void loadRentals(true);
+    }, 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {

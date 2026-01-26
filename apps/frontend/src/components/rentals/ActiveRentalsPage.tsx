@@ -180,8 +180,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   );
   const accountById = useMemo(() => new Map(accounts.map((acc) => [acc.id, acc])), [accounts]);
 
-  const loadRentals = async () => {
-    setLoading(true);
+  const loadRentals = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.listActiveRentals();
       const observedAt = Date.now();
@@ -189,7 +189,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     } catch {
       setRentals([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -205,6 +205,14 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadRentals();
     void loadAccounts();
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadRentals(true);
+      void loadAccounts();
+    }, 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
