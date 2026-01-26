@@ -20,6 +20,14 @@ const LotsPage: React.FC = () => {
     }));
   }, [accounts]);
 
+  const currentWorkspaceLabel = useMemo(() => {
+    if (selectedWorkspaceId === "all") return "All workspaces";
+    const match = workspaces.find((item) => item.id === selectedWorkspaceId);
+    if (match) return match.is_default ? `${match.name} (Default)` : match.name;
+    const fallback = workspaces.find((item) => item.is_default);
+    return fallback ? `${fallback.name} (Default)` : "Workspace";
+  }, [selectedWorkspaceId, workspaces]);
+
   useEffect(() => {
     let mounted = true;
     const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
@@ -115,11 +123,7 @@ const LotsPage: React.FC = () => {
         
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
             <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
-            <span className="text-xs font-semibold text-neutral-700">
-              {selectedWorkspaceId === "all"
-                ? "All workspaces"
-                : workspaces.find((item) => item.id === selectedWorkspaceId)?.name || "Workspace"}
-            </span>
+            <span className="text-xs font-semibold text-neutral-700">{currentWorkspaceLabel}</span>
           </div>
 </div>
 

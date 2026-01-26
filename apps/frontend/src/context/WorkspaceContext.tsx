@@ -13,8 +13,14 @@ const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefi
 
 const STORAGE_KEY = "funpay.selectedWorkspace";
 
-const normalizeSelected = (value: number | "all", workspaces: WorkspaceItem[]) => {
-  if (value === "all") return "all";
+const normalizeSelected = (value: number | "all", workspaces: WorkspaceItem[], preferDefault: boolean) => {
+  if (value === "all") {
+    if (preferDefault) {
+      const defaultWs = workspaces.find((item) => item.is_default);
+      return defaultWs ? defaultWs.id : "all";
+    }
+    return "all";
+  }
   const exists = workspaces.some((item) => item.id === value);
   if (exists) return value;
   const defaultWs = workspaces.find((item) => item.is_default);
@@ -29,10 +35,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const preferDefault = stored === null;
       const res = await api.listWorkspaces();
       const items = res.items || [];
       setWorkspaces(items);
-      setSelectedIdState((prev) => normalizeSelected(prev, items));
+      setSelectedIdState((prev) => normalizeSelected(prev, items, preferDefault));
     } catch {
       setWorkspaces([]);
     } finally {

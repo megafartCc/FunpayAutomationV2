@@ -231,13 +231,16 @@ const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => 
 const resolveWorkspaceName = (
   workspaceId: number | null | undefined,
   workspaceName: string | null | undefined,
-  workspaces: { id: number; name: string }[],
+  workspaces: { id: number; name: string; is_default?: boolean }[],
 ) => {
   if (workspaceName) return workspaceName;
   if (workspaceId) {
     const match = workspaces.find((item) => item.id === workspaceId);
     if (match) return match.name;
   }
+  const fallback = workspaces.find((item) => item.is_default);
+  if (fallback) return fallback.name;
+  if (workspaceId) return `Workspace ${workspaceId}`;
   return "Workspace";
 };
 
@@ -529,7 +532,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             );
             const workspaceRecord = selectedAccount.workspaceId
               ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
-              : null;
+              : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
@@ -681,7 +684,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             );
             const workspaceRecord = selectedAccount?.workspaceId
               ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
-              : null;
+              : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
@@ -817,7 +820,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   const workspaceLabel = resolveWorkspaceName(acc.workspaceId, acc.workspaceName, workspaces);
                   const workspaceRecord = acc.workspaceId
                     ? workspaces.find((item) => item.id === acc.workspaceId)
-                    : null;
+                    : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
                     ? `${workspaceLabel} (Default)`
                     : workspaceLabel;
@@ -918,7 +921,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   );
                   const workspaceRecord = account?.workspaceId
                     ? workspaces.find((item) => item.id === account.workspaceId)
-                    : null;
+                    : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
                     ? `${workspaceLabel} (Default)`
                     : workspaceLabel;

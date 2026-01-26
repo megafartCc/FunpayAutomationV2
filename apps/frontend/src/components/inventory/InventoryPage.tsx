@@ -73,8 +73,10 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     if (workspaceId) {
       const match = workspaces.find((item) => item.id === workspaceId);
       if (match?.name) return match.name;
-      return `Workspace ${workspaceId}`;
     }
+    const fallback = workspaces.find((item) => item.is_default);
+    if (fallback?.name) return fallback.name;
+    if (workspaceId) return `Workspace ${workspaceId}`;
     return "Workspace";
   };
 

@@ -16,7 +16,10 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
   const selectedLabel = useMemo(() => {
     if (selectedId === "all") return "All workspaces";
     const match = workspaces.find((item) => item.id === selectedId);
-    if (!match) return "Workspace";
+    if (!match) {
+      const fallback = workspaces.find((item) => item.is_default);
+      return fallback ? `${fallback.name} (Default)` : "Workspace";
+    }
     return match.is_default ? `${match.name} (Default)` : match.name;
   }, [selectedId, workspaces]);
 
