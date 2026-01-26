@@ -91,6 +91,8 @@ type AccountRow = {
   id: number;
   workspaceId?: number | null;
   workspaceName?: string | null;
+  lastRentedWorkspaceId?: number | null;
+  lastRentedWorkspaceName?: string | null;
   name: string;
   login: string;
   password: string;
@@ -126,6 +128,8 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
   workspaceId: item.workspace_id ?? null,
   workspaceName: item.workspace_name ?? null,
+  lastRentedWorkspaceId: item.last_rented_workspace_id ?? null,
+  lastRentedWorkspaceName: item.last_rented_workspace_name ?? null,
   name: item.account_name,
   login: item.login,
   password: item.password || "",
@@ -244,6 +248,15 @@ const resolveWorkspaceName = (
   return "Workspace";
 };
 
+const formatWorkspaceLabel = (
+  workspaceId: number | null | undefined,
+  workspaceName: string | null | undefined,
+  workspaces: { id: number; name: string; is_default?: boolean }[],
+) => {
+  const label = resolveWorkspaceName(workspaceId, workspaceName, workspaces);
+  return workspaceId ? `${label} (ID ${workspaceId})` : label;
+};
+
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
@@ -292,7 +305,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     if (!silent) setLoadingAccounts(true);
     try {
       if (selectedWorkspaceId === "all") {
-        setAccounts([]);
+        const res = await api.listAccounts();
+        setAccounts((res.items || []).map(mapAccount));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
@@ -392,7 +406,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     }
     setAccountActionBusy(true);
     try {
-      await api.assignAccount(selectedAccount.id, owner, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.assignAccount(selectedAccount.id, owner, workspaceId);
       onToast?.("Rental assigned.");
       setAssignOwner("");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -435,7 +453,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
     setAccountActionBusy(true);
     try {
-      await api.updateAccount(selectedAccount.id, payload, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.updateAccount(selectedAccount.id, payload, workspaceId);
       onToast?.("Account updated.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -464,7 +486,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     }
     setRentalActionBusy(true);
     try {
-      await api.extendAccount(selectedAccount.id, hours, minutes, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.extendAccount(selectedAccount.id, hours, minutes, workspaceId);
       onToast?.("Rental extended.");
       setRentalExtendHours("");
       setRentalExtendMinutes("");
@@ -485,7 +511,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.releaseAccount(selectedAccount.id, workspaceId);
       onToast?.("Rental released.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -504,7 +534,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.freezeRental(selectedAccount.id, nextFrozen, workspaceId);
       onToast?.(nextFrozen ? "Rental frozen." : "Rental unfrozen.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -533,7 +567,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 ? "bg-amber-50 text-amber-700"
                 : "bg-emerald-50 text-emerald-600";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
-            const workspaceLabel = resolveWorkspaceName(
+            const workspaceLabel = formatWorkspaceLabel(
               selectedAccount.workspaceId,
               selectedAccount.workspaceName,
               workspaces,
@@ -544,6 +578,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
+            const lastRentedLabel = selectedAccount.lastRentedWorkspaceId
+              ? formatWorkspaceLabel(
+                  selectedAccount.lastRentedWorkspaceId,
+                  selectedAccount.lastRentedWorkspaceName,
+                  workspaces,
+                )
+              : "-";
+            const lastRentedRecord = selectedAccount.lastRentedWorkspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.lastRentedWorkspaceId)
+              : null;
+            const lastRentedDisplay = lastRentedRecord?.is_default
+              ? `${lastRentedLabel} (Default)`
+              : lastRentedLabel;
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
               (selectedAccount.rentalDuration ? selectedAccount.rentalDuration * 60 : null);
@@ -579,7 +626,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     <span>Login: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
-                    <span>Workspace: {workspaceDisplay}</span>
+                    <span>Home workspace: {workspaceDisplay}</span>
+                    <span>Last rented: {lastRentedDisplay}</span>
                     <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
                     <span>Duration: {hoursLabel}</span>
                   </div>
@@ -685,14 +733,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             const frozen = !!selectedAccount?.rentalFrozen;
             const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
             const presenceLabel = pill.label;
-            const workspaceLabel = resolveWorkspaceName(
-              selectedAccount?.workspaceId,
-              selectedAccount?.workspaceName,
-              workspaces,
-            );
-            const workspaceRecord = selectedAccount?.workspaceId
-              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
-              : workspaces.find((item) => item.is_default) ?? null;
+            const workspaceLabel = selectedAccount?.lastRentedWorkspaceId
+              ? formatWorkspaceLabel(
+                  selectedAccount.lastRentedWorkspaceId,
+                  selectedAccount.lastRentedWorkspaceName,
+                  workspaces,
+                )
+              : "-";
+            const workspaceRecord = selectedAccount?.lastRentedWorkspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.lastRentedWorkspaceId)
+              : null;
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
@@ -825,13 +875,26 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     : rented
                       ? "bg-amber-50 text-amber-700"
                       : "bg-emerald-50 text-emerald-600";
-                  const workspaceLabel = resolveWorkspaceName(acc.workspaceId, acc.workspaceName, workspaces);
+                  const workspaceLabel = formatWorkspaceLabel(acc.workspaceId, acc.workspaceName, workspaces);
                   const workspaceRecord = acc.workspaceId
                     ? workspaces.find((item) => item.id === acc.workspaceId)
                     : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
                     ? `${workspaceLabel} (Default)`
                     : workspaceLabel;
+                  const lastRentedLabel = acc.lastRentedWorkspaceId
+                    ? formatWorkspaceLabel(
+                        acc.lastRentedWorkspaceId,
+                        acc.lastRentedWorkspaceName,
+                        workspaces,
+                      )
+                    : "-";
+                  const lastRentedRecord = acc.lastRentedWorkspaceId
+                    ? workspaces.find((item) => item.id === acc.lastRentedWorkspaceId)
+                    : null;
+                  const lastRentedBadge = lastRentedRecord?.is_default
+                    ? `${lastRentedLabel} (Default)`
+                    : lastRentedLabel;
                   const rowId = acc.id ?? idx;
                   const isSelected = selectedRowId !== null && String(selectedRowId) === String(rowId);
                   return (
@@ -868,9 +931,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         <div className="truncate font-semibold leading-tight text-neutral-900" title={acc.name || "Account"}>
                           {acc.name || "Account"}
                         </div>
-                        <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          {workspaceBadge}
-                        </span>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Home: {workspaceBadge}
+                          </span>
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Last rented: {lastRentedBadge}
+                          </span>
+                        </div>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.login || ""}>
                         {acc.login || ""}
@@ -922,14 +990,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   const isSelected = selectedRowId !== null && String(selectedRowId) === String(row.id);
                   const pill = statusPill(row.status);
                   const account = accountById.get(row.id);
-                  const workspaceLabel = resolveWorkspaceName(
-                    account?.workspaceId,
-                    account?.workspaceName,
-                    workspaces,
-                  );
-                  const workspaceRecord = account?.workspaceId
-                    ? workspaces.find((item) => item.id === account.workspaceId)
-                    : workspaces.find((item) => item.is_default) ?? null;
+                  const workspaceLabel = account?.lastRentedWorkspaceId
+                    ? formatWorkspaceLabel(
+                        account.lastRentedWorkspaceId,
+                        account.lastRentedWorkspaceName,
+                        workspaces,
+                      )
+                    : "-";
+                  const workspaceRecord = account?.lastRentedWorkspaceId
+                    ? workspaces.find((item) => item.id === account.lastRentedWorkspaceId)
+                    : null;
                   const workspaceBadge = workspaceRecord?.is_default
                     ? `${workspaceLabel} (Default)`
                     : workspaceLabel;
