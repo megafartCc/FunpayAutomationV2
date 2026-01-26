@@ -107,15 +107,15 @@ class MySQLLotRepo:
                 raise LotCreateError("account_wrong_workspace")
 
             cursor_dict.execute(
-                "SELECT 1 FROM lots WHERE user_id = %s AND workspace_id = %s AND lot_number = %s LIMIT 1",
-                (user_id, workspace_id, lot_number),
+                "SELECT 1 FROM lots WHERE workspace_id = %s AND lot_number = %s LIMIT 1",
+                (workspace_id, lot_number),
             )
             if cursor_dict.fetchone():
                 raise LotCreateError("duplicate_lot_number")
 
             cursor_dict.execute(
-                "SELECT 1 FROM lots WHERE user_id = %s AND workspace_id = %s AND account_id = %s LIMIT 1",
-                (user_id, workspace_id, account_id),
+                "SELECT 1 FROM lots WHERE workspace_id = %s AND account_id = %s LIMIT 1",
+                (workspace_id, account_id),
             )
             if cursor_dict.fetchone():
                 raise LotCreateError("account_already_mapped")

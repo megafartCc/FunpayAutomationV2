@@ -5,10 +5,12 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
 from db.lot_repo import MySQLLotRepo, LotRecord, LotCreateError
+from db.workspace_repo import MySQLWorkspaceRepo
 
 
 router = APIRouter()
 lots_repo = MySQLLotRepo()
+workspace_repo = MySQLWorkspaceRepo()
 
 
 class LotCreate(BaseModel):
@@ -52,6 +54,9 @@ def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
     if not payload.lot_url.strip():
         raise HTTPException(status_code=400, detail="Lot URL is required")
+    workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for this lot.")
     try:
         created = lots_repo.create(
             user_id=int(user.id),
