@@ -192,20 +192,30 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
-        # Relax uniqueness to allow multiple accounts per lot_number per user.
+        # Ensure no UNIQUE index blocks duplicate lot_number across workspaces.
         try:
-            cursor.execute("ALTER TABLE lots DROP INDEX uniq_lot_user;")
-        except mysql.connector.Error as exc:
-            if exc.errno not in (errorcode.ER_CANT_DROP_FIELD_OR_KEY, errorcode.ER_DUP_KEYNAME):
-                raise
-        # Keep existing index that supports FK; do not drop if referenced.
-        try:
-            cursor.execute(
-                "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_account_user (user_id, lot_number, account_id)"
-            )
-        except mysql.connector.Error as exc:
-            if exc.errno != errorcode.ER_DUP_KEYNAME:
-                raise
+            idx_cursor = conn.cursor(dictionary=True)
+            idx_cursor.execute("SHOW INDEX FROM lots")
+            index_cols: dict[str, list[tuple[int, str]]] = {}
+            index_unique: dict[str, bool] = {}
+            for row in idx_cursor.fetchall() or []:
+                key = row["Key_name"]
+                index_unique[key] = row["Non_unique"] == 0
+                index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
+            for key, cols in index_cols.items():
+                if key == "PRIMARY":
+                    continue
+                if not index_unique.get(key, False):
+                    continue
+                columns = [col for _, col in sorted(cols)]
+                if "workspace_id" not in columns:
+                    try:
+                        cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+                    except mysql.connector.Error:
+                        # Ignore if the index can't be dropped (e.g. already removed).
+                        pass
+        except mysql.connector.Error:
+            pass
 
         # Aliases: multiple FunPay URLs per logical lot_number.
         cursor.execute(
