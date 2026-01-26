@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { api, AccountItem, LotItem } from "../../services/api";
+import { api, AccountItem, LotItem, LotAliasItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import AliasSection from "./AliasSection";
 
 const LotsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [lots, setLots] = useState<LotItem[]>([]);
+  const [aliases, setAliases] = useState<LotAliasItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
@@ -34,19 +36,21 @@ const LotsPage: React.FC = () => {
     Promise.all([
       api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined),
       api.listLots(typeof workspaceId === "number" ? workspaceId : undefined),
+      api.listLotAliases(typeof workspaceId === "number" ? workspaceId : undefined),
     ])
-      .then(([accountsRes, lotsRes]) => {
+      .then(([accountsRes, lotsRes, aliasRes]) => {
         if (!mounted) return;
         setAccounts(accountsRes.items || []);
         setLots(lotsRes.items || []);
+        setAliases(aliasRes.items || []);
       })
       .catch((err) => {
         if (!mounted) return;
-        setStatus({
-          message: (err as { message?: string })?.message || "Failed to load lots.",
-          isError: true,
-        });
-      })
+      setStatus({
+        message: (err as { message?: string })?.message || "Failed to load lots.",
+        isError: true,
+      });
+    })
       .finally(() => {
         if (!mounted) return;
         setLoading(false);
@@ -239,6 +243,13 @@ const LotsPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <AliasSection
+        aliases={aliases}
+        loading={loading}
+        onCreated={(alias) => setAliases((prev) => [alias, ...prev])}
+        onDeleted={(id) => setAliases((prev) => prev.filter((item) => item.id !== id))}
+      />
     </div>
   );
 };
