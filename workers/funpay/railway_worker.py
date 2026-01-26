@@ -756,6 +756,7 @@ def fetch_available_lot_accounts(
             "a.rental_duration AS rental_duration",
             "a.rental_duration_minutes AS rental_duration_minutes",
             "a.mmr AS mmr",
+            "a.workspace_id AS workspace_id",
         ]
         if has_lots:
             select_fields.extend(["l.lot_number AS lot_number", "l.lot_url AS lot_url"])
@@ -1041,7 +1042,7 @@ def build_stock_messages(accounts: list[dict]) -> list[str]:
         lot_url = account.get("lot_url")
         display_name = account.get("account_name") or account.get("login") or ""
         if not display_name:
-            display_name = f"\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u2116{lot_number}" if lot_number else "\u0410\u043a\u043a\u0430\u0443\u043d\u0442"
+            display_name = f"Аккаунт №{lot_number}" if lot_number else "Аккаунт"
         line = f"{display_name} - {lot_url}" if lot_url else display_name
         lines.append(line)
 
