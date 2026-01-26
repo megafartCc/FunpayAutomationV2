@@ -32,7 +32,7 @@ type AccountRow = {
 };
 
 const RENTALS_GRID =
-  "minmax(64px,0.5fr) minmax(200px,1.4fr) minmax(160px,1.1fr) minmax(140px,0.9fr) minmax(170px,1fr) minmax(130px,0.8fr) minmax(160px,1fr) minmax(120px,0.7fr)";
+  "minmax(64px,0.5fr) minmax(200px,1.4fr) minmax(160px,1.1fr) minmax(140px,0.9fr) minmax(170px,1fr) minmax(150px,0.9fr) minmax(220px,1.2fr) minmax(120px,0.7fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const statusPill = (status?: string) => {
