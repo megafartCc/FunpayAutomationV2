@@ -26,7 +26,7 @@ class MySQLLotRepo:
             params: list = [user_id]
             workspace_clause = ""
             if workspace_id is not None:
-                workspace_clause = " AND l.workspace_id = %s"
+                workspace_clause = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
                 params.append(workspace_id)
             cursor.execute(
                 f"""
@@ -71,10 +71,16 @@ class MySQLLotRepo:
             account = cursor.fetchone()
             if not account:
                 return None
-            if account.get("workspace_id") and int(account["workspace_id"]) != int(workspace_id):
+            if workspace_id is not None and account.get("workspace_id") and int(account["workspace_id"]) != int(workspace_id):
                 return None
 
             cursor = conn.cursor()
+            # If creating global mapping (workspace_id is None), ensure only one global per user/lot
+            if workspace_id is None:
+                cursor.execute(
+                    "DELETE FROM lots WHERE user_id = %s AND lot_number = %s AND workspace_id IS NULL",
+                    (user_id, lot_number),
+                )
             try:
                 cursor.execute(
                     """

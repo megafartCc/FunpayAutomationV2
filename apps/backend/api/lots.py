@@ -12,7 +12,7 @@ lots_repo = MySQLLotRepo()
 
 
 class LotCreate(BaseModel):
-    workspace_id: int = Field(..., ge=1)
+    workspace_id: int | None = Field(None, ge=1, description="Omit or null to create a global mapping")
     lot_number: int = Field(..., ge=1)
     account_id: int = Field(..., ge=1)
     lot_url: str = Field(..., min_length=5)
@@ -52,7 +52,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
         raise HTTPException(status_code=400, detail="Lot URL is required")
     created = lots_repo.create(
         user_id=int(user.id),
-        workspace_id=int(payload.workspace_id),
+        workspace_id=int(payload.workspace_id) if payload.workspace_id is not None else None,
         lot_number=payload.lot_number,
         account_id=payload.account_id,
         lot_url=payload.lot_url.strip(),

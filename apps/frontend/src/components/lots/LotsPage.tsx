@@ -15,6 +15,7 @@ const LotsPage: React.FC = () => {
   const [lotUrl, setLotUrl] = useState("");
   const [editingLot, setEditingLot] = useState<number | null>(null);
   const [urlsInput, setUrlsInput] = useState("");
+  const [isGlobal, setIsGlobal] = useState(false);
 
   const accountOptions = useMemo(() => {
     return accounts.map((acc) => ({
@@ -70,29 +71,28 @@ const LotsPage: React.FC = () => {
       setStatus({ message: "Provide lot number and account.", isError: true });
       return;
     }
-    if (selectedWorkspaceId === "all") {
-      setStatus({ message: "Select a workspace to save a lot mapping.", isError: true });
-      return;
-    }
     if (!lotUrl.trim()) {
       setStatus({ message: "Lot URL is required.", isError: true });
       return;
     }
     try {
       const created = await api.createLot({
-        workspace_id: selectedWorkspaceId,
+        workspace_id: isGlobal || selectedWorkspaceId === "all" ? null : selectedWorkspaceId,
         lot_number: number,
         account_id: account,
         lot_url: lotUrl.trim(),
       });
       setLots((prev) => {
-        const next = prev.filter((item) => item.lot_number !== created.lot_number);
+        const next = prev.filter(
+          (item) => !(item.lot_number === created.lot_number && item.workspace_id === created.workspace_id),
+        );
         next.unshift(created);
         return next;
       });
       setLotNumber("");
       setAccountId("");
       setLotUrl("");
+      setIsGlobal(false);
     setStatus({ message: "Lot saved." });
   } catch (err) {
     setStatus({
@@ -233,6 +233,17 @@ const handleDelete = async (lotNum: number) => {
               required
             />
           </div>
+          <div className="flex items-end gap-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+              <input
+                type="checkbox"
+                checked={isGlobal || selectedWorkspaceId === "all"}
+                onChange={(e) => setIsGlobal(e.target.checked)}
+                disabled={selectedWorkspaceId === "all"}
+              />
+              Global mapping (shared pool)
+            </label>
+          </div>
           <div className="flex items-end">
             <button
               className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800"
@@ -250,6 +261,7 @@ const handleDelete = async (lotNum: number) => {
                 <th className="px-3 py-2 text-left">Lot</th>
                 <th className="px-3 py-2 text-left">Account</th>
                 <th className="px-3 py-2 text-left">Primary URL</th>
+                <th className="px-3 py-2 text-left">Scope</th>
                 <th className="px-3 py-2 text-left">URLs (comma-separated)</th>
                 <th className="px-3 py-2"></th>
               </tr>
@@ -272,6 +284,9 @@ const handleDelete = async (lotNum: number) => {
                       ) : (
                         "-"
                       )}
+                    </td>
+                    <td className="px-3 py-3 text-neutral-700">
+                      {lot.workspace_id ? "Workspace" : "Global"}
                     </td>
                     <td className="px-3 py-3 text-neutral-700 align-top">
                       {editingLot === lot.lot_number ? (
@@ -333,7 +348,7 @@ const handleDelete = async (lotNum: number) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                  <td colSpan={6} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                     {loading ? "Loading lots..." : "No lots configured yet."}
                   </td>
                 </tr>

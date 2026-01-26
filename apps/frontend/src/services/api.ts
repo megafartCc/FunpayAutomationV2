@@ -60,7 +60,7 @@ export type LotItem = {
 };
 
 export type LotCreatePayload = {
-  workspace_id: number;
+  workspace_id?: number | null;
   lot_number: number;
   account_id: number;
   lot_url: string;

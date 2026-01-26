@@ -779,6 +779,7 @@ def fetch_lot_alias(
 def fetch_available_lot_accounts(
     mysql_cfg: dict,
     user_id: int | None,
+    workspace_id: int | None = None,
 ) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
@@ -817,8 +818,8 @@ def fetch_available_lot_accounts(
         from_clause = "FROM accounts a"
         if has_lots:
             join_clause = " LEFT JOIN lots l ON l.account_id = a.ID"
-            if has_account_workspace and has_lot_workspace:
-                join_clause += " AND l.workspace_id = a.workspace_id"
+            if has_account_workspace and has_lot_workspace and workspace_id is not None:
+                join_clause += " AND (l.workspace_id = a.workspace_id OR l.workspace_id IS NULL)"
             from_clause += join_clause
 
         where_clauses = ["a.owner IS NULL"]
@@ -828,6 +829,9 @@ def fetch_available_lot_accounts(
             where_clauses.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
         if has_lots:
             where_clauses.append("l.lot_number IS NOT NULL")
+            if has_account_workspace and has_lot_workspace and workspace_id is not None:
+                where_clauses.append("(l.workspace_id = %s OR l.workspace_id IS NULL)")
+                params.append(int(workspace_id))
 
         params: list = []
         if user_id is not None:
@@ -856,12 +860,18 @@ def fetch_lot_account(
     mysql_cfg: dict,
     user_id: int,
     lot_number: int,
+    workspace_id: int | None = None,
 ) -> dict | None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
         cursor = conn.cursor(dictionary=True)
         params: list = [user_id, lot_number]
         join_clause = "JOIN accounts a ON a.id = l.account_id"
+        where_workspace = ""
+        has_workspace = column_exists(cursor, "lots", "workspace_id")
+        if has_workspace and workspace_id is not None:
+            where_workspace = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
+            params.append(int(workspace_id))
         cursor.execute(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
@@ -871,13 +881,16 @@ def fetch_lot_account(
             FROM lots l
             {join_clause}
             WHERE l.user_id = %s AND l.lot_number = %s
+                  {where_workspace}
                   AND (a.owner IS NULL OR a.owner = '')
                   AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
                   AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
-            ORDER BY a.id
+            ORDER BY
+                CASE WHEN l.workspace_id = %s THEN 0 ELSE 1 END,
+                a.id
             LIMIT 1
             """,
-            tuple(params),
+            tuple(params + ([int(workspace_id)] if has_workspace and workspace_id is not None else [])),
         )
         return cursor.fetchone()
     finally:
@@ -1141,7 +1154,7 @@ def handle_stock_command(
         return True
 
     try:
-        accounts = fetch_available_lot_accounts(mysql_cfg, user_id)
+        accounts = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
 
         # Enrich with workspace-specific alias if present.
         if accounts:
@@ -1346,7 +1359,7 @@ def handle_order_purchased(
         logger.warning("Order %s skipped: user id missing.", order_id)
         return
 
-    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number)
+    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id=workspace_id)
     if not mapping:
         send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
