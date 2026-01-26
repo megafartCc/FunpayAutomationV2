@@ -44,6 +44,36 @@ def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
     return dup_key.endswith(f".{expected}")
 
 
+def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
+    try:
+        idx_cursor = conn.cursor(dictionary=True)
+        idx_cursor.execute("SHOW INDEX FROM lots")
+        index_cols: dict[str, list[tuple[int, str]]] = {}
+        index_unique: dict[str, bool] = {}
+        for row in idx_cursor.fetchall() or []:
+            key = row["Key_name"]
+            index_unique[key] = row["Non_unique"] == 0
+            index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
+        desired_lot_unique = ["workspace_id", "lot_number"]
+        desired_account_unique = ["workspace_id", "account_id"]
+        cursor = conn.cursor()
+        for key, cols in index_cols.items():
+            if key == "PRIMARY":
+                continue
+            if not index_unique.get(key, False):
+                continue
+            columns = [col for _, col in sorted(cols)]
+            if columns in (desired_lot_unique, desired_account_unique):
+                continue
+            try:
+                cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+            except mysql.connector.Error:
+                pass
+        conn.commit()
+    except mysql.connector.Error:
+        pass
+
+
 class MySQLLotRepo:
     def _get_conn(self) -> mysql.connector.MySQLConnection:
         return get_base_connection()
@@ -127,8 +157,17 @@ class MySQLLotRepo:
                         raise LotCreateError("duplicate_lot_number")
                     if _dup_key_matches(dup_key, "uniq_account_workspace"):
                         raise LotCreateError("account_already_mapped")
-                    raise LotCreateError("duplicate")
-                raise
+                    _cleanup_lot_unique_indexes(conn)
+                    cursor.execute(
+                        """
+                        INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (user_id, workspace_id, lot_number, account_id, lot_url),
+                    )
+                    conn.commit()
+                else:
+                    raise
 
             return LotRecord(
                 lot_number=int(lot_number),
