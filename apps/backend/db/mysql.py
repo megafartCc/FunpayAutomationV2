@@ -99,9 +99,27 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                golden_key TEXT NOT NULL,
+                proxy_url TEXT NOT NULL,
+                is_default TINYINT(1) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_workspace_user_name (user_id, name),
+                INDEX idx_workspace_user (user_id),
+                CONSTRAINT fk_workspace_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS accounts (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
                 account_name VARCHAR(255) NOT NULL,
                 login VARCHAR(255) NOT NULL,
                 password TEXT NOT NULL,
@@ -117,6 +135,7 @@ def ensure_schema() -> None:
                 rental_frozen_at DATETIME NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_accounts_user (user_id),
+                INDEX idx_accounts_workspace (workspace_id),
                 INDEX idx_accounts_owner (owner),
                 UNIQUE KEY uniq_account_user_name (user_id, account_name),
                 CONSTRAINT fk_accounts_user FOREIGN KEY (user_id)
@@ -145,11 +164,17 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN workspace_id BIGINT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS lots (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
                 lot_number INT NOT NULL,
                 account_id BIGINT NOT NULL,
                 lot_url TEXT NULL,
@@ -164,6 +189,97 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        try:
+            cursor.execute("ALTER TABLE lots ADD COLUMN workspace_id BIGINT NULL;")
+        except mysql.connector.Error as exc:
+            if exc.errno != errorcode.ER_DUP_FIELDNAME:
+                raise
+
+        # Seed default workspaces for legacy users.
+        cursor.execute("SELECT id, username, golden_key FROM users")
+        for row in cursor.fetchall() or []:
+            user_id = row[0]
+            golden_key = row[2]
+            if not golden_key:
+                continue
+            cursor.execute(
+                "SELECT id FROM workspaces WHERE user_id=%s LIMIT 1",
+                (user_id,),
+            )
+            exists = cursor.fetchone()
+            if exists:
+                continue
+            cursor.execute(
+                "INSERT INTO workspaces (user_id, name, golden_key, proxy_url, is_default) "
+                "VALUES (%s, %s, %s, %s, 1)",
+                (user_id, "Default", golden_key, ""),
+            )
+
+        # Backfill workspace_id for existing accounts/lots.
+        cursor.execute(
+            """
+            UPDATE accounts a
+            JOIN workspaces w ON w.user_id = a.user_id AND w.is_default = 1
+            SET a.workspace_id = w.id
+            WHERE a.workspace_id IS NULL
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE lots l
+            JOIN accounts a ON a.id = l.account_id
+            SET l.workspace_id = a.workspace_id
+            WHERE l.workspace_id IS NULL
+            """
+        )
+
+        # Update uniqueness to be workspace-aware.
+        try:
+            cursor.execute("ALTER TABLE accounts DROP INDEX uniq_account_user_name;")
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE accounts ADD UNIQUE KEY uniq_account_workspace_name (workspace_id, account_name)"
+            )
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute("ALTER TABLE lots DROP INDEX uniq_lot_user;")
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute("ALTER TABLE lots DROP INDEX uniq_account_user;")
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE lots ADD UNIQUE KEY uniq_lot_workspace (workspace_id, lot_number)"
+            )
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE lots ADD UNIQUE KEY uniq_account_workspace (workspace_id, account_id)"
+            )
+        except mysql.connector.Error:
+            pass
+
+        # Optional foreign keys for workspace_id (safe if already exists).
+        try:
+            cursor.execute(
+                "ALTER TABLE accounts ADD CONSTRAINT fk_accounts_workspace "
+                "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL"
+            )
+        except mysql.connector.Error:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE lots ADD CONSTRAINT fk_lots_workspace "
+                "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL"
+            )
+        except mysql.connector.Error:
+            pass
         conn.commit()
     finally:
         conn.close()

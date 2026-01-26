@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import { AuthResponse } from "../../services/api";
+import { WorkspaceProvider } from "../../context/WorkspaceContext";
 
 type LayoutProps = {
   user: AuthResponse;
@@ -34,10 +35,12 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     <div className="flex min-h-screen bg-neutral-50">
       <Sidebar />
       <div className="flex min-h-screen flex-1 flex-col">
-        <TopBar title={title} userInitial={initial} onLogout={onLogout} />
-        <main className="flex-1 px-8 py-6">
-          <Outlet />
-        </main>
+        <WorkspaceProvider>
+          <TopBar title={title} userInitial={initial} onLogout={onLogout} />
+          <main className="flex-1 px-8 py-6">
+            <Outlet />
+          </main>
+        </WorkspaceProvider>
       </div>
     </div>
   );

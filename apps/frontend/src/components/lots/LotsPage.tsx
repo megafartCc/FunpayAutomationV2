@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, AccountItem, LotItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 const LotsPage: React.FC = () => {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [lots, setLots] = useState<LotItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
+  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
 
   const [lotNumber, setLotNumber] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -20,7 +22,11 @@ const LotsPage: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([api.listAccounts(), api.listLots()])
+    const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+    Promise.all([
+      api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined),
+      api.listLots(typeof workspaceId === "number" ? workspaceId : undefined),
+    ])
       .then(([accountsRes, lotsRes]) => {
         if (!mounted) return;
         setAccounts(accountsRes.items || []);
@@ -40,7 +46,7 @@ const LotsPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [selectedWorkspaceId]);
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -51,12 +57,17 @@ const LotsPage: React.FC = () => {
       setStatus({ message: "Provide lot number and account.", isError: true });
       return;
     }
+    if (selectedWorkspaceId === "all") {
+      setStatus({ message: "Select a workspace to save a lot mapping.", isError: true });
+      return;
+    }
     if (!lotUrl.trim()) {
       setStatus({ message: "Lot URL is required.", isError: true });
       return;
     }
     try {
       const created = await api.createLot({
+        workspace_id: selectedWorkspaceId,
         lot_number: number,
         account_id: account,
         lot_url: lotUrl.trim(),
@@ -80,7 +91,8 @@ const LotsPage: React.FC = () => {
 
   const handleDelete = async (lotNum: number) => {
     try {
-      await api.deleteLot(lotNum);
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      await api.deleteLot(lotNum, typeof workspaceId === "number" ? workspaceId : undefined);
       setLots((prev) => prev.filter((item) => item.lot_number !== lotNum));
     } catch (err) {
       setStatus({
@@ -100,7 +112,16 @@ const LotsPage: React.FC = () => {
               Map FunPay lot numbers to accounts. Used by !сток and automation.
             </p>
           </div>
-        </div>
+        
+          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
+            <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
+            <span className="text-xs font-semibold text-neutral-700">
+              {selectedWorkspaceId === "all"
+                ? "All workspaces"
+                : workspaces.find((item) => item.id === selectedWorkspaceId)?.name || "Workspace"}
+            </span>
+          </div>
+</div>
 
         {status ? (
           <div

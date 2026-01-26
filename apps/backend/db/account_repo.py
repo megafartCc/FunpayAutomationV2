@@ -13,6 +13,8 @@ from db.mysql import _pool
 class AccountRecord:
     id: int
     user_id: int
+    workspace_id: int | None
+    workspace_name: str | None
     account_name: str
     login: str
     password: str
@@ -31,6 +33,7 @@ class AccountRecord:
 class AccountSteamRecord:
     id: int
     user_id: int
+    workspace_id: int | None
     account_name: str
     login: str
     password: str
@@ -48,6 +51,8 @@ class ActiveRentalRecord:
     rental_duration_minutes: Optional[int]
     lot_number: Optional[int]
     mafile_json: Optional[str]
+    workspace_id: int | None = None
+    workspace_name: str | None = None
 
 
 class MySQLAccountRepo:
@@ -66,13 +71,16 @@ class MySQLAccountRepo:
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
             cursor = conn.cursor(dictionary=True)
             columns = (
-                "id, user_id, account_name, login, password, lot_url, mmr, mafile_json, "
+                "a.id, a.user_id, a.workspace_id, w.name AS workspace_name, "
+                "a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json, "
                 "owner, rental_start, rental_duration, rental_duration_minutes, account_frozen, rental_frozen"
             )
             if has_frozen_at:
                 columns += ", rental_frozen_at"
             cursor.execute(
-                f"SELECT {columns} FROM accounts WHERE id = %s AND user_id = %s LIMIT 1",
+                f"SELECT {columns} FROM accounts a "
+                "LEFT JOIN workspaces w ON w.id = a.workspace_id "
+                "WHERE a.id = %s AND a.user_id = %s LIMIT 1",
                 (account_id, user_id),
             )
             return cursor.fetchone()
@@ -85,12 +93,14 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, account_name, login, password, lot_url, mmr, mafile_json,
-                       owner, rental_start, rental_duration, rental_duration_minutes,
-                       account_frozen, rental_frozen
-                FROM accounts
-                WHERE user_id = %s
-                ORDER BY id DESC
+                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
+                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
+                       a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.account_frozen, a.rental_frozen
+                FROM accounts a
+                LEFT JOIN workspaces w ON w.id = a.workspace_id
+                WHERE a.user_id = %s
+                ORDER BY a.id DESC
                 """,
                 (user_id,),
             )
@@ -99,6 +109,50 @@ class MySQLAccountRepo:
                 AccountRecord(
                     id=int(row["id"]),
                     user_id=int(row["user_id"]),
+                    workspace_id=row.get("workspace_id"),
+                    workspace_name=row.get("workspace_name"),
+                    account_name=row["account_name"],
+                    login=row["login"],
+                    password=row["password"],
+                    lot_url=row.get("lot_url"),
+                    mmr=row.get("mmr"),
+                    owner=row.get("owner"),
+                    rental_start=row.get("rental_start"),
+                    rental_duration=int(row.get("rental_duration") or 0),
+                    rental_duration_minutes=row.get("rental_duration_minutes"),
+                    account_frozen=int(row.get("account_frozen") or 0),
+                    rental_frozen=int(row.get("rental_frozen") or 0),
+                    mafile_json=row.get("mafile_json"),
+                )
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
+    def list_by_workspace(self, user_id: int, workspace_id: int) -> List[AccountRecord]:
+        conn = _pool.get_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
+                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
+                       a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.account_frozen, a.rental_frozen
+                FROM accounts a
+                LEFT JOIN workspaces w ON w.id = a.workspace_id
+                WHERE a.user_id = %s AND a.workspace_id = %s
+                ORDER BY a.id DESC
+                """,
+                (user_id, workspace_id),
+            )
+            rows = cursor.fetchall() or []
+            return [
+                AccountRecord(
+                    id=int(row["id"]),
+                    user_id=int(row["user_id"]),
+                    workspace_id=row.get("workspace_id"),
+                    workspace_name=row.get("workspace_name"),
                     account_name=row["account_name"],
                     login=row["login"],
                     password=row["password"],
@@ -121,6 +175,7 @@ class MySQLAccountRepo:
         self,
         *,
         user_id: int,
+        workspace_id: int,
         account_name: str,
         login: str,
         password: str,
@@ -139,6 +194,7 @@ class MySQLAccountRepo:
 
             columns = [
                 "user_id",
+                "workspace_id",
                 "account_name",
                 "login",
                 "password",
@@ -148,6 +204,7 @@ class MySQLAccountRepo:
             ]
             values: list = [
                 user_id,
+                workspace_id,
                 account_name,
                 login,
                 password,
@@ -182,12 +239,13 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, account_name, login, password, lot_url, mmr,
-                       owner, rental_start, rental_duration, rental_duration_minutes,
-                       account_frozen, rental_frozen
-                FROM accounts
-                WHERE id = %s
-                LIMIT 1
+                SELECT a.id, a.user_id, a.workspace_id, w.name AS workspace_name,
+                       a.account_name, a.login, a.password, a.lot_url, a.mmr,
+                       a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.account_frozen, a.rental_frozen
+                FROM accounts a
+                LEFT JOIN workspaces w ON w.id = a.workspace_id
+                WHERE a.id = %s LIMIT 1
                 """,
                 (account_id,),
             )
@@ -197,6 +255,8 @@ class MySQLAccountRepo:
             return AccountRecord(
                 id=int(row["id"]),
                 user_id=int(row["user_id"]),
+                workspace_id=row.get("workspace_id"),
+                workspace_name=row.get("workspace_name"),
                 account_name=row["account_name"],
                 login=row["login"],
                 password=row["password"],
@@ -218,7 +278,7 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, account_name, login, password, mafile_json
+                SELECT id, user_id, workspace_id, account_name, login, password, mafile_json
                 FROM accounts
                 WHERE id = %s AND user_id = %s
                 LIMIT 1
@@ -231,6 +291,7 @@ class MySQLAccountRepo:
             return AccountSteamRecord(
                 id=int(row["id"]),
                 user_id=int(row["user_id"]),
+                workspace_id=row.get("workspace_id"),
                 account_name=row["account_name"],
                 login=row["login"],
                 password=row["password"],
@@ -239,21 +300,28 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
-    def list_active_rentals(self, user_id: int) -> List[ActiveRentalRecord]:
+    def list_active_rentals(self, user_id: int, workspace_id: int | None = None) -> List[ActiveRentalRecord]:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor(dictionary=True)
+            params: list = [user_id]
+            workspace_clause = ""
+            if workspace_id is not None:
+                workspace_clause = " AND a.workspace_id = %s"
+                params.append(workspace_id)
             cursor.execute(
-                """
+                f"""
                 SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.workspace_id, w.name AS workspace_name,
                        l.lot_number
                 FROM accounts a
                 LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id
-                WHERE a.user_id = %s AND a.owner IS NOT NULL AND a.owner != ''
+                LEFT JOIN workspaces w ON w.id = a.workspace_id
+                WHERE a.user_id = %s{workspace_clause} AND a.owner IS NOT NULL AND a.owner != ''
                 ORDER BY a.rental_start DESC, a.id DESC
                 """,
-                (user_id,),
+                tuple(params),
             )
             rows = cursor.fetchall() or []
             return [
@@ -267,6 +335,8 @@ class MySQLAccountRepo:
                     rental_duration_minutes=row.get("rental_duration_minutes"),
                     lot_number=row.get("lot_number"),
                     mafile_json=row.get("mafile_json"),
+                    workspace_id=row.get("workspace_id"),
+                    workspace_name=row.get("workspace_name"),
                 )
                 for row in rows
             ]

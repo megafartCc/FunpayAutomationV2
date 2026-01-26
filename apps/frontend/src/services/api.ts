@@ -14,6 +14,8 @@ export type AuthResponse = {
 
 export type AccountItem = {
   id: number;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
   account_name: string;
   login: string;
   password: string;
@@ -30,6 +32,7 @@ export type AccountItem = {
 };
 
 export type AccountCreatePayload = {
+  workspace_id: number;
   account_name: string;
   login: string;
   password: string;
@@ -53,9 +56,11 @@ export type LotItem = {
   account_id: number;
   account_name: string;
   lot_url?: string | null;
+  workspace_id?: number | null;
 };
 
 export type LotCreatePayload = {
+  workspace_id: number;
   lot_number: number;
   account_id: number;
   lot_url: string;
@@ -70,6 +75,15 @@ export type ActiveRentalItem = {
   match_time?: string;
   hero?: string;
   status?: string;
+};
+
+export type WorkspaceItem = {
+  id: number;
+  name: string;
+  proxy_url: string;
+  is_default: boolean;
+  created_at?: string | null;
+  key_hint?: string | null;
 };
 
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
@@ -121,7 +135,11 @@ export const api = {
     request<AuthResponse>("/auth/register", { method: "POST", body: payload }),
   me: () => request<AuthResponse>("/auth/me", { method: "GET" }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
-  listAccounts: () => request<{ items: AccountItem[] }>("/accounts", { method: "GET" }),
+  listAccounts: (workspaceId?: number) =>
+    request<{ items: AccountItem[] }>(
+      workspaceId ? `/accounts?workspace_id=${workspaceId}` : "/accounts",
+      { method: "GET" },
+    ),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
   updateAccount: (accountId: number, payload: AccountUpdatePayload) =>
@@ -149,8 +167,29 @@ export const api = {
     }),
   deauthorizeSteam: (accountId: number) =>
     request<{ success: boolean }>(`/accounts/${accountId}/steam/deauthorize`, { method: "POST" }),
-  listLots: () => request<{ items: LotItem[] }>("/lots", { method: "GET" }),
+  listLots: (workspaceId?: number) =>
+    request<{ items: LotItem[] }>(
+      workspaceId ? `/lots?workspace_id=${workspaceId}` : "/lots",
+      { method: "GET" },
+    ),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
-  deleteLot: (lotNumber: number) => request<{ ok: boolean }>(`/lots/${lotNumber}`, { method: "DELETE" }),
-  listActiveRentals: () => request<{ items: ActiveRentalItem[] }>("/rentals/active", { method: "GET" }),
+  deleteLot: (lotNumber: number, workspaceId?: number) =>
+    request<{ ok: boolean }>(
+      workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
+      { method: "DELETE" },
+    ),
+  listActiveRentals: (workspaceId?: number) =>
+    request<{ items: ActiveRentalItem[] }>(
+      workspaceId ? `/rentals/active?workspace_id=${workspaceId}` : "/rentals/active",
+      { method: "GET" },
+    ),
+  listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
+  createWorkspace: (payload: { name: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
+    request<WorkspaceItem>("/workspaces", { method: "POST", body: payload }),
+  updateWorkspace: (workspaceId: number, payload: { name?: string; golden_key?: string; proxy_url?: string; is_default?: boolean }) =>
+    request<WorkspaceItem>(`/workspaces/${workspaceId}`, { method: "PATCH", body: payload }),
+  setDefaultWorkspace: (workspaceId: number) =>
+    request<{ ok: boolean }>(`/workspaces/${workspaceId}/default`, { method: "POST" }),
+  deleteWorkspace: (workspaceId: number) =>
+    request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
 };

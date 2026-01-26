@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { api, AccountItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 type AccountRow = {
   id: number;
@@ -10,6 +11,7 @@ type AccountRow = {
   password: string;
   steamId: string;
   mmr: number | string;
+  workspaceName?: string | null;
   owner?: string | null;
   rentalStart?: string | null;
   rentalDuration?: number;
@@ -29,6 +31,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   password: item.password || "",
   steamId: item.steam_id ?? "",
   mmr: item.mmr ?? "-",
+  workspaceName: item.workspace_name ?? null,
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
   rentalDuration: item.rental_duration ?? 0,
@@ -61,6 +64,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accountEditMmr, setAccountEditMmr] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [accountControlBusy, setAccountControlBusy] = useState(false);
+  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
 
   const selectedAccount = useMemo(
     () => accounts.find((acc) => acc.id === selectedId) ?? null,
@@ -70,7 +74,8 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      const res = await api.listAccounts();
+      const workspaceId = selectedWorkspaceId === "all" ? undefined : selectedWorkspaceId;
+      const res = await api.listAccounts(typeof workspaceId === "number" ? workspaceId : undefined);
       setAccounts((res.items || []).map(mapAccount));
       setError(null);
     } catch (err) {
@@ -82,7 +87,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
   useEffect(() => {
     void loadAccounts();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     if (selectedId && !accounts.some((acc) => acc.id === selectedId)) {
@@ -277,7 +282,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     <span>Login: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
-                    <span>Workspace: Default</span>
+                    <span>Workspace: {selectedAccount.workspaceName || "Workspace"}</span>
                     <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
                     <span>Duration: {hoursLabel}</span>
                   </div>
@@ -331,13 +336,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
-                      <select
-                        value="default"
-                        disabled
-                        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
-                      >
-                        <option value="default">Default workspace</option>
-                      </select>
+                      <div className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
+                        {selectedAccount.workspaceName || "Workspace"}
+                      </div>
                     </div>
                     <input
                       value={accountEditMmr}
@@ -431,9 +432,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
                 <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
-                <select value="default" className="bg-transparent text-xs font-semibold text-neutral-700 outline-none">
-                  <option value="default">Default</option>
-                </select>
+                <span className="text-xs font-semibold text-neutral-700">
+                  {selectedWorkspaceId === "all"
+                    ? "All workspaces"
+                    : workspaces.find((item) => item.id === selectedWorkspaceId)?.name || "Workspace"}
+                </span>
               </div>
               {selectedAccount ? (
                 <span className="text-xs rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">
@@ -500,7 +503,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                           {acc.name || "Account"}
                         </div>
                         <span className="mt-1 inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          Default
+                          {acc.workspaceName || "Workspace"}
                         </span>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.login || ""}>

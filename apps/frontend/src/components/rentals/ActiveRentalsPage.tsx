@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { api, ActiveRentalItem, AccountItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 type RentalRow = {
   id: number;
@@ -23,6 +24,7 @@ type AccountRow = {
   password: string;
   steamId: string;
   mmr: number | string;
+  workspaceName?: string | null;
   owner?: string | null;
   rentalStart?: string | null;
   rentalDuration?: number;
@@ -94,6 +96,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   password: item.password || "",
   steamId: item.steam_id ?? "",
   mmr: item.mmr ?? "-",
+  workspaceName: item.workspace_name ?? null,
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
   rentalDuration: item.rental_duration ?? 0,

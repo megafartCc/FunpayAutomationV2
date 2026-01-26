@@ -6,6 +6,7 @@ from api.auth import router as auth_router
 from api.accounts import router as accounts_router
 from api.lots import router as lots_router
 from api.rentals import router as rentals_router
+from api.workspaces import router as workspaces_router
 from settings.config import settings
 
 app = FastAPI(title="FunpayAutomationV2 API")
@@ -31,6 +32,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(accounts_router, prefix="/api", tags=["accounts"])
 app.include_router(lots_router, prefix="/api", tags=["lots"])
 app.include_router(rentals_router, prefix="/api", tags=["rentals"])
+app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
 
 
 @app.on_event("startup")

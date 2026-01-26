@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from services.auth_service import AuthService
+from db.workspace_repo import MySQLWorkspaceRepo
 from services.session_service import SessionService
 from services.remember_service import RememberService
 from settings.config import settings
@@ -13,6 +14,7 @@ router = APIRouter()
 auth_service = AuthService()
 session_service = SessionService()
 remember_service = RememberService()
+workspace_repo = MySQLWorkspaceRepo()
 
 
 class LoginRequest(BaseModel):
@@ -87,6 +89,14 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
             status_code=status.HTTP_409_CONFLICT,
             detail="Username already exists",
         )
+    # Seed a default workspace for the new user (proxy can be added later).
+    workspace_repo.create(
+        user_id=user.id,
+        name="Default",
+        golden_key=payload.golden_key,
+        proxy_url="",
+        is_default=True,
+    )
     session_id = session_service.create_session(user.id)
     _set_cookie(response, settings.session_cookie_name, session_id, settings.session_ttl_seconds)
     if payload.remember_me:

@@ -87,13 +87,13 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
 
 
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
-def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
+def list_active_rentals(workspace_id: int | None = None, user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
-    cached_items = rentals_cache.get(user_id)
+    cached_items = rentals_cache.get(user_id, workspace_id)
     if cached_items is not None:
         return ActiveRentalResponse(items=[ActiveRentalItem(**item) for item in cached_items])
 
-    records = accounts_repo.list_active_rentals(user_id)
+    records = accounts_repo.list_active_rentals(user_id, workspace_id)
     items: list[ActiveRentalItem] = []
     for record in records:
         total_minutes = (
@@ -123,7 +123,7 @@ def list_active_rentals(user=Depends(get_current_user)) -> ActiveRentalResponse:
                 status=status,
             )
         )
-    rentals_cache.set(user_id, [item.model_dump() for item in items])
+    rentals_cache.set(user_id, [item.model_dump() for item in items], workspace_id)
     return ActiveRentalResponse(items=items)
 
 

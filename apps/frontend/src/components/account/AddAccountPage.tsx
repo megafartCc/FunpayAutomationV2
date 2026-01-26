@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 const AddIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -19,6 +20,12 @@ const AddAccountPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [mmr, setMmr] = useState("");
   const [mafileJson, setMafileJson] = useState("");
+  const { workspaces, selectedId } = useWorkspace();
+  const defaultWorkspaceId = useMemo(() => {
+    const def = workspaces.find((item) => item.is_default);
+    return def?.id ?? (workspaces[0]?.id ?? null);
+  }, [workspaces]);
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -34,12 +41,26 @@ const AddAccountPage: React.FC = () => {
     reader.readAsText(file);
   };
 
+  useEffect(() => {
+    if (selectedId !== "all") {
+      setWorkspaceId(selectedId);
+      return;
+    }
+    if (defaultWorkspaceId) {
+      setWorkspaceId(defaultWorkspaceId);
+    }
+  }, [selectedId, defaultWorkspaceId]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setStatus(null);
 
     if (!accountName.trim() || !login.trim() || !password.trim()) {
       setStatus({ message: "Account name, login, and password are required.", isError: true });
+      return;
+    }
+    if (!workspaceId) {
+      setStatus({ message: "Select a workspace for this account.", isError: true });
       return;
     }
     if (!mafileJson.trim()) {
@@ -55,6 +76,7 @@ const AddAccountPage: React.FC = () => {
     }
 
     const payload = {
+      workspace_id: workspaceId,
       account_name: accountName.trim(),
       login: login.trim(),
       password,
@@ -113,6 +135,21 @@ const AddAccountPage: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
+              <select
+                value={workspaceId ?? ""}
+                onChange={(event) => setWorkspaceId(Number(event.target.value))}
+                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
+              >
+                <option value="">Select workspace</option>
+                {workspaces.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.is_default ? `${item.name} (Default)` : item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Account name</label>
               <input

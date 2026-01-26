@@ -8,14 +8,17 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
+from db.workspace_repo import MySQLWorkspaceRepo
 from services.steam_service import deauthorize_sessions, SteamWorkerError
 
 
 router = APIRouter()
 accounts_repo = MySQLAccountRepo()
+workspace_repo = MySQLWorkspaceRepo()
 
 
 class AccountCreate(BaseModel):
+    workspace_id: int = Field(..., ge=1)
     account_name: str = Field(..., min_length=1, max_length=255)
     login: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=255)
@@ -50,6 +53,8 @@ class ExtendRequest(BaseModel):
 
 class AccountItem(BaseModel):
     id: int
+    workspace_id: int | None = None
+    workspace_name: str | None = None
     account_name: str
     login: str
     password: str
@@ -90,6 +95,8 @@ def _to_item(record: AccountRecord) -> AccountItem:
 
     return AccountItem(
         id=record.id,
+        workspace_id=record.workspace_id,
+        workspace_name=record.workspace_name,
         account_name=record.account_name,
         login=record.login,
         password=record.password,
@@ -107,8 +114,11 @@ def _to_item(record: AccountRecord) -> AccountItem:
 
 
 @router.get("/accounts", response_model=AccountListResponse)
-def list_accounts(user=Depends(get_current_user)) -> AccountListResponse:
-    items = accounts_repo.list_by_user(int(user.id))
+def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user)) -> AccountListResponse:
+    if workspace_id is not None:
+        items = accounts_repo.list_by_workspace(int(user.id), int(workspace_id))
+    else:
+        items = accounts_repo.list_by_user(int(user.id))
     return AccountListResponse(items=[_to_item(item) for item in items])
 
 
@@ -117,9 +127,13 @@ def create_account(payload: AccountCreate, user=Depends(get_current_user)) -> Ac
     total_minutes = payload.rental_duration * 60 + payload.rental_minutes
     if total_minutes <= 0:
         raise HTTPException(status_code=400, detail="Rental duration must be greater than 0")
+    workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for this account.")
 
     created = accounts_repo.create(
         user_id=int(user.id),
+        workspace_id=int(payload.workspace_id),
         account_name=payload.account_name.strip(),
         login=payload.login.strip(),
         password=payload.password,
@@ -184,6 +198,8 @@ def update_account(account_id: int, payload: AccountUpdate, user=Depends(get_cur
     return _to_item(AccountRecord(
         id=int(updated["id"]),
         user_id=int(updated["user_id"]),
+        workspace_id=updated.get("workspace_id"),
+        workspace_name=updated.get("workspace_name"),
         account_name=updated["account_name"],
         login=updated["login"],
         password=updated["password"],
