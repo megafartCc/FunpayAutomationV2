@@ -127,9 +127,20 @@ def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
 
 @router.get("/accounts", response_model=AccountListResponse)
 def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user)) -> AccountListResponse:
-    if workspace_id is not None:
-        _ensure_workspace(workspace_id, int(user.id))
-    items = accounts_repo.list_by_user(int(user.id))
+    user_id = int(user.id)
+    if workspace_id is None:
+        items = accounts_repo.list_by_user(user_id)
+        workspaces = workspace_repo.list_by_user(user_id)
+        name_map = {ws.id: ws.name for ws in workspaces}
+        for item in items:
+            item.workspace_name = name_map.get(item.workspace_id)
+        return AccountListResponse(items=[_to_item(item) for item in items])
+    _ensure_workspace(workspace_id, user_id)
+    items = accounts_repo.list_by_workspace(user_id, int(workspace_id))
+    workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+    if workspace:
+        for item in items:
+            item.workspace_name = workspace.name
     return AccountListResponse(items=[_to_item(item) for item in items])
 
 

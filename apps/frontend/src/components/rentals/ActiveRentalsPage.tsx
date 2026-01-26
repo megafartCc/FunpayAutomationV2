@@ -6,7 +6,10 @@ import { useWorkspace } from "../../context/WorkspaceContext";
 
 type RentalRow = {
   id: number;
+  rowKey: string;
+  accountKey: string;
   workspaceId?: number | null;
+  workspaceName?: string | null;
   account: string;
   buyer: string;
   started: string;
@@ -20,6 +23,8 @@ type RentalRow = {
 
 type AccountRow = {
   id: number;
+  rowKey: string;
+  accountKey: string;
   workspaceId?: number | null;
   name: string;
   login: string;
@@ -50,6 +55,12 @@ const statusPill = (status?: string) => {
   return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
 };
 
+const makeAccountKey = (workspaceId: number | null | undefined, id: number) =>
+  `${workspaceId ?? "none"}:${id}`;
+
+const makeRowKey = (_prefix: "acc" | "rent", workspaceId: number | null | undefined, id: number) =>
+  makeAccountKey(workspaceId, id);
+
 const parseMatchTimeSeconds = (value?: string | null) => {
   if (!value) return null;
   const trimmed = value.trim();
@@ -79,7 +90,10 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
   const matchSeconds = parseMatchTimeSeconds(rawMatch);
   return {
     id: item.id,
+    rowKey: makeRowKey("rent", item.workspace_id ?? null, item.id),
+    accountKey: makeAccountKey(item.workspace_id ?? null, item.id),
     workspaceId: item.workspace_id ?? null,
+    workspaceName: item.workspace_name ?? null,
     account: item.account,
     buyer: item.buyer,
     started: item.started,
@@ -94,6 +108,8 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
+  rowKey: makeRowKey("acc", item.workspace_id ?? null, item.id),
+  accountKey: makeAccountKey(item.workspace_id ?? null, item.id),
   workspaceId: item.workspace_id ?? null,
   name: item.account_name,
   login: item.login,
@@ -183,7 +199,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [selectedRentalId, setSelectedRentalId] = useState<number | null>(null);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
   const [accountEditLogin, setAccountEditLogin] = useState("");
@@ -194,15 +210,20 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
 
+  const accountByKey = useMemo(
+    () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
+    [accounts],
+  );
   const selectedRental = useMemo(
-    () => rentals.find((row) => row.id === selectedRentalId) ?? null,
-    [rentals, selectedRentalId],
+    () => rentals.find((row) => row.rowKey === selectedRowKey) ?? null,
+    [rentals, selectedRowKey],
   );
-  const selectedAccount = useMemo(
-    () => accounts.find((acc) => acc.id === selectedRentalId) ?? null,
-    [accounts, selectedRentalId],
-  );
-  const accountById = useMemo(() => new Map(accounts.map((acc) => [acc.id, acc])), [accounts]);
+  const selectedAccount = useMemo(() => {
+    if (selectedRental) {
+      return accountByKey.get(selectedRental.accountKey) ?? null;
+    }
+    return accounts.find((acc) => acc.rowKey === selectedRowKey) ?? null;
+  }, [accounts, accountByKey, selectedRental, selectedRowKey]);
 
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -245,7 +266,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   }, [selectedWorkspaceId]);
 
   useEffect(() => {
-    setSelectedRentalId(null);
+    setSelectedRowKey(null);
   }, [selectedWorkspaceId]);
 
   useEffect(() => {
@@ -262,10 +283,10 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   }, []);
 
   useEffect(() => {
-    if (selectedRentalId && !rentals.some((row) => row.id === selectedRentalId)) {
-      setSelectedRentalId(null);
+    if (selectedRowKey && !rentals.some((row) => row.rowKey === selectedRowKey)) {
+      setSelectedRowKey(null);
     }
-  }, [rentals, selectedRentalId]);
+  }, [rentals, selectedRowKey]);
 
   useEffect(() => {
     if (!selectedAccount) {
@@ -596,13 +617,15 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
             const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
             const presenceLabel = pill.label;
             const workspaceLabel = resolveWorkspaceName(
-              selectedAccount?.workspaceId,
-              selectedAccount?.workspaceName,
+              selectedAccount?.workspaceId ?? selectedRental?.workspaceId,
+              selectedAccount?.workspaceName ?? selectedRental?.workspaceName,
               workspaces,
             );
             const workspaceRecord = selectedAccount?.workspaceId
               ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
-              : workspaces.find((item) => item.is_default) ?? null;
+              : selectedRental?.workspaceId
+                ? workspaces.find((item) => item.id === selectedRental.workspaceId)
+                : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
@@ -625,7 +648,11 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   <span>
                     Time left:{" "}
                     {selectedRental
-                      ? getCountdownLabel(accountById.get(selectedRental.id), selectedRental.timeLeft, now)
+                      ? getCountdownLabel(
+                          accountByKey.get(selectedRental.accountKey),
+                          selectedRental.timeLeft,
+                          now,
+                        )
                       : "-"}
                   </span>
                     <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
@@ -729,35 +756,35 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
               {rentals.map((row, idx) => {
-                const isSelected = selectedRentalId !== null && String(selectedRentalId) === String(row.id);
+                const isSelected = selectedRowKey === row.rowKey;
                 const pill = statusPill(row.status);
-                const account = accountById.get(row.id);
+                const account = accountByKey.get(row.accountKey);
                 const workspaceLabel = resolveWorkspaceName(
-                  account?.workspaceId,
-                  account?.workspaceName,
+                  row.workspaceId ?? account?.workspaceId,
+                  row.workspaceName ?? account?.workspaceName,
                   workspaces,
                 );
-                const workspaceRecord = account?.workspaceId
-                  ? workspaces.find((item) => item.id === account.workspaceId)
+                const workspaceRecord = row.workspaceId
+                  ? workspaces.find((item) => item.id === row.workspaceId)
                   : workspaces.find((item) => item.is_default) ?? null;
                 const workspaceBadge = workspaceRecord?.is_default
                   ? `${workspaceLabel} (Default)`
                   : workspaceLabel;
                 return (
                   <motion.div
-                    key={row.id}
+                    key={row.rowKey}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setSelectedRentalId((prev) =>
-                          prev !== null && String(prev) === String(row.id) ? null : row.id
+                        setSelectedRowKey((prev) =>
+                          prev && prev === row.rowKey ? null : row.rowKey
                         );
                       }
                     }}
                     onClick={() =>
-                      setSelectedRentalId((prev) => (prev !== null && String(prev) === String(row.id) ? null : row.id))
+                      setSelectedRowKey((prev) => (prev && prev === row.rowKey ? null : row.rowKey))
                     }
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
@@ -778,7 +805,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                     <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                     <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
-                      {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
+                      {getCountdownLabel(accountByKey.get(row.accountKey), row.timeLeft, now)}
                     </span>
                     <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
                       {getMatchTimeLabel(row, now)}

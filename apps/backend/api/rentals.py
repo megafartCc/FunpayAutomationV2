@@ -93,6 +93,7 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(workspace_id: int | None = None, user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
+    workspace = None
     if workspace_id is not None:
         workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
         if not workspace:
@@ -102,8 +103,15 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
         return ActiveRentalResponse(items=[ActiveRentalItem(**item) for item in cached_items])
 
     records = accounts_repo.list_active_rentals(user_id, workspace_id)
+    workspace_name_map: dict[int, str] = {}
+    if workspace_id is None:
+        workspace_name_map = {ws.id: ws.name for ws in workspace_repo.list_by_user(user_id)}
+    elif workspace:
+        workspace_name_map = {int(workspace.id): workspace.name}
     items: list[ActiveRentalItem] = []
     for record in records:
+        if record.workspace_id is not None:
+            record.workspace_name = workspace_name_map.get(int(record.workspace_id))
         total_minutes = (
             int(record.rental_duration_minutes or 0)
             if record.rental_duration_minutes is not None

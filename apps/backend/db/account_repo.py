@@ -339,24 +339,24 @@ class MySQLAccountRepo:
             cursor = conn.cursor(dictionary=True)
             params: list = [user_id]
             workspace_clause = ""
-            lot_join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
+            workspace_expr = "COALESCE(a.last_rented_workspace_id, a.workspace_id)"
+            lot_join_clause = (
+                "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id "
+                f"AND l.workspace_id = {workspace_expr}"
+            )
             if workspace_id is not None:
-                workspace_clause = " AND a.last_rented_workspace_id = %s"
+                workspace_clause = f" AND {workspace_expr} = %s"
                 params.append(workspace_id)
-                lot_join_clause += " AND l.workspace_id = %s"
-                params.append(workspace_id)
-            else:
-                lot_join_clause += " AND l.workspace_id = a.last_rented_workspace_id"
             cursor.execute(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.last_rented_workspace_id,
-                       lw.name AS last_rented_workspace_name,
+                       {workspace_expr} AS active_workspace_id,
+                       lw.name AS active_workspace_name,
                        l.lot_number
                 FROM accounts a
                 {lot_join_clause}
-                LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
+                LEFT JOIN workspaces lw ON lw.id = {workspace_expr}
                 WHERE a.user_id = %s{workspace_clause} AND a.owner IS NOT NULL AND a.owner != ''
                 ORDER BY a.rental_start DESC, a.id DESC
                 """,
@@ -374,8 +374,8 @@ class MySQLAccountRepo:
                     rental_duration_minutes=row.get("rental_duration_minutes"),
                     lot_number=row.get("lot_number"),
                     mafile_json=row.get("mafile_json"),
-                    workspace_id=row.get("last_rented_workspace_id"),
-                    workspace_name=row.get("last_rented_workspace_name"),
+                    workspace_id=row.get("active_workspace_id"),
+                    workspace_name=row.get("active_workspace_name"),
                 )
                 for row in rows
             ]

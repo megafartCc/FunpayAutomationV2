@@ -87,8 +87,16 @@ const statusPill = (status?: string) => {
   return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
 };
 
+const makeAccountKey = (workspaceId: number | null | undefined, id: number) =>
+  `${workspaceId ?? "none"}:${id}`;
+
+const makeRowKey = (_prefix: "acc" | "rent", workspaceId: number | null | undefined, id: number) =>
+  makeAccountKey(workspaceId, id);
+
 type AccountRow = {
   id: number;
+  rowKey: string;
+  accountKey: string;
   workspaceId?: number | null;
   workspaceName?: string | null;
   lastRentedWorkspaceId?: number | null;
@@ -108,6 +116,10 @@ type AccountRow = {
 
 type RentalRow = {
   id: number;
+  rowKey: string;
+  accountKey: string;
+  workspaceId?: number | null;
+  workspaceName?: string | null;
   account: string;
   buyer: string;
   started: string;
@@ -126,6 +138,8 @@ const RENTALS_GRID =
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
+  rowKey: makeRowKey("acc", item.workspace_id ?? null, item.id),
+  accountKey: makeAccountKey(item.workspace_id ?? null, item.id),
   workspaceId: item.workspace_id ?? null,
   workspaceName: item.workspace_name ?? null,
   lastRentedWorkspaceId: item.last_rented_workspace_id ?? null,
@@ -172,6 +186,10 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
   const matchSeconds = parseMatchTimeSeconds(rawMatch);
   return {
     id: item.id,
+    rowKey: makeRowKey("rent", item.workspace_id ?? null, item.id),
+    accountKey: makeAccountKey(item.workspace_id ?? null, item.id),
+    workspaceId: item.workspace_id ?? null,
+    workspaceName: item.workspace_name ?? null,
     account: item.account,
     buyer: item.buyer,
     started: item.started,
@@ -259,12 +277,12 @@ const formatWorkspaceLabel = (
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
-  const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
-  const [allRentals, setAllRentals] = useState<RentalRow[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingRentals, setLoadingRentals] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
   const [accountEditLogin, setAccountEditLogin] = useState("");
@@ -277,37 +295,37 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const filteredAccounts = useMemo(() => {
     if (selectedWorkspaceId === "all") {
-      return allAccounts;
+      return accounts;
     }
     const workspaceId = selectedWorkspaceId as number;
-    return allAccounts.filter((acc) => {
-      const scopedId = acc.workspaceId ?? acc.lastRentedWorkspaceId ?? null;
+    return accounts.filter((acc) => {
+      const scopedId = acc.lastRentedWorkspaceId ?? acc.workspaceId ?? null;
       return scopedId === workspaceId;
     });
-  }, [allAccounts, selectedWorkspaceId]);
+  }, [accounts, selectedWorkspaceId]);
 
   const filteredRentals = useMemo(() => {
     if (selectedWorkspaceId === "all") {
-      return allRentals;
+      return rentals;
     }
     const workspaceId = selectedWorkspaceId as number;
-    const accountMap = new Map(allAccounts.map((acc) => [acc.id, acc]));
-    return allRentals.filter((row) => {
-      const acc = accountMap.get(row.id);
-      const scopedId = acc?.lastRentedWorkspaceId ?? acc?.workspaceId ?? null;
-      return scopedId === workspaceId;
-    });
-  }, [allRentals, allAccounts, selectedWorkspaceId]);
+    return rentals.filter((row) => (row.workspaceId ?? null) === workspaceId);
+  }, [rentals, selectedWorkspaceId]);
 
-  const selectedAccount = useMemo(
-    () => filteredAccounts.find((acc) => acc.id === selectedRowId) ?? null,
-    [filteredAccounts, selectedRowId],
+  const accountByKey = useMemo(
+    () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
+    [accounts],
   );
   const selectedRental = useMemo(
-    () => filteredRentals.find((row) => row.id === selectedRowId) ?? null,
-    [filteredRentals, selectedRowId],
+    () => filteredRentals.find((row) => row.rowKey === selectedRowKey) ?? null,
+    [filteredRentals, selectedRowKey],
   );
-  const accountById = useMemo(() => new Map(allAccounts.map((acc) => [acc.id, acc])), [allAccounts]);
+  const selectedAccount = useMemo(() => {
+    if (selectedRental) {
+      return accountByKey.get(selectedRental.accountKey) ?? null;
+    }
+    return accounts.find((acc) => acc.rowKey === selectedRowKey) ?? null;
+  }, [accounts, accountByKey, selectedRental, selectedRowKey]);
 
   const statCards = useMemo<StatCardProps[]>(() => {
     const totalAccounts = filteredAccounts.length;
@@ -328,10 +346,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const loadAccounts = async (silent = false) => {
     if (!silent) setLoadingAccounts(true);
     try {
-      const res = await api.listAccounts();
-      setAllAccounts((res.items || []).map(mapAccount));
+      if (selectedWorkspaceId === "all") {
+        const res = await api.listAccounts();
+        setAccounts((res.items || []).map(mapAccount));
+        return;
+      }
+      const workspaceId = selectedWorkspaceId as number;
+      const res = await api.listAccounts(workspaceId);
+      setAccounts((res.items || []).map(mapAccount));
     } catch {
-      setAllAccounts([]);
+      setAccounts([]);
     } finally {
       if (!silent) setLoadingAccounts(false);
     }
@@ -340,11 +364,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoadingRentals(true);
     try {
-      const res = await api.listActiveRentals();
+      if (selectedWorkspaceId === "all") {
+        const res = await api.listActiveRentals();
+        const observedAt = Date.now();
+        setRentals(res.items.map((item) => mapRental(item, observedAt)));
+        return;
+      }
+      const workspaceId = selectedWorkspaceId as number;
+      const res = await api.listActiveRentals(workspaceId);
       const observedAt = Date.now();
-      setAllRentals(res.items.map((item) => mapRental(item, observedAt)));
+      setRentals(res.items.map((item) => mapRental(item, observedAt)));
     } catch {
-      setAllRentals([]);
+      setRentals([]);
     } finally {
       if (!silent) setLoadingRentals(false);
     }
@@ -353,7 +384,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   useEffect(() => {
     void loadAccounts();
     void loadRentals();
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -361,7 +392,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       void loadRentals(true);
     }, 30_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -370,13 +401,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   useEffect(() => {
     if (
-      selectedRowId &&
-      !filteredAccounts.some((acc) => acc.id === selectedRowId) &&
-      !filteredRentals.some((r) => r.id === selectedRowId)
+      selectedRowKey &&
+      !filteredAccounts.some((acc) => acc.rowKey === selectedRowKey) &&
+      !filteredRentals.some((r) => r.rowKey === selectedRowKey)
     ) {
-      setSelectedRowId(null);
+      setSelectedRowKey(null);
     }
-  }, [filteredAccounts, filteredRentals, selectedRowId]);
+  }, [filteredAccounts, filteredRentals, selectedRowKey]);
 
   useEffect(() => {
     if (!selectedAccount) {
@@ -395,8 +426,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     );
   }, [selectedAccount]);
 
-  const emptyAccountMessage = loadingAccounts ? "Loading accounts..." : "No accounts loaded yet.";
+  const emptyAccountMessage =
+    selectedWorkspaceId === "all"
+      ? "Select a workspace to view inventory."
+      : loadingAccounts
+        ? "Loading accounts..."
+        : "No accounts loaded yet.";
   const emptyRentalMessage = loadingRentals ? "Loading rentals..." : "No active rentals yet.";
+  const inventoryAccounts = selectedWorkspaceId === "all" ? [] : accounts;
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
@@ -746,16 +783,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             const frozen = !!selectedAccount?.rentalFrozen;
             const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
             const presenceLabel = pill.label;
-            const workspaceLabel = selectedAccount?.lastRentedWorkspaceId
-              ? formatWorkspaceLabel(
-                  selectedAccount.lastRentedWorkspaceId,
-                  selectedAccount.lastRentedWorkspaceName,
-                  workspaces,
-                )
-              : "-";
-            const workspaceRecord = selectedAccount?.lastRentedWorkspaceId
-              ? workspaces.find((item) => item.id === selectedAccount.lastRentedWorkspaceId)
-              : null;
+            const workspaceLabel = resolveWorkspaceName(
+              selectedAccount?.workspaceId ?? selectedRental?.workspaceId,
+              selectedAccount?.workspaceName ?? selectedRental?.workspaceName,
+              workspaces,
+            );
+            const workspaceRecord = selectedAccount?.workspaceId
+              ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
+              : selectedRental?.workspaceId
+                ? workspaces.find((item) => item.id === selectedRental.workspaceId)
+              : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
               ? `${workspaceLabel} (Default)`
               : workspaceLabel;
@@ -775,12 +812,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
                     <span>Buyer: {selectedRental.buyer || "-"}</span>
-                  <span>
-                    Time left:{" "}
-                    {selectedRental
-                      ? getCountdownLabel(accountById.get(selectedRental.id), selectedRental.timeLeft, now)
-                      : "-"}
-                  </span>
+                    <span>
+                      Time left:{" "}
+                      {selectedRental
+                        ? getCountdownLabel(
+                            accountByKey.get(selectedRental.accountKey),
+                            selectedRental.timeLeft,
+                            now,
+                          )
+                        : "-"}
+                    </span>
                     <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
                     <span>Hero: {selectedRental.hero || "-"}</span>
                     <span>Workspace: {workspaceDisplay}</span>
@@ -879,7 +920,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span className="text-right">State</span>
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
-                {filteredAccounts.map((acc, idx) => {
+                {inventoryAccounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const stateLabel = frozen ? "Frozen" : rented ? "Rented out" : "Available";
@@ -908,24 +949,24 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   const lastRentedBadge = lastRentedRecord?.is_default
                     ? `${lastRentedLabel} (Default)`
                     : lastRentedLabel;
-                  const rowId = acc.id ?? idx;
-                  const isSelected = selectedRowId !== null && String(selectedRowId) === String(rowId);
+                  const rowKey = acc.rowKey || `acc:${idx}`;
+                  const isSelected = selectedRowKey === rowKey;
                   return (
                     <motion.div
-                      key={rowId}
+                      key={rowKey}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setSelectedRowId((prev) =>
-                            prev !== null && String(prev) === String(rowId) ? null : rowId
+                          setSelectedRowKey((prev) =>
+                            prev && prev === rowKey ? null : rowKey
                           );
                         }
                       }}
                       onClick={() =>
-                        setSelectedRowId((prev) =>
-                          prev !== null && String(prev) === String(rowId) ? null : rowId
+                        setSelectedRowKey((prev) =>
+                          prev && prev === rowKey ? null : rowKey
                         )
                       }
                       initial={{ opacity: 0, y: 10 }}
@@ -937,8 +978,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       } cursor-pointer`}
                       style={{ gridTemplateColumns: INVENTORY_GRID }}
                     >
-                      <span className="min-w-0 font-semibold text-neutral-900" title={String(rowId)}>
-                        {rowId}
+                      <span className="min-w-0 font-semibold text-neutral-900" title={String(acc.id)}>
+                        {acc.id}
                       </span>
                       <div className="min-w-0">
                         <div className="truncate font-semibold leading-tight text-neutral-900" title={acc.name || "Account"}>
@@ -971,7 +1012,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     </motion.div>
                   );
                 })}
-                {filteredAccounts.length === 0 && (
+                {inventoryAccounts.length === 0 && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                     {emptyAccountMessage}
                   </div>
@@ -1000,38 +1041,36 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {filteredRentals.map((row, idx) => {
-                  const isSelected = selectedRowId !== null && String(selectedRowId) === String(row.id);
+                  const isSelected = selectedRowKey === row.rowKey;
                   const pill = statusPill(row.status);
-                  const account = accountById.get(row.id);
-                  const workspaceLabel = account?.lastRentedWorkspaceId
-                    ? formatWorkspaceLabel(
-                        account.lastRentedWorkspaceId,
-                        account.lastRentedWorkspaceName,
-                        workspaces,
-                      )
-                    : "-";
-                  const workspaceRecord = account?.lastRentedWorkspaceId
-                    ? workspaces.find((item) => item.id === account.lastRentedWorkspaceId)
-                    : null;
+                  const account = accountByKey.get(row.accountKey);
+                  const workspaceLabel = resolveWorkspaceName(
+                    row.workspaceId ?? account?.workspaceId,
+                    row.workspaceName ?? account?.workspaceName,
+                    workspaces,
+                  );
+                  const workspaceRecord = row.workspaceId
+                    ? workspaces.find((item) => item.id === row.workspaceId)
+                    : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
                     ? `${workspaceLabel} (Default)`
                     : workspaceLabel;
                   return (
                     <motion.div
-                      key={row.id}
+                      key={row.rowKey}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setSelectedRowId((prev) =>
-                            prev !== null && String(prev) === String(row.id) ? null : row.id
+                          setSelectedRowKey((prev) =>
+                            prev && prev === row.rowKey ? null : row.rowKey
                           );
                         }
                       }}
                       onClick={() =>
-                        setSelectedRowId((prev) =>
-                          prev !== null && String(prev) === String(row.id) ? null : row.id
+                        setSelectedRowKey((prev) =>
+                          prev && prev === row.rowKey ? null : row.rowKey
                         )
                       }
                       initial={{ opacity: 0, y: 10 }}
@@ -1053,7 +1092,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
-                        {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
+                        {getCountdownLabel(accountByKey.get(row.accountKey), row.timeLeft, now)}
                       </span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
                         {getMatchTimeLabel(row, now)}
