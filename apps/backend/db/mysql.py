@@ -215,6 +215,11 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
             index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
         desired_lot_unique = ["workspace_id", "lot_number"]
         desired_account_unique = ["workspace_id", "account_id"]
+        for key in legacy_unique_names:
+            try:
+                cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+            except mysql.connector.Error:
+                pass
         for key, cols in index_cols.items():
             if key == "PRIMARY":
                 continue
@@ -547,6 +552,11 @@ def ensure_schema() -> None:
                 index_cols.setdefault(key, []).append((int(row["Seq_in_index"]), row["Column_name"]))
             desired_lot_unique = ["workspace_id", "lot_number"]
             desired_account_unique = ["workspace_id", "account_id"]
+            for key in legacy_unique_names:
+                try:
+                    cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+                except mysql.connector.Error:
+                    pass
             for key, cols in index_cols.items():
                 if key == "PRIMARY":
                     continue

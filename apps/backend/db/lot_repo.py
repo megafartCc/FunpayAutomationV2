@@ -85,6 +85,11 @@ def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
         desired_lot_unique = ["workspace_id", "lot_number"]
         desired_account_unique = ["workspace_id", "account_id"]
         cursor = conn.cursor()
+        for key in legacy_unique_names:
+            try:
+                cursor.execute(f"ALTER TABLE lots DROP INDEX `{key}`")
+            except mysql.connector.Error:
+                pass
         for key, cols in index_cols.items():
             if key == "PRIMARY":
                 continue
@@ -232,6 +237,12 @@ class MySQLLotRepo:
                                 raise LotCreateError("duplicate_lot_number")
                             if _dup_key_matches(retry_key, "uniq_account_workspace"):
                                 raise LotCreateError("account_already_mapped")
+                            _handle_primary_duplicate(
+                                cursor_dict,
+                                workspace_id=workspace_id,
+                                lot_number=lot_number,
+                                account_id=account_id,
+                            )
                             raise LotCreateError("duplicate")
                         raise
                 else:
