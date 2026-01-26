@@ -67,6 +67,12 @@ def _handle_primary_duplicate(
 
 
 def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
+    legacy_unique_names = {
+        "uniq_account_user",
+        "uniq_lot_user",
+        "uniq_lot_user_id",
+        "uniq_lot_user_number",
+    }
     try:
         idx_cursor = conn.cursor(dictionary=True)
         idx_cursor.execute("SHOW INDEX FROM lots")
@@ -82,7 +88,7 @@ def _cleanup_lot_unique_indexes(conn: mysql.connector.MySQLConnection) -> None:
         for key, cols in index_cols.items():
             if key == "PRIMARY":
                 continue
-            if not index_unique.get(key, False):
+            if not index_unique.get(key, False) and key not in legacy_unique_names:
                 continue
             columns = [col for _, col in sorted(cols)]
             if columns in (desired_lot_unique, desired_account_unique):
@@ -174,6 +180,10 @@ class MySQLLotRepo:
                 conn.commit()
             except mysql.connector.Error as exc:
                 if exc.errno == errorcode.ER_DUP_ENTRY:
+                    try:
+                        conn.rollback()
+                    except mysql.connector.Error:
+                        pass
                     dup_key = _extract_dup_key(exc)
                     if _dup_key_matches(dup_key, "uniq_lot_workspace"):
                         raise LotCreateError("duplicate_lot_number")
@@ -187,14 +197,24 @@ class MySQLLotRepo:
                             account_id=account_id,
                         )
                     _cleanup_lot_unique_indexes(conn)
-                    cursor.execute(
-                        """
-                        INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
-                        VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (user_id, workspace_id, lot_number, account_id, lot_url),
-                    )
-                    conn.commit()
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            (user_id, workspace_id, lot_number, account_id, lot_url),
+                        )
+                        conn.commit()
+                    except mysql.connector.Error as retry_exc:
+                        if retry_exc.errno == errorcode.ER_DUP_ENTRY:
+                            retry_key = _extract_dup_key(retry_exc)
+                            if _dup_key_matches(retry_key, "uniq_lot_workspace"):
+                                raise LotCreateError("duplicate_lot_number")
+                            if _dup_key_matches(retry_key, "uniq_account_workspace"):
+                                raise LotCreateError("account_already_mapped")
+                            raise LotCreateError("duplicate")
+                        raise
                 else:
                     raise
 

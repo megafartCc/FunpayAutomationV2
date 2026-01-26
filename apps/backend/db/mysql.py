@@ -198,6 +198,12 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
         if exc.errno != errorcode.ER_DUP_FIELDNAME:
             raise
     _ensure_lots_primary_key(conn)
+    legacy_unique_names = {
+        "uniq_account_user",
+        "uniq_lot_user",
+        "uniq_lot_user_id",
+        "uniq_lot_user_number",
+    }
     try:
         idx_cursor = conn.cursor(dictionary=True)
         idx_cursor.execute("SHOW INDEX FROM lots")
@@ -212,7 +218,7 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
         for key, cols in index_cols.items():
             if key == "PRIMARY":
                 continue
-            if not index_unique.get(key, False):
+            if not index_unique.get(key, False) and key not in legacy_unique_names:
                 continue
             columns = [col for _, col in sorted(cols)]
             if columns in (desired_lot_unique, desired_account_unique):
@@ -522,6 +528,12 @@ def ensure_schema() -> None:
                 raise
         _ensure_lots_primary_key(conn)
         # Ensure lots only enforce workspace-scoped uniqueness.
+        legacy_unique_names = {
+            "uniq_account_user",
+            "uniq_lot_user",
+            "uniq_lot_user_id",
+            "uniq_lot_user_number",
+        }
         try:
             idx_cursor = conn.cursor(dictionary=True)
             idx_cursor.execute("SHOW INDEX FROM lots")
@@ -536,7 +548,7 @@ def ensure_schema() -> None:
             for key, cols in index_cols.items():
                 if key == "PRIMARY":
                     continue
-                if not index_unique.get(key, False):
+                if not index_unique.get(key, False) and key not in legacy_unique_names:
                     continue
                 columns = [col for _, col in sorted(cols)]
                 if columns in (desired_lot_unique, desired_account_unique):
