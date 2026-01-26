@@ -40,7 +40,7 @@ class MySQLPool:
 
         self._pool = pooling.MySQLConnectionPool(
             pool_name="funpay_pool",
-            pool_size=int(os.getenv("MYSQL_POOL_SIZE", "5")),
+            pool_size=int(os.getenv("MYSQL_POOL_SIZE", "30")),
             host=host,
             port=int(port),
             user=user,
