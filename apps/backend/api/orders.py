@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from api.deps import get_current_user
 from db.order_history_repo import MySQLOrderHistoryRepo
@@ -25,7 +25,7 @@ class OrderResolveResponse(BaseModel):
 
 @router.get("/orders/resolve", response_model=OrderResolveResponse)
 def resolve_order(
-    order_id: str = Field(..., min_length=1, max_length=64),
+    order_id: str = Query(..., min_length=1, max_length=64),
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> OrderResolveResponse:
