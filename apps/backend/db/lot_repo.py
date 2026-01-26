@@ -7,7 +7,7 @@ from typing import List, Optional
 import mysql.connector
 from mysql.connector import errorcode
 
-from db.mysql import get_workspace_connection
+from db.mysql import get_base_connection
 
 
 @dataclass
@@ -45,11 +45,11 @@ def _dup_key_matches(dup_key: str | None, expected: str) -> bool:
 
 
 class MySQLLotRepo:
-    def _get_conn(self, workspace_id: int) -> mysql.connector.MySQLConnection:
-        return get_workspace_connection(workspace_id)
+    def _get_conn(self) -> mysql.connector.MySQLConnection:
+        return get_base_connection()
 
     def list_by_user(self, user_id: int, workspace_id: int) -> List[LotRecord]:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
@@ -85,7 +85,7 @@ class MySQLLotRepo:
         account_id: int,
         lot_url: Optional[str],
     ) -> LotRecord:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor_dict = conn.cursor(dictionary=True)
             cursor_dict.execute(
@@ -95,19 +95,6 @@ class MySQLLotRepo:
             account = cursor_dict.fetchone()
             if not account:
                 raise LotCreateError("account_not_found")
-            # auto-attach account to workspace if it was missing
-            account_workspace_id = account.get("workspace_id")
-            if account_workspace_id is None:
-                cursor_update = conn.cursor()
-                cursor_update.execute(
-                    "UPDATE accounts SET workspace_id = %s WHERE id = %s AND user_id = %s",
-                    (workspace_id, account_id, user_id),
-                )
-                conn.commit()
-                account_workspace_id = workspace_id
-                account["workspace_id"] = workspace_id
-            if int(account_workspace_id or 0) != int(workspace_id):
-                raise LotCreateError("account_wrong_workspace")
 
             cursor_dict.execute(
                 "SELECT 1 FROM lots WHERE workspace_id = %s AND lot_number = %s LIMIT 1",
@@ -154,7 +141,7 @@ class MySQLLotRepo:
             conn.close()
 
     def delete(self, user_id: int, lot_number: int, workspace_id: int) -> bool:
-        conn = self._get_conn(workspace_id)
+        conn = self._get_conn()
         try:
             cursor = conn.cursor()
             cursor.execute(
