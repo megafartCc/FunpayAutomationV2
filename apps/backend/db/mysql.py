@@ -192,7 +192,7 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
-        # Ensure no UNIQUE index blocks duplicate lot_number across workspaces.
+        # Ensure lots only enforce workspace-scoped uniqueness.
         try:
             idx_cursor = conn.cursor(dictionary=True)
             idx_cursor.execute("SHOW INDEX FROM lots")
@@ -211,8 +211,6 @@ def ensure_schema() -> None:
                     continue
                 columns = [col for _, col in sorted(cols)]
                 if columns in (desired_lot_unique, desired_account_unique):
-                    continue
-                if "lot_number" not in columns and "account_id" not in columns:
                     continue
                 # Drop any other UNIQUE indexes that could block per-workspace mappings.
                 # (Legacy schemas used global UNIQUE keys.)
@@ -259,8 +257,6 @@ def ensure_schema() -> None:
                     continue
                 columns = [col for _, col in sorted(cols)]
                 if columns == desired_alias_unique:
-                    continue
-                if "funpay_url" not in columns:
                     continue
                 try:
                     cursor.execute(f"ALTER TABLE lot_aliases DROP INDEX `{key}`")

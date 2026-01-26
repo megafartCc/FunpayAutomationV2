@@ -74,6 +74,8 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
             detail = "Lot number already exists in this workspace"
         elif exc.code == "account_already_mapped":
             detail = "This account already has a lot in this workspace"
+        elif exc.code == "duplicate":
+            detail = "Database schema mismatch: conflicting UNIQUE index on lots table."
         else:
             detail = "Failed to create lot"
         raise HTTPException(status_code=400, detail=detail)
