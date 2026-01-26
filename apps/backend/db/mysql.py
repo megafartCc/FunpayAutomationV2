@@ -197,6 +197,7 @@ def _ensure_workspace_tables(conn: mysql.connector.MySQLConnection) -> None:
     except mysql.connector.Error as exc:
         if exc.errno != errorcode.ER_DUP_FIELDNAME:
             raise
+    _ensure_lots_primary_key(conn)
     try:
         idx_cursor = conn.cursor(dictionary=True)
         idx_cursor.execute("SHOW INDEX FROM lots")
@@ -241,6 +242,42 @@ def _get_table_columns(conn: mysql.connector.MySQLConnection, schema: str, table
         (schema, table),
     )
     return {str(row[0]) for row in cursor.fetchall() or []}
+
+
+def _ensure_lots_primary_key(conn: mysql.connector.MySQLConnection) -> None:
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SHOW COLUMNS FROM lots")
+        columns = {row["Field"] for row in cursor.fetchall() or []}
+        cursor.execute("SHOW KEYS FROM lots WHERE Key_name = 'PRIMARY'")
+        primary_cols = [
+            row["Column_name"]
+            for row in sorted(cursor.fetchall() or [], key=lambda item: int(item["Seq_in_index"]))
+        ]
+        if primary_cols == ["id"]:
+            return
+        if "id" not in columns:
+            try:
+                cursor.execute("ALTER TABLE lots ADD COLUMN id BIGINT AUTO_INCREMENT PRIMARY KEY FIRST")
+                return
+            except mysql.connector.Error:
+                pass
+        if primary_cols:
+            try:
+                cursor.execute("ALTER TABLE lots DROP PRIMARY KEY")
+            except mysql.connector.Error:
+                pass
+        if "id" in columns:
+            try:
+                cursor.execute("ALTER TABLE lots MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT")
+            except mysql.connector.Error:
+                pass
+            try:
+                cursor.execute("ALTER TABLE lots ADD PRIMARY KEY (id)")
+            except mysql.connector.Error:
+                pass
+    except mysql.connector.Error:
+        pass
 
 
 def _migrate_workspace_data(
@@ -483,6 +520,7 @@ def ensure_schema() -> None:
         except mysql.connector.Error as exc:
             if exc.errno != errorcode.ER_DUP_FIELDNAME:
                 raise
+        _ensure_lots_primary_key(conn)
         # Ensure lots only enforce workspace-scoped uniqueness.
         try:
             idx_cursor = conn.cursor(dictionary=True)
