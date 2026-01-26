@@ -19,24 +19,19 @@ class LotRecord:
 
 
 class MySQLLotRepo:
-    def list_by_user(self, user_id: int, workspace_id: int | None = None) -> List[LotRecord]:
+    def list_by_user(self, user_id: int, workspace_id: int) -> List[LotRecord]:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor(dictionary=True)
-            params: list = [user_id]
-            workspace_clause = ""
-            if workspace_id is not None:
-                workspace_clause = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
-                params.append(workspace_id)
             cursor.execute(
-                f"""
+                """
                 SELECT l.lot_number, l.account_id, l.lot_url, a.account_name, l.workspace_id
                 FROM lots l
                 JOIN accounts a ON a.id = l.account_id
-                WHERE l.user_id = %s{workspace_clause}
+                WHERE l.user_id = %s AND l.workspace_id = %s
                 ORDER BY l.lot_number
                 """,
-                tuple(params),
+                (user_id, workspace_id),
             )
             rows = cursor.fetchall() or []
             return [
@@ -63,24 +58,27 @@ class MySQLLotRepo:
     ) -> Optional[LotRecord]:
         conn = _pool.get_connection()
         try:
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(
+            cursor_dict = conn.cursor(dictionary=True)
+            cursor_dict.execute(
                 "SELECT id, account_name, workspace_id FROM accounts WHERE id = %s AND user_id = %s LIMIT 1",
                 (account_id, user_id),
             )
-            account = cursor.fetchone()
+            account = cursor_dict.fetchone()
             if not account:
                 return None
-            if workspace_id is not None and account.get("workspace_id") and int(account["workspace_id"]) != int(workspace_id):
+            # auto-attach account to workspace if it was missing
+            if account.get("workspace_id") is None:
+                cursor_update = conn.cursor()
+                cursor_update.execute(
+                    "UPDATE accounts SET workspace_id = %s WHERE id = %s AND user_id = %s",
+                    (workspace_id, account_id, user_id),
+                )
+                conn.commit()
+                account["workspace_id"] = workspace_id
+            if int(account.get("workspace_id") or 0) != int(workspace_id):
                 return None
 
             cursor = conn.cursor()
-            # If creating global mapping (workspace_id is None), ensure only one global per user/lot
-            if workspace_id is None:
-                cursor.execute(
-                    "DELETE FROM lots WHERE user_id = %s AND lot_number = %s AND workspace_id IS NULL",
-                    (user_id, lot_number),
-                )
             try:
                 cursor.execute(
                     """
@@ -105,18 +103,13 @@ class MySQLLotRepo:
         finally:
             conn.close()
 
-    def delete(self, user_id: int, lot_number: int, workspace_id: int | None = None) -> bool:
+    def delete(self, user_id: int, lot_number: int, workspace_id: int) -> bool:
         conn = _pool.get_connection()
         try:
             cursor = conn.cursor()
-            params: list = [user_id, lot_number]
-            workspace_clause = ""
-            if workspace_id is not None:
-                workspace_clause = " AND workspace_id = %s"
-                params.append(workspace_id)
             cursor.execute(
-                f"DELETE FROM lots WHERE user_id = %s AND lot_number = %s{workspace_clause}",
-                tuple(params),
+                "DELETE FROM lots WHERE user_id = %s AND lot_number = %s AND workspace_id = %s",
+                (user_id, lot_number, workspace_id),
             )
             conn.commit()
             return cursor.rowcount > 0

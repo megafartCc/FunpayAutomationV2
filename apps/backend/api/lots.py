@@ -12,7 +12,7 @@ lots_repo = MySQLLotRepo()
 
 
 class LotCreate(BaseModel):
-    workspace_id: int | None = Field(None, ge=1, description="Omit or null to create a global mapping")
+    workspace_id: int = Field(..., ge=1, description="Workspace that owns this lot")
     lot_number: int = Field(..., ge=1)
     account_id: int = Field(..., ge=1)
     lot_url: str = Field(..., min_length=5)
@@ -23,7 +23,7 @@ class LotItem(BaseModel):
     account_id: int
     account_name: str
     lot_url: str | None = None
-    workspace_id: int | None = None
+    workspace_id: int
 
 
 class LotListResponse(BaseModel):
@@ -42,7 +42,9 @@ def _to_item(record: LotRecord) -> LotItem:
 
 @router.get("/lots", response_model=LotListResponse)
 def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -> LotListResponse:
-    items = lots_repo.list_by_user(int(user.id), int(workspace_id) if workspace_id is not None else None)
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="workspace_id is required")
+    items = lots_repo.list_by_user(int(user.id), int(workspace_id))
     return LotListResponse(items=[_to_item(item) for item in items])
 
 
@@ -52,19 +54,21 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
         raise HTTPException(status_code=400, detail="Lot URL is required")
     created = lots_repo.create(
         user_id=int(user.id),
-        workspace_id=int(payload.workspace_id) if payload.workspace_id is not None else None,
+        workspace_id=int(payload.workspace_id),
         lot_number=payload.lot_number,
         account_id=payload.account_id,
         lot_url=payload.lot_url.strip(),
     )
     if not created:
-        raise HTTPException(status_code=400, detail="Failed to create lot")
+        raise HTTPException(status_code=400, detail="Failed to create lot (number may already exist in this workspace)")
     return _to_item(created)
 
 
 @router.delete("/lots/{lot_number}", status_code=status.HTTP_200_OK)
 def delete_lot(lot_number: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
-    ok = lots_repo.delete(int(user.id), int(lot_number), int(workspace_id) if workspace_id is not None else None)
+    if workspace_id is None:
+        raise HTTPException(status_code=400, detail="workspace_id is required")
+    ok = lots_repo.delete(int(user.id), int(lot_number), int(workspace_id))
     if not ok:
         raise HTTPException(status_code=404, detail="Lot not found")
     return {"ok": True}
