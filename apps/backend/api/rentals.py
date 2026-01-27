@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, ActiveRentalRecord
+from db.notifications_repo import MySQLNotificationsRepo
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.rentals_cache import RentalsCache
 from services.presence_service import fetch_presence, presence_status_label
@@ -19,6 +20,7 @@ router = APIRouter()
 accounts_repo = MySQLAccountRepo()
 rentals_cache = RentalsCache()
 workspace_repo = MySQLWorkspaceRepo()
+notifications_repo = MySQLNotificationsRepo()
 
 
 class ActiveRentalItem(BaseModel):
@@ -286,31 +288,63 @@ def replace_rental(
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> dict:
+    def log_replacement_event(status: str, message: str, account_data: dict | None = None) -> None:
+        account_name = None
+        owner_name = None
+        if account_data:
+            account_name = account_data.get("account_name") or account_data.get("login")
+            owner_name = account_data.get("owner")
+        notifications_repo.log_notification(
+            event_type="replacement",
+            status=status,
+            title="Admin rental replacement",
+            message=message,
+            owner=owner_name,
+            account_name=account_name,
+            account_id=account_id,
+            user_id=int(user.id),
+            workspace_id=int(workspace_id) if workspace_id is not None else None,
+        )
+
     if workspace_id is None:
+        log_replacement_event("failed", "Workspace is required for replacement.", None)
         raise HTTPException(status_code=400, detail="workspace_id is required")
     workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
     if not workspace:
+        log_replacement_event("failed", "Workspace not found for replacement.", None)
         raise HTTPException(status_code=400, detail="Select a workspace for rentals.")
     account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if not account or not account.get("owner"):
+        log_replacement_event("failed", "Rental not found for replacement.", account)
         raise HTTPException(status_code=404, detail="Rental not found")
     owner = account.get("owner")
+    target_mmr = None
     try:
         target_mmr = int(account.get("mmr"))
     except Exception:
-        raise HTTPException(status_code=400, detail="Cannot replace: MMR missing")
+        target_mmr = None
     max_delta = payload.mmr_range if payload and payload.mmr_range is not None else 1000
     effective_workspace_id = account.get("last_rented_workspace_id") or account.get("workspace_id") or workspace_id
     if effective_workspace_id is None:
+        log_replacement_event("failed", "Workspace missing for replacement.", account)
         raise HTTPException(status_code=400, detail="Workspace missing for replacement")
-    replacement = accounts_repo.find_replacement_account(
-        user_id=int(user.id),
-        workspace_id=int(effective_workspace_id),
-        target_mmr=target_mmr,
-        exclude_id=int(account_id),
-        max_delta=int(max_delta),
-    )
+    replacement = None
+    if target_mmr is not None:
+        replacement = accounts_repo.find_replacement_account(
+            user_id=int(user.id),
+            workspace_id=int(effective_workspace_id),
+            target_mmr=target_mmr,
+            exclude_id=int(account_id),
+            max_delta=int(max_delta),
+        )
+    if replacement is None:
+        replacement = accounts_repo.find_available_account(
+            user_id=int(user.id),
+            workspace_id=int(effective_workspace_id),
+            exclude_id=int(account_id),
+        )
     if not replacement:
+        log_replacement_event("failed", "No replacement account found.", account)
         raise HTTPException(status_code=404, detail="No replacement account found")
 
     rental_start = account.get("rental_start")
@@ -345,6 +379,7 @@ def replace_rental(
         rental_duration_minutes=base_minutes,
     )
     if not ok:
+        log_replacement_event("failed", "Failed to replace rental.", account)
         raise HTTPException(status_code=400, detail="Failed to replace rental")
 
     mafile_json = account.get("mafile_json")
@@ -363,6 +398,11 @@ def replace_rental(
         workspace_id=int(effective_workspace_id),
         owner=owner,
         text=_build_admin_replace_message(replacement, base_minutes),
+    )
+    log_replacement_event(
+        "ok",
+        f"Replacement account assigned: {replacement.get('account_name') or replacement.get('login') or replacement.get('id')}.",
+        account,
     )
 
     return {"success": True, "new_account_id": int(replacement.get("id") or 0)}

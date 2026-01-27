@@ -610,7 +610,10 @@ const ChatsPage: React.FC = () => {
   };
 
   const handleReplaceRental = async () => {
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      setStatus("Select a workspace to replace rentals.");
+      return;
+    }
     if (!selectedRental) {
       setStatus("Select an active rental first.");
       return;
