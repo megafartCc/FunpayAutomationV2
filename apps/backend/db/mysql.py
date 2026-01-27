@@ -141,7 +141,7 @@ def ensure_schema() -> None:
                 rental_duration_minutes INT NULL,
                 owner VARCHAR(255) DEFAULT NULL,
                 rental_start DATETIME DEFAULT NULL,
-                low_priority TINYINT(1) NOT NULL DEFAULT 0,
+                `low_priority` TINYINT(1) NOT NULL DEFAULT 0,
                 account_frozen TINYINT(1) NOT NULL DEFAULT 0,
                 rental_frozen TINYINT(1) NOT NULL DEFAULT 0,
                 rental_frozen_at DATETIME NULL,
@@ -163,7 +163,7 @@ def ensure_schema() -> None:
             """
         )
         if cursor.fetchone() is None:
-            cursor.execute("ALTER TABLE accounts ADD COLUMN low_priority TINYINT(1) NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE accounts ADD COLUMN `low_priority` TINYINT(1) NOT NULL DEFAULT 0")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS lots (

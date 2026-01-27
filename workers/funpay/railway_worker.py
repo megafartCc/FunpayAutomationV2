@@ -1132,7 +1132,7 @@ def fetch_lot_mapping(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen
-                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
@@ -1677,7 +1677,7 @@ def fetch_available_lot_accounts(
             "a.workspace_id AS workspace_id",
         ]
         if has_low_priority:
-            select_fields.append("a.low_priority AS low_priority")
+            select_fields.append("a.`low_priority` AS low_priority")
         else:
             select_fields.append("0 AS low_priority")
         if has_lots:
@@ -1700,7 +1700,7 @@ def fetch_available_lot_accounts(
         if has_rental_frozen:
             where_clauses.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
         if has_low_priority:
-            where_clauses.append("(a.low_priority = 0 OR a.low_priority IS NULL)")
+            where_clauses.append("(a.`low_priority` = 0 OR a.`low_priority` IS NULL)")
         if has_lots:
             where_clauses.append("l.lot_number IS NOT NULL")
             if has_account_workspace and has_lot_workspace and workspace_id is not None:
@@ -1755,7 +1755,7 @@ def fetch_lot_account(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen
-                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
@@ -1765,7 +1765,7 @@ def fetch_lot_account(
                   AND (a.owner IS NULL OR a.owner = '')
                   AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
                   AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
-                  {"AND (a.low_priority = 0 OR a.low_priority IS NULL)" if has_low_priority else ""}
+                  {"AND (a.`low_priority` = 0 OR a.`low_priority` IS NULL)" if has_low_priority else ""}
             {order_clause}
             LIMIT 1
             """,
@@ -1863,7 +1863,7 @@ def replace_rental_account(
         if has_rental_frozen:
             where_clauses.append("(rental_frozen = 0 OR rental_frozen IS NULL)")
         if has_low_priority:
-            where_clauses.append("(low_priority = 0 OR low_priority IS NULL)")
+            where_clauses.append("(`low_priority` = 0 OR `low_priority` IS NULL)")
         cursor.execute(
             f"UPDATE accounts SET {', '.join(updates)} WHERE {' AND '.join(where_clauses)}",
             tuple(params),
@@ -1876,7 +1876,7 @@ def replace_rental_account(
         if has_frozen_at:
             old_updates.append("rental_frozen_at = NULL")
         if has_low_priority:
-            old_updates.append("low_priority = 1")
+            old_updates.append("`low_priority` = 1")
         old_params: list = [int(old_account_id), int(user_id)]
         old_where = "id = %s AND user_id = %s"
         if owner:
@@ -2042,7 +2042,7 @@ def fetch_owner_accounts(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen{', a.rental_frozen_at' if has_frozen_at else ''}
-                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM accounts a

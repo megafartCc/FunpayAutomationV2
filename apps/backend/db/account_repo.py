@@ -89,7 +89,7 @@ class MySQLAccountRepo:
             if has_last_rented:
                 columns += ", last_rented_workspace_id"
             if has_low_priority:
-                columns += ", low_priority"
+                columns += ", `low_priority`"
             cursor.execute(
                 f"SELECT {columns} FROM accounts a "
                 "WHERE a.id = %s AND a.user_id = %s LIMIT 1",
@@ -104,7 +104,7 @@ class MySQLAccountRepo:
         try:
             has_low_priority = self._column_exists(conn.cursor(), "low_priority")
             cursor = conn.cursor(dictionary=True)
-            low_priority_select = ", a.low_priority" if has_low_priority else ""
+            low_priority_select = ", a.`low_priority`" if has_low_priority else ""
             cursor.execute(
                 f"""
                 SELECT a.id, a.user_id, a.workspace_id,
@@ -155,7 +155,7 @@ class MySQLAccountRepo:
         try:
             has_low_priority = self._column_exists(conn.cursor(), "low_priority")
             cursor = conn.cursor(dictionary=True)
-            low_priority_select = ", a.low_priority" if has_low_priority else ""
+            low_priority_select = ", a.`low_priority`" if has_low_priority else ""
             cursor.execute(
                 f"""
                 SELECT a.id, a.user_id, a.workspace_id,
@@ -281,7 +281,7 @@ class MySQLAccountRepo:
                        lw.name AS last_rented_workspace_name,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen, a.low_priority
+                       a.account_frozen, a.rental_frozen, a.`low_priority`
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
@@ -412,11 +412,11 @@ class MySQLAccountRepo:
                        lw.name AS last_rented_workspace_name,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen, a.low_priority
+                       a.account_frozen, a.rental_frozen, a.`low_priority`
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
-                WHERE a.user_id = %s AND a.low_priority = 1{workspace_clause}
+                WHERE a.user_id = %s AND a.`low_priority` = 1{workspace_clause}
                 ORDER BY a.id DESC
                 """,
                 tuple(params),
@@ -550,7 +550,7 @@ class MySQLAccountRepo:
             if not self._column_exists(cursor, "low_priority"):
                 return False
             cursor.execute(
-                "UPDATE accounts SET low_priority = %s WHERE id = %s AND user_id = %s",
+                "UPDATE accounts SET `low_priority` = %s WHERE id = %s AND user_id = %s",
                 (1 if low_priority else 0, account_id, user_id),
             )
             conn.commit()
