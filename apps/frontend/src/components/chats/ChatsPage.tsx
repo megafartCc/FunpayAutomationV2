@@ -30,8 +30,8 @@ const formatTime = (value?: string | number | null) => {
   return dt.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
 
-const isAdminCommand = (text?: string | null) => {
-  if (!text) return false;
+const isAdminCommand = (text?: string | null, byBot?: number | null) => {
+  if (!text || byBot) return false;
   const lowered = text.toLowerCase();
   return lowered.includes("!админ") || lowered.includes("!admin");
 };
@@ -788,7 +788,7 @@ const ChatsPage: React.FC = () => {
                   >
                     {messages.map((message) => {
                       const isBot = Boolean(message.by_bot);
-                      const adminCall = isAdminCommand(message.text);
+                      const adminCall = isAdminCommand(message.text, message.by_bot);
                       return (
                         <div
                           key={`${message.id}-${message.message_id}`}
