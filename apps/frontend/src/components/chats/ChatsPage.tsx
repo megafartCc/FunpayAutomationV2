@@ -4,11 +4,13 @@ import { api } from "../../services/api";
 import type { ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
-const formatTime = (value?: string | null) => {
-  if (!value) return "";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString();
+const formatTime = (value?: string | number | null) => {
+  if (value === null || value === undefined || value === "") return "";
+  const raw = String(value);
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const ts = Date.parse(normalized);
+  if (Number.isNaN(ts)) return raw;
+  return new Date(ts).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
 
 const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();

@@ -409,6 +409,15 @@ _CHAT_TIME_RE_YMD = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(
 _CHAT_TIME_RE_DMY = re.compile(r"\b(\d{1,2})[./](\d{1,2})[./](\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
 _CHAT_TIME_RE_DM = re.compile(r"\b(\d{1,2})[./](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
 _CHAT_TIME_RE_TIME = re.compile(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+_MSK_OFFSET = timedelta(hours=3)
+
+
+def _msk_now() -> datetime:
+    return datetime.utcnow() + _MSK_OFFSET
+
+
+def _msk_to_utc(value: datetime) -> datetime:
+    return value - _MSK_OFFSET
 
 
 def _parse_funpay_datetime(text: str | None) -> datetime | None:
@@ -434,7 +443,7 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
     match = _CHAT_TIME_RE_YMD.search(raw)
     if match:
         year, month, day, hour, minute, second = match.groups()
-        return datetime(
+        dt_msk = datetime(
             int(year),
             int(month),
             int(day),
@@ -442,6 +451,7 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
             int(minute),
             int(second or 0),
         )
+        return _msk_to_utc(dt_msk)
 
     match = _CHAT_TIME_RE_DMY.search(raw)
     if match:
@@ -449,7 +459,7 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
         year_val = int(year)
         if year_val < 100:
             year_val += 2000
-        return datetime(
+        dt_msk = datetime(
             int(year_val),
             int(month),
             int(day),
@@ -457,12 +467,13 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
             int(minute),
             int(second or 0),
         )
+        return _msk_to_utc(dt_msk)
 
     match = _CHAT_TIME_RE_DM.search(raw)
     if match:
         day, month, hour, minute, second = match.groups()
-        now = datetime.utcnow()
-        return datetime(
+        now = _msk_now()
+        dt_msk = datetime(
             now.year,
             int(month),
             int(day),
@@ -470,16 +481,17 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
             int(minute),
             int(second or 0),
         )
+        return _msk_to_utc(dt_msk)
 
     lowered = raw.lower()
     yesterday_flag = "\u0432\u0447\u0435\u0440\u0430" in lowered or "yesterday" in lowered
     match = _CHAT_TIME_RE_TIME.search(raw)
     if match:
         hour, minute, second = match.groups()
-        base = datetime.utcnow().date()
+        base = _msk_now().date()
         if yesterday_flag:
             base = base - timedelta(days=1)
-        return datetime(
+        dt_msk = datetime(
             base.year,
             base.month,
             base.day,
@@ -487,6 +499,7 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
             int(minute),
             int(second or 0),
         )
+        return _msk_to_utc(dt_msk)
 
     return None
 
