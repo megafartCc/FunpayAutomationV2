@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { api, ChatItem, ChatMessageItem } from "../../services/api";
+import { api, ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 const formatTime = (value?: string | null) => {
@@ -10,6 +10,11 @@ const formatTime = (value?: string | null) => {
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleString();
 };
+
+const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();
+
+const LP_REPLACE_COMMAND = "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430";
+const LP_REPLACE_LABEL = "Replace (send !\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430)";
 
 const CHAT_CACHE_VERSION = "v1";
 const CHAT_LIST_CACHE_TTL_MS = 30_000;
@@ -88,6 +93,17 @@ const parseChatTime = (value?: string | null) => {
   return dt.getTime();
 };
 
+const statusPill = (status?: string | null) => {
+  const lower = (status || "").toLowerCase();
+  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
+  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
+  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
+  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
+  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Idle" };
+  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Offline" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+};
+
 const getMaxChatTime = (items: ChatItem[]) =>
   items.reduce((max, item) => Math.max(max, parseChatTime(item.last_message_time)), 0);
 
@@ -118,6 +134,12 @@ const ChatsPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [rentals, setRentals] = useState<ActiveRentalItem[]>([]);
+  const [rentalsLoading, setRentalsLoading] = useState(false);
+  const [selectedRentalId, setSelectedRentalId] = useState<number | null>(null);
+  const [extendHours, setExtendHours] = useState("");
+  const [extendMinutes, setExtendMinutes] = useState("");
+  const [rentalActionBusy, setRentalActionBusy] = useState(false);
   const messagesRef = useRef<ChatMessageItem[]>([]);
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
@@ -135,6 +157,10 @@ const ChatsPage: React.FC = () => {
   useEffect(() => {
     setChatSearch(queryFromUrl);
   }, [queryFromUrl]);
+
+  useEffect(() => {
+    void loadRentals();
+  }, [loadRentals]);
 
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
@@ -282,6 +308,25 @@ const ChatsPage: React.FC = () => {
     [workspaceId],
   );
 
+  const loadRentals = useCallback(
+    async (silent = false) => {
+      if (!workspaceId) {
+        setRentals([]);
+        return;
+      }
+      if (!silent) setRentalsLoading(true);
+      try {
+        const res = await api.listActiveRentals(workspaceId);
+        setRentals(res.items || []);
+      } catch {
+        setRentals([]);
+      } finally {
+        if (!silent) setRentalsLoading(false);
+      }
+    },
+    [workspaceId],
+  );
+
   useEffect(() => {
     void loadChats(chatSearch);
   }, [loadChats, workspaceId]);
@@ -303,6 +348,14 @@ const ChatsPage: React.FC = () => {
   }, [workspaceId, chatSearch, loadChats]);
 
   useEffect(() => {
+    if (!workspaceId) return undefined;
+    const handle = window.setInterval(() => {
+      void loadRentals(true);
+    }, 15_000);
+    return () => window.clearInterval(handle);
+  }, [workspaceId, loadRentals]);
+
+  useEffect(() => {
     void loadHistory(selectedChatId);
   }, [selectedChatId, loadHistory]);
 
@@ -318,6 +371,26 @@ const ChatsPage: React.FC = () => {
     () => chats.find((chat) => chat.chat_id === selectedChatId) || null,
     [chats, selectedChatId],
   );
+
+  const buyerKey = useMemo(() => normalizeBuyer(selectedChat?.name), [selectedChat]);
+  const rentalsForBuyer = useMemo(() => {
+    if (!buyerKey) return [];
+    return rentals.filter((item) => normalizeBuyer(item.buyer) === buyerKey);
+  }, [rentals, buyerKey]);
+
+  const selectedRental = useMemo(
+    () => rentalsForBuyer.find((item) => item.id === selectedRentalId) || null,
+    [rentalsForBuyer, selectedRentalId],
+  );
+
+  useEffect(() => {
+    if (!rentalsForBuyer.length) {
+      setSelectedRentalId(null);
+      return;
+    }
+    if (selectedRentalId && rentalsForBuyer.some((item) => item.id === selectedRentalId)) return;
+    setSelectedRentalId(rentalsForBuyer[0]?.id ?? null);
+  }, [rentalsForBuyer, selectedRentalId]);
 
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
@@ -369,9 +442,106 @@ const ChatsPage: React.FC = () => {
     }
   };
 
+  const handleExtendRental = async () => {
+    if (!selectedRental) {
+      setStatus("Select an active rental first.");
+      return;
+    }
+    if (!workspaceId) return;
+    if (rentalActionBusy) return;
+    const hours = Number(extendHours || 0);
+    const minutes = Number(extendMinutes || 0);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
+      setStatus("Enter valid hours and minutes.");
+      return;
+    }
+    if (hours * 60 + minutes <= 0) {
+      setStatus("Extension must be greater than 0.");
+      return;
+    }
+    setRentalActionBusy(true);
+    try {
+      await api.extendAccount(selectedRental.id, hours, minutes, workspaceId);
+      setExtendHours("");
+      setExtendMinutes("");
+      await loadRentals(true);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to extend rental.";
+      setStatus(message);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
+  const handleReleaseRental = async () => {
+    if (!selectedRental) {
+      setStatus("Select an active rental first.");
+      return;
+    }
+    if (!workspaceId) return;
+    if (rentalActionBusy) return;
+    setRentalActionBusy(true);
+    try {
+      await api.releaseAccount(selectedRental.id, workspaceId);
+      await loadRentals(true);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to release rental.";
+      setStatus(message);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
+  const handleToggleFreeze = async () => {
+    if (!selectedRental) {
+      setStatus("Select an active rental first.");
+      return;
+    }
+    if (!workspaceId) return;
+    if (rentalActionBusy) return;
+    const frozen = (selectedRental.status || "").toLowerCase().includes("frozen");
+    setRentalActionBusy(true);
+    try {
+      await api.freezeRental(selectedRental.id, !frozen, workspaceId);
+      await loadRentals(true);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to update freeze state.";
+      setStatus(message);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
+  const handleReplaceRental = async () => {
+    if (!selectedChatId) {
+      setStatus("Select a chat first.");
+      return;
+    }
+    if (!workspaceId) return;
+    if (!selectedRental) {
+      setStatus("Select an active rental first.");
+      return;
+    }
+    if (rentalActionBusy) return;
+    setRentalActionBusy(true);
+    try {
+      await api.sendChatMessage(
+        selectedChatId,
+        `${LP_REPLACE_COMMAND} ${selectedRental.id}`,
+        workspaceId,
+      );
+      await loadHistory(selectedChatId, { silent: true });
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to send replacement command.";
+      setStatus(message);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+    <div className="flex h-full flex-col gap-6">
+      <div className="flex min-h-[calc(100vh-180px)] flex-1 flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
@@ -390,8 +560,8 @@ const ChatsPage: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
+          <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
             <div className="flex items-center gap-2">
               <input
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -407,7 +577,7 @@ const ChatsPage: React.FC = () => {
                 Update
               </button>
             </div>
-            <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+            <div className="mt-4 flex-1 space-y-2 overflow-y-auto pr-1">
               {chatListLoading ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
                   Loading chats...
@@ -427,9 +597,7 @@ const ChatsPage: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="truncate text-sm font-semibold">
-                          {chat.name || "Buyer"}
-                        </div>
+                        <div className="truncate text-sm font-semibold">{chat.name || "Buyer"}</div>
                         <span className={`text-[11px] ${isActive ? "text-neutral-200" : "text-neutral-400"}`}>
                           {formatTime(chat.last_message_time)}
                         </span>
@@ -459,14 +627,14 @@ const ChatsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex min-h-0 flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-semibold text-neutral-900">
                   {selectedChat ? selectedChat.name : "Select a chat"}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {selectedChat ? `Chat ID: ${selectedChat.id}` : "Pick a buyer to open the conversation."}
+                  {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
                 </div>
               </div>
               <button
@@ -478,13 +646,13 @@ const ChatsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               {chatLoading ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
                   Loading messages...
                 </div>
               ) : messages.length ? (
-                <div className="flex flex-col gap-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
                   {messages.map((message) => {
                     const isBot = Boolean(message.by_bot);
                     return (
@@ -531,6 +699,157 @@ const ChatsPage: React.FC = () => {
                 Send
               </button>
             </form>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-4">
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-900">Chat controls</div>
+                <span className="text-[11px] text-neutral-500">{selectedChat ? "Ready" : "Select a chat"}</span>
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-neutral-600">
+                <div>Buyer: {selectedChat?.name || "-"}</div>
+                <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
+                <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-900">Active rentals</div>
+                <button
+                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+                  type="button"
+                  onClick={() => loadRentals()}
+                  disabled={rentalsLoading}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+                {rentalsLoading ? (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                    Loading rentals...
+                  </div>
+                ) : selectedChat ? (
+                  rentalsForBuyer.length ? (
+                    rentalsForBuyer.map((item) => {
+                      const pill = statusPill(item.status);
+                      const isSelected = item.id === selectedRentalId;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setSelectedRentalId(item.id)}
+                          className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                            isSelected
+                              ? "border-neutral-900 bg-neutral-900 text-white"
+                              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="truncate text-sm font-semibold">{item.account || "Account"}</div>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.className}`}>
+                              {pill.label}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
+                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>{item.time_left || "-"}</span>
+                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>
+                              {item.workspace_name || (item.workspace_id ? `WS ${item.workspace_id}` : "Workspace")}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                      No active rentals for this buyer.
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                    Select a chat to view rentals.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-900">Rental actions</div>
+                <span className="text-[11px] text-neutral-500">{selectedRental ? "Ready" : "Pick a rental"}</span>
+              </div>
+              {selectedRental ? (
+                <div className="mt-3 space-y-3 text-xs text-neutral-600">
+                  <div>
+                    <div className="text-[11px] text-neutral-400">Account</div>
+                    <div className="text-sm font-semibold text-neutral-900">{selectedRental.account || "-"}</div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Time left: {selectedRental.time_left || "-"}</span>
+                    <span className="text-[11px] text-neutral-400">
+                      {selectedRental.workspace_name || (selectedRental.workspace_id ? `WS ${selectedRental.workspace_id}` : "Workspace")}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleToggleFreeze}
+                      disabled={rentalActionBusy}
+                      className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
+                    >
+                      {(selectedRental.status || "").toLowerCase().includes("frozen") ? "Unfreeze" : "Freeze"}
+                    </button>
+                    <button
+                      onClick={handleReleaseRental}
+                      disabled={rentalActionBusy}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Release
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={extendHours}
+                      onChange={(e) => setExtendHours(e.target.value)}
+                      placeholder="Hours"
+                      type="number"
+                      min="0"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 outline-none placeholder:text-neutral-400"
+                    />
+                    <input
+                      value={extendMinutes}
+                      onChange={(e) => setExtendMinutes(e.target.value)}
+                      placeholder="Minutes"
+                      type="number"
+                      min="0"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 outline-none placeholder:text-neutral-400"
+                    />
+                  </div>
+                  <button
+                    onClick={handleExtendRental}
+                    disabled={rentalActionBusy}
+                    className="w-full rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                  >
+                    Extend rental
+                  </button>
+                  <button
+                    onClick={handleReplaceRental}
+                    disabled={rentalActionBusy}
+                    className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {LP_REPLACE_LABEL}
+                  </button>
+                  <div className="text-[11px] text-neutral-400">
+                    Sends the replacement command to the buyer chat for this account ID.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-4 text-center text-xs text-neutral-500">
+                  Select a rental to manage it.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
