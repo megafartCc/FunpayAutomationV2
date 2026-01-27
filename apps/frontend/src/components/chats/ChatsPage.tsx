@@ -234,6 +234,16 @@ const ChatsPage: React.FC = () => {
     });
   }, [routeChatId]);
 
+  const getWorkspaceIdForChat = useCallback(
+    (chatId: number | null) => {
+      if (workspaceId !== null) return workspaceId;
+      if (!chatId) return null;
+      const match = chats.find((chat) => chat.chat_id === chatId);
+      return match?.workspace_id ?? null;
+    },
+    [workspaceId, chats],
+  );
+
   const updateChatPreview = useCallback(
     (chatId: number, items: ChatMessageItem[]) => {
       if (!items.length) return;
@@ -279,16 +289,8 @@ const ChatsPage: React.FC = () => {
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       const trimmedQuery = query?.trim() || "";
-      if (workspaceId === null) {
-        setChats([]);
-        setSelectedChatId(null);
-        setMessages([]);
-        setStatus("Select a workspace to view chats.");
-        listSinceRef.current = null;
-        hasLoadedChatsRef.current = false;
-        return;
-      }
-      const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
+      const cacheKey =
+        trimmedQuery || workspaceId === null ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
         setChats(cached);
@@ -360,16 +362,13 @@ const ChatsPage: React.FC = () => {
         historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
         return;
       }
-      if (workspaceId === null) {
-        setMessages([]);
-        historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
-        return;
-      }
+      const chatWorkspaceId = getWorkspaceIdForChat(chatId);
       const seq = historyRequestRef.current.seq + 1;
       historyRequestRef.current = { seq, chatId };
 
-      const cacheKey = chatHistoryCacheKey(workspaceIdForChat, chatId);
-      const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
+      const cacheKey = chatWorkspaceId ? chatHistoryCacheKey(chatWorkspaceId, chatId) : null;
+      const cached =
+        cacheKey && !options?.incremental ? readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS) : null;
       if (cached) {
         setMessages(cached);
         updateChatPreview(chatId, cached);
@@ -382,7 +381,7 @@ const ChatsPage: React.FC = () => {
         const baseItems = cached ?? messagesRef.current;
         const lastServerId = getLastServerMessageId(baseItems);
         if ((options?.incremental || cached) && lastServerId > 0) {
-          const res = await api.getChatHistory(chatId, workspaceIdForChat, 200, lastServerId);
+          const res = await api.getChatHistory(chatId, chatWorkspaceId, 200, lastServerId);
           const incoming = res.items || [];
           if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
           if (incoming.length) {
@@ -390,17 +389,21 @@ const ChatsPage: React.FC = () => {
             const merged = dedupeMessages([...cleaned, ...incoming]);
             setMessages(merged);
             updateChatPreview(chatId, merged);
-            writeCache(cacheKey, merged.slice(-100));
+            if (cacheKey) {
+              writeCache(cacheKey, merged.slice(-100));
+            }
           }
           markChatRead(chatId);
           return;
         }
-        const res = await api.getChatHistory(chatId, workspaceIdForChat, 300);
+        const res = await api.getChatHistory(chatId, chatWorkspaceId, 300);
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
         setMessages(items);
         updateChatPreview(chatId, items);
-        writeCache(cacheKey, items.slice(-100));
+        if (cacheKey) {
+          writeCache(cacheKey, items.slice(-100));
+        }
         markChatRead(chatId);
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
@@ -413,7 +416,7 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId, markChatRead, updateChatPreview],
+    [markChatRead, updateChatPreview, getWorkspaceIdForChat],
   );
 
   const loadRentals = useCallback(
@@ -522,7 +525,11 @@ const ChatsPage: React.FC = () => {
   const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedChatId) return;
-    if (workspaceId === null) return;
+    const chatWorkspaceId = getWorkspaceIdForChat(selectedChatId);
+    if (workspaceId === null && !chatWorkspaceId) {
+      setStatus("Select a workspace to send messages.");
+      return;
+    }
     const text = draft.trim();
     if (!text) return;
     const optimistic: ChatMessageItem = {
@@ -534,17 +541,19 @@ const ChatsPage: React.FC = () => {
       sent_time: new Date().toISOString(),
       by_bot: 1,
       message_type: "pending",
-      workspace_id: workspaceIdForChat,
+      workspace_id: chatWorkspaceId,
     };
-    const historyKey = chatHistoryCacheKey(workspaceIdForChat, selectedChatId);
+    const historyKey = chatWorkspaceId ? chatHistoryCacheKey(chatWorkspaceId, selectedChatId) : null;
     setMessages((prev) => {
       const next = [...prev, optimistic];
-      writeCache(historyKey, next.slice(-100));
+      if (historyKey) {
+        writeCache(historyKey, next.slice(-100));
+      }
       return next;
     });
     setDraft("");
     try {
-      await api.sendChatMessage(selectedChatId, text, workspaceIdForChat);
+      await api.sendChatMessage(selectedChatId, text, chatWorkspaceId);
       setChats((prev) => {
         const next = prev.map((chat) =>
           chat.chat_id === selectedChatId
@@ -556,7 +565,7 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        if (!chatSearch.trim()) {
+        if (workspaceId !== null && !chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
