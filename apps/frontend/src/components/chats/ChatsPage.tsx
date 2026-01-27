@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { api, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
@@ -107,7 +108,9 @@ const ChatsPage: React.FC = () => {
   const { selectedId: selectedWorkspaceId } = useWorkspace();
   const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
 
-  const [chatSearch, setChatSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  const queryFromUrl = searchParams.get("q") || "";
+  const [chatSearch, setChatSearch] = useState(queryFromUrl);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatListLoading, setChatListLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -128,6 +131,10 @@ const ChatsPage: React.FC = () => {
     listSinceRef.current = null;
     hasLoadedChatsRef.current = false;
   }, [workspaceId]);
+
+  useEffect(() => {
+    setChatSearch(queryFromUrl);
+  }, [queryFromUrl]);
 
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
