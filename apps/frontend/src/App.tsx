@@ -12,6 +12,7 @@ import LotsPage from "./components/lots/LotsPage";
 import SettingsPage from "./components/settings/SettingsPage";
 import BlacklistPage from "./components/blacklist/BlacklistPage";
 import OrdersHistoryPage from "./components/orders/OrdersHistoryPage";
+import ChatsPage from "./components/chats/ChatsPage";
 
 type Toast = { message: string; isError?: boolean } | null;
 
@@ -149,7 +150,7 @@ const AppRoutes: React.FC = () => {
           <Route path="blacklist" element={<BlacklistPage onToast={showToast} />} />
           <Route path="inventory" element={<InventoryPage onToast={showToast} />} />
           <Route path="lots" element={<LotsPage />} />
-          <Route path="chats" element={<DashboardPlaceholder title="Chats" />} />
+          <Route path="chats" element={<ChatsPage />} />
           <Route path="add-account" element={<AddAccountPage />} />
           <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
           <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />
