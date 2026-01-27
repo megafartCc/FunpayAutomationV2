@@ -24,6 +24,8 @@ class ChatItem(BaseModel):
     last_message_text: str | None = None
     last_message_time: str | None = None
     unread: int = 0
+    admin_unread_count: int = 0
+    admin_requested: int = 0
     workspace_id: int | None = None
 
 
@@ -114,6 +116,8 @@ def list_chats(
             last_message_text=item.last_message_text,
             last_message_time=item.last_message_time,
             unread=item.unread,
+            admin_unread_count=item.admin_unread_count,
+            admin_requested=item.admin_requested,
             workspace_id=item.workspace_id,
         )
         for item in items

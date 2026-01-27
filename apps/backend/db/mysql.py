@@ -280,6 +280,8 @@ def ensure_schema() -> None:
                 last_message_text TEXT NULL,
                 last_message_time TIMESTAMP NULL,
                 unread TINYINT(1) NOT NULL DEFAULT 0,
+                admin_unread_count INT NOT NULL DEFAULT 0,
+                admin_requested TINYINT(1) NOT NULL DEFAULT 0,
                 user_id BIGINT NOT NULL,
                 workspace_id BIGINT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -308,6 +310,24 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'chats' AND column_name = 'admin_unread_count'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE chats ADD COLUMN admin_unread_count INT NOT NULL DEFAULT 0")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'chats' AND column_name = 'admin_requested'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE chats ADD COLUMN admin_requested TINYINT(1) NOT NULL DEFAULT 0")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_outbox (

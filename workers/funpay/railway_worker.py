@@ -880,6 +880,13 @@ def invalidate_chat_cache(user_id: int, workspace_id: int | None, chat_id: int) 
             continue
 
 
+def _is_admin_command(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return "!админ" in lowered or "!admin" in lowered
+
+
 def fetch_presence(steam_id: str | None) -> dict:
     if not steam_id:
         return {}
@@ -1093,8 +1100,11 @@ def upsert_chat_summary(
             return
         cursor.execute(
             """
-            INSERT INTO chats (chat_id, name, last_message_text, last_message_time, unread, user_id, workspace_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO chats (
+                chat_id, name, last_message_text, last_message_time, unread,
+                admin_unread_count, admin_requested, user_id, workspace_id
+            )
+            VALUES (%s, %s, %s, %s, %s, 0, 0, %s, %s)
             ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 last_message_text = VALUES(last_message_text),
@@ -1160,6 +1170,21 @@ def insert_chat_message(
                 int(workspace_id) if workspace_id is not None else None,
             ),
         )
+        inserted = cursor.rowcount == 1
+        if inserted and _is_admin_command(text) and not by_bot:
+            cursor.execute(
+                """
+                UPDATE chats
+                SET admin_unread_count = admin_unread_count + 1,
+                    admin_requested = 1
+                WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+                """,
+                (
+                    int(user_id),
+                    int(workspace_id) if workspace_id is not None else None,
+                    int(chat_id),
+                ),
+            )
         conn.commit()
     finally:
         conn.close()

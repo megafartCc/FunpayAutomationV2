@@ -179,6 +179,8 @@ export type ChatItem = {
   last_message_text?: string | null;
   last_message_time?: string | null;
   unread?: number;
+  admin_unread_count?: number;
+  admin_requested?: number;
   workspace_id?: number | null;
 };
 

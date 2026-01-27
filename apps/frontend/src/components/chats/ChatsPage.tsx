@@ -30,6 +30,12 @@ const formatTime = (value?: string | number | null) => {
   return dt.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
 
+const isAdminCommand = (text?: string | null) => {
+  if (!text) return false;
+  const lowered = text.toLowerCase();
+  return lowered.includes("!админ") || lowered.includes("!admin");
+};
+
 const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();
 
 const ADMIN_REPLACE_LABEL = "Replace account (admin)";
@@ -358,7 +364,11 @@ const ChatsPage: React.FC = () => {
             writeCache(cacheKey, merged.slice(-100));
           }
           setChats((prev) =>
-            prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
+            prev.map((chat) =>
+              chat.chat_id === chatId
+                ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+                : chat,
+            ),
           );
           return;
         }
@@ -369,7 +379,11 @@ const ChatsPage: React.FC = () => {
         updateChatPreview(chatId, items);
         writeCache(cacheKey, items.slice(-100));
         setChats((prev) =>
-          prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
+          prev.map((chat) =>
+            chat.chat_id === chatId
+              ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+              : chat,
+          ),
         );
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
@@ -680,6 +694,9 @@ const ChatsPage: React.FC = () => {
               ) : chats.length ? (
                 chats.map((chat) => {
                   const isActive = chat.chat_id === selectedChatId;
+                  const adminCount = Number(chat.admin_unread_count || 0);
+                  const hasAdmin = adminCount > 0 || Boolean(chat.admin_requested);
+                  const unreadCount = Number(chat.unread || 0);
                   return (
                     <button
                       key={chat.chat_id}
@@ -688,7 +705,9 @@ const ChatsPage: React.FC = () => {
                       className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                         isActive
                           ? "border-neutral-900 bg-neutral-900 text-white"
-                          : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                          : hasAdmin
+                            ? "border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-300"
+                            : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -700,14 +719,23 @@ const ChatsPage: React.FC = () => {
                       <p className={`mt-2 truncate text-xs ${isActive ? "text-neutral-300" : "text-neutral-500"}`}>
                         {chat.last_message_text || "No messages yet."}
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {chat.unread ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {adminCount > 0 ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isActive ? "bg-white/10 text-white" : "bg-rose-100 text-rose-700"
+                            }`}
+                          >
+                            !Админ {adminCount}
+                          </span>
+                        ) : null}
+                        {unreadCount > 0 ? (
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                               isActive ? "bg-white/10 text-white" : "bg-amber-100 text-amber-700"
                             }`}
                           >
-                            New
+                            New {unreadCount}
                           </span>
                         ) : null}
                       </div>
@@ -760,18 +788,26 @@ const ChatsPage: React.FC = () => {
                   >
                     {messages.map((message) => {
                       const isBot = Boolean(message.by_bot);
+                      const adminCall = isAdminCommand(message.text);
                       return (
                         <div
                           key={`${message.id}-${message.message_id}`}
                           className={`w-fit max-w-[72%] rounded-xl border px-3 py-2 text-sm break-words ${
                             isBot
                               ? "ml-auto self-end border-neutral-900 bg-neutral-900 text-white"
-                              : "self-start border-neutral-200 bg-white text-neutral-700"
+                              : adminCall
+                                ? "self-start border-rose-300 bg-rose-50 text-rose-900"
+                                : "self-start border-neutral-200 bg-white text-neutral-700"
                           }`}
                         >
                           <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
                             {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
                           </div>
+                          {adminCall ? (
+                            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-rose-500">
+                              Admin request
+                            </div>
+                          ) : null}
                           <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pr-1">
                             {message.text || "(empty)"}
                           </div>
