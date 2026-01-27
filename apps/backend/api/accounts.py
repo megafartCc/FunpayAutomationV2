@@ -10,6 +10,7 @@ from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.steam_service import deauthorize_sessions, SteamWorkerError
+from services.chat_notify import notify_owner
 
 
 router = APIRouter()
@@ -331,6 +332,24 @@ def extend_account(
     )
     if not success:
         raise HTTPException(status_code=400, detail="Failed to extend rental")
+    account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
+    if account and account.get("owner"):
+        minutes_total = payload.hours * 60 + payload.minutes
+        if minutes_total > 0:
+            hours = minutes_total // 60
+            minutes = minutes_total % 60
+            if hours and minutes:
+                label = f"{hours} ч {minutes} мин"
+            elif hours:
+                label = f"{hours} ч"
+            else:
+                label = f"{minutes} мин"
+            notify_owner(
+                user_id=int(user.id),
+                workspace_id=int(workspace_id),
+                owner=account.get("owner"),
+                text=f"Админ продлил вам аренду на {label} для аккаунта {account_id}.",
+            )
     return {"status": "ok"}
 
 

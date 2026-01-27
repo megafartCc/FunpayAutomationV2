@@ -151,6 +151,47 @@ class MySQLChatRepo:
         finally:
             conn.close()
 
+    def find_chat_id_by_name(
+        self,
+        user_id: int,
+        workspace_id: int,
+        name: str,
+    ) -> int | None:
+        owner_key = (name or "").strip()
+        if not owner_key:
+            return None
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT chat_id
+                FROM chats
+                WHERE user_id = %s AND workspace_id = %s AND LOWER(name) = LOWER(%s)
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (int(user_id), int(workspace_id), owner_key),
+            )
+            row = cursor.fetchone()
+            if row:
+                return int(row.get("chat_id") or 0) or None
+            like = f"%{owner_key.lower()}%"
+            cursor.execute(
+                """
+                SELECT chat_id
+                FROM chats
+                WHERE user_id = %s AND workspace_id = %s AND LOWER(name) LIKE %s
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (int(user_id), int(workspace_id), like),
+            )
+            row = cursor.fetchone()
+            return int(row.get("chat_id") or 0) if row else None
+        finally:
+            conn.close()
+
     def enqueue_outbox(
         self,
         *,

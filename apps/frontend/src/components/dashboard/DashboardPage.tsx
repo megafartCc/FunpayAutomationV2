@@ -76,6 +76,8 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
 const statusPill = (status?: string) => {
   const lower = (status || "").toLowerCase();
   if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
+  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Demo Hero" };
+  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Bot Match" };
   if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
   if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
   if (lower.includes("online") || lower === "1" || lower === "true")

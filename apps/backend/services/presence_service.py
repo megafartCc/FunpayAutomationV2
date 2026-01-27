@@ -102,8 +102,17 @@ def fetch_presence(steam_id: str | None, timeout: int = 5) -> dict[str, Any] | N
 def presence_status_label(presence: dict[str, Any] | None) -> str:
     if not presence:
         return ""
-    if presence.get("in_match"):
+    derived = presence.get("derived") if isinstance(presence.get("derived"), dict) else {}
+    in_demo = bool(derived.get("in_demo") or presence.get("in_demo"))
+    in_bot = bool(derived.get("in_bot_match") or presence.get("in_bot_match"))
+    if in_demo:
+        return "Demo Hero"
+    if in_bot:
+        return "Bot Match"
+    in_match = bool(derived.get("in_match") or presence.get("in_match"))
+    in_game = bool(derived.get("in_game") or presence.get("in_game"))
+    if in_match:
         return "In match"
-    if presence.get("in_game"):
+    if in_game:
         return "In game"
     return "Offline"

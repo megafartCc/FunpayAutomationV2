@@ -279,6 +279,14 @@ export const api = {
       method: "POST",
       body: { frozen },
     }),
+  replaceRental: (accountId: number, workspaceId?: number | null, mmrRange?: number) =>
+    request<{ success: boolean; new_account_id?: number }>(
+      withWorkspace(`/rentals/${accountId}/replace`, workspaceId),
+      {
+        method: "POST",
+        body: mmrRange ? { mmr_range: mmrRange } : {},
+      },
+    ),
   deauthorizeSteam: (accountId: number, workspaceId?: number | null) =>
     request<{ success: boolean }>(withWorkspace(`/accounts/${accountId}/steam/deauthorize`, workspaceId), {
       method: "POST",

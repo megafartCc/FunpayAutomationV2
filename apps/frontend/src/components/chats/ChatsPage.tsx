@@ -32,8 +32,7 @@ const formatTime = (value?: string | number | null) => {
 
 const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();
 
-const LP_REPLACE_COMMAND = "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430";
-const LP_REPLACE_LABEL = "Replace (send !\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430)";
+const ADMIN_REPLACE_LABEL = "Replace account (admin)";
 
 const CHAT_CACHE_VERSION = "v1";
 const CHAT_LIST_CACHE_TTL_MS = 30_000;
@@ -113,6 +112,8 @@ const parseChatTime = (value?: string | null) => {
 const statusPill = (status?: string | null) => {
   const lower = (status || "").toLowerCase();
   if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
+  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Demo Hero" };
+  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Bot Match" };
   if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
   if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
   if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
@@ -608,10 +609,6 @@ const ChatsPage: React.FC = () => {
   };
 
   const handleReplaceRental = async () => {
-    if (!selectedChatId) {
-      setStatus("Select a chat first.");
-      return;
-    }
     if (!workspaceId) return;
     if (!selectedRental) {
       setStatus("Select an active rental first.");
@@ -620,14 +617,13 @@ const ChatsPage: React.FC = () => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.sendChatMessage(
-        selectedChatId,
-        `${LP_REPLACE_COMMAND} ${selectedRental.id}`,
-        workspaceId,
-      );
-      await loadHistory(selectedChatId, { silent: true });
+      await api.replaceRental(selectedRental.id, workspaceId);
+      await loadRentals(true);
+      if (selectedChatId) {
+        await loadHistory(selectedChatId, { silent: true });
+      }
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to send replacement command.";
+      const message = (err as { message?: string })?.message || "Failed to replace rental.";
       setStatus(message);
     } finally {
       setRentalActionBusy(false);
@@ -881,10 +877,10 @@ const ChatsPage: React.FC = () => {
                     disabled={rentalActionBusy}
                     className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {LP_REPLACE_LABEL}
+                    {ADMIN_REPLACE_LABEL}
                   </button>
                   <div className="text-[11px] text-neutral-400">
-                    Sends the replacement command to the buyer chat for this account ID.
+                    Performs a manual admin replacement and notifies the buyer.
                   </div>
                 </div>
               ) : (

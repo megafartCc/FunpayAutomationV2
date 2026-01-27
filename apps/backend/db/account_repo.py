@@ -71,6 +71,14 @@ class MySQLAccountRepo:
         )
         return cursor.fetchone() is not None
 
+    def _table_exists(self, cursor: mysql.connector.cursor.MySQLCursor, table: str) -> bool:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_name = %s LIMIT 1",
+            (table,),
+        )
+        return cursor.fetchone() is not None
+
     def get_by_id(self, account_id: int, user_id: int, workspace_id: int | None = None) -> Optional[dict]:
         conn = self._get_conn()
         try:
@@ -540,6 +548,140 @@ class MySQLAccountRepo:
             )
             conn.commit()
             return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def find_replacement_account(
+        self,
+        *,
+        user_id: int,
+        workspace_id: int | None,
+        target_mmr: int,
+        exclude_id: int,
+        max_delta: int = 1000,
+    ) -> dict | None:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            has_low_priority = self._column_exists(cursor, "low_priority")
+            has_account_frozen = self._column_exists(cursor, "account_frozen")
+            has_rental_frozen = self._column_exists(cursor, "rental_frozen")
+            where = [
+                "a.user_id = %s",
+                "(a.owner IS NULL OR a.owner = '')",
+                "a.id != %s",
+                "a.mmr IS NOT NULL",
+                "ABS(a.mmr - %s) <= %s",
+            ]
+            params: list = [int(user_id), int(exclude_id), int(target_mmr), int(max_delta)]
+            if workspace_id is not None:
+                where.append("a.workspace_id = %s")
+                params.append(int(workspace_id))
+            if has_account_frozen:
+                where.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
+            if has_rental_frozen:
+                where.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
+            if has_low_priority:
+                where.append("(a.low_priority = 0 OR a.low_priority IS NULL)")
+            cursor.execute(
+                f"""
+                SELECT a.id, a.account_name, a.login, a.password, a.mmr, a.lot_url,
+                       a.rental_duration, a.rental_duration_minutes, a.workspace_id
+                FROM accounts a
+                WHERE {' AND '.join(where)}
+                ORDER BY ABS(a.mmr - %s), a.mmr, a.id
+                LIMIT 1
+                """,
+                tuple(params + [int(target_mmr)]),
+            )
+            row = cursor.fetchone()
+            return row if row else None
+        finally:
+            conn.close()
+
+    def replace_rental_account(
+        self,
+        *,
+        old_account_id: int,
+        new_account_id: int,
+        user_id: int,
+        owner: str,
+        workspace_id: int | None,
+        rental_start: str,
+        rental_duration: int,
+        rental_duration_minutes: int,
+    ) -> bool:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor()
+            has_last_rented = self._column_exists(cursor, "last_rented_workspace_id")
+            has_low_priority = self._column_exists(cursor, "low_priority")
+            has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
+            has_account_frozen = self._column_exists(cursor, "account_frozen")
+            has_rental_frozen = self._column_exists(cursor, "rental_frozen")
+            try:
+                conn.start_transaction()
+            except Exception:
+                pass
+
+            updates = [
+                "owner = %s",
+                "rental_duration = %s",
+                "rental_duration_minutes = %s",
+                "rental_start = %s",
+                "rental_frozen = 0",
+            ]
+            params: list = [owner, int(rental_duration), int(rental_duration_minutes), rental_start]
+            if has_frozen_at:
+                updates.append("rental_frozen_at = NULL")
+            if workspace_id is not None and has_last_rented:
+                updates.append("last_rented_workspace_id = %s")
+                params.append(int(workspace_id))
+            params.extend([int(new_account_id), int(user_id)])
+            where_clauses = ["id = %s", "user_id = %s", "(owner IS NULL OR owner = '')"]
+            if has_account_frozen:
+                where_clauses.append("(account_frozen = 0 OR account_frozen IS NULL)")
+            if has_rental_frozen:
+                where_clauses.append("(rental_frozen = 0 OR rental_frozen IS NULL)")
+            if has_low_priority:
+                where_clauses.append("(low_priority = 0 OR low_priority IS NULL)")
+            cursor.execute(
+                f"UPDATE accounts SET {', '.join(updates)} WHERE {' AND '.join(where_clauses)}",
+                tuple(params),
+            )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                return False
+
+            old_updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+            if has_frozen_at:
+                old_updates.append("rental_frozen_at = NULL")
+            if has_low_priority:
+                old_updates.append("low_priority = 1")
+            old_params: list = [int(old_account_id), int(user_id)]
+            old_where = "id = %s AND user_id = %s"
+            if owner:
+                old_where += " AND LOWER(owner) = %s"
+                old_params.append(owner.strip().lower())
+            if workspace_id is not None and has_last_rented:
+                old_where += " AND last_rented_workspace_id = %s"
+                old_params.append(int(workspace_id))
+            cursor.execute(
+                f"UPDATE accounts SET {', '.join(old_updates)} WHERE {old_where}",
+                tuple(old_params),
+            )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                return False
+
+            conn.commit()
+            return True
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return False
         finally:
             conn.close()
 
