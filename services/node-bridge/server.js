@@ -26,6 +26,7 @@ const presence = new Map();
 const matchStart = new Map();
 let loggedOn = false;
 const MATCH_GRACE_MS = 5 * 60 * 1000;
+const BOT_PATTERN = /\bbot\b|\bbots\b|bot[_\s-]?match/;
 
 client.on("loggedOn", () => {
   loggedOn = true;
@@ -119,6 +120,15 @@ function isDotaDemo(rp, rpRaw) {
   if (!p0) return false;
   const v = String(p0).toLowerCase();
   return v.includes("demo_hero_mode_name") || v.includes("demo");
+}
+
+function isBotMatch(rp, rpRaw) {
+  const status = String(rp?.status || "").toLowerCase();
+  const display = String(rp?.steam_display || "").toLowerCase();
+  const lobby = String(rp?.lobby || "").toLowerCase();
+  const param0 = String(getRichPresenceValue(rp, rpRaw, "param0") || "").toLowerCase();
+  const param1 = String(getRichPresenceValue(rp, rpRaw, "param1") || "").toLowerCase();
+  return [status, display, lobby, param0, param1].some((value) => BOT_PATTERN.test(value));
 }
 
 function isInDotaMatch(rp) {
@@ -336,11 +346,14 @@ function derivePresence(data) {
   // NEW: Demo Hero detection (from your dump)
   const demo = isDotaDemo(rp, rpRaw);
 
+  const inBotMatch = !demo && isBotMatch(rp, rpRaw);
+
   // NEW: If demo, force inMatch false (demo can look like match because RP says "playing as")
   const inMatch =
-    !demo && (isInDotaMatch(rp) || isInDotaMatchRaw(rpRaw) || lobbyStateHit || statusHit);
+    !demo &&
+    (inBotMatch || isInDotaMatch(rp) || isInDotaMatchRaw(rpRaw) || lobbyStateHit || statusHit);
 
-  const inGame = !!(data.in_game || data.appid || lobbyRaw || statusHit || demo);
+  const inGame = !!(data.in_game || data.appid || lobbyRaw || statusHit || demo || inBotMatch);
 
   const heroToken = extractHeroToken(rp, rpRaw);
   const heroKey = normalizeKey(heroToken);
@@ -385,6 +398,7 @@ function derivePresence(data) {
     inMatch,
     inGame,
     demo,
+    inBotMatch,
     matchId,
     heroToken,
     heroName,
@@ -434,6 +448,7 @@ function buildDebugView(data) {
       in_game: derived.inGame,
       in_match: derived.inMatch,
       in_demo: derived.demo,
+      in_bot_match: derived.inBotMatch,
       lobby_info: derived.lobbyRaw || "",
       match_id: derived.matchId || null,
       hero_token: derived.heroToken || null,
@@ -481,6 +496,7 @@ app.get("/presence/:steamid", (req, res) => {
     in_game: derived.inGame,
     in_match: derived.inMatch,
     in_demo: derived.demo,
+    in_bot_match: derived.inBotMatch,
     lobby_info: derived.lobbyRaw || "",
     hero_token: derived.heroToken || null,
     hero_name: derived.heroName || null,
@@ -507,6 +523,7 @@ app.get("/presencefull/:steamid", (req, res) => {
       in_game: derived.inGame,
       in_match: derived.inMatch,
       in_demo: derived.demo,
+      in_bot_match: derived.inBotMatch,
       lobby_info: derived.lobbyRaw || "",
       match_id: derived.matchId ?? null,
       hero_token: derived.heroToken || null,
