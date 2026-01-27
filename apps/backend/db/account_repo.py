@@ -599,6 +599,50 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
+    def find_available_account(
+        self,
+        *,
+        user_id: int,
+        workspace_id: int | None,
+        exclude_id: int,
+    ) -> dict | None:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            has_low_priority = self._column_exists(cursor, "low_priority")
+            has_account_frozen = self._column_exists(cursor, "account_frozen")
+            has_rental_frozen = self._column_exists(cursor, "rental_frozen")
+            where = [
+                "a.user_id = %s",
+                "(a.owner IS NULL OR a.owner = '')",
+                "a.id != %s",
+            ]
+            params: list = [int(user_id), int(exclude_id)]
+            if workspace_id is not None:
+                where.append("a.workspace_id = %s")
+                params.append(int(workspace_id))
+            if has_account_frozen:
+                where.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
+            if has_rental_frozen:
+                where.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
+            if has_low_priority:
+                where.append("(a.low_priority = 0 OR a.low_priority IS NULL)")
+            cursor.execute(
+                f"""
+                SELECT a.id, a.account_name, a.login, a.password, a.mmr, a.lot_url,
+                       a.rental_duration, a.rental_duration_minutes, a.workspace_id
+                FROM accounts a
+                WHERE {' AND '.join(where)}
+                ORDER BY a.mmr DESC, a.id
+                LIMIT 1
+                """,
+                tuple(params),
+            )
+            row = cursor.fetchone()
+            return row if row else None
+        finally:
+            conn.close()
+
     def replace_rental_account(
         self,
         *,

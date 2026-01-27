@@ -39,6 +39,7 @@ const eventLabel = (eventType?: string | null) => {
   if (normalized === "purchase") return "Purchase";
   if (normalized === "deauthorize") return "Steam deauthorize";
   if (normalized === "rental_expired") return "Rental expired";
+  if (normalized === "replacement") return "Replacement";
   return eventType || "-";
 };
 
@@ -57,6 +58,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [eventFilter, setEventFilter] = useState("all");
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
@@ -75,7 +77,15 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
     void loadNotifications();
   }, [loadNotifications]);
 
-  const totalLabel = useMemo(() => `${notifications.length} events`, [notifications.length]);
+  const filteredNotifications = useMemo(() => {
+    if (eventFilter === "all") return notifications;
+    return notifications.filter((notification) => notification.event_type === eventFilter);
+  }, [notifications, eventFilter]);
+
+  const totalLabel = useMemo(
+    () => `${filteredNotifications.length} events`,
+    [filteredNotifications.length],
+  );
 
   return (
     <div className="space-y-4">
@@ -84,7 +94,21 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
           <h3 className="text-lg font-semibold text-neutral-900">Notifications</h3>
           <p className="text-sm text-neutral-500">Purchase, deauthorize, and rental expiration events in one feed.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+            <span className="font-semibold text-neutral-500">Filter</span>
+            <select
+              value={eventFilter}
+              onChange={(event) => setEventFilter(event.target.value)}
+              className="bg-transparent text-xs font-semibold text-neutral-700 outline-none"
+            >
+              <option value="all">All events</option>
+              <option value="purchase">Purchase</option>
+              <option value="replacement">Replacement</option>
+              <option value="deauthorize">Deauthorize</option>
+              <option value="rental_expired">Rental expired</option>
+            </select>
+          </div>
           <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
             {totalLabel}
           </span>
@@ -122,7 +146,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                 </div>
               )}
               {!loading &&
-                notifications.map((notification, idx) => {
+                filteredNotifications.map((notification, idx) => {
                   const pill = statusPill(notification.status);
                   const details = notification.message || "-";
                   const accountLabel =
@@ -161,7 +185,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                     </div>
                   );
                 })}
-              {!loading && notifications.length === 0 && (
+              {!loading && filteredNotifications.length === 0 && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                   No notification events yet.
                 </div>
