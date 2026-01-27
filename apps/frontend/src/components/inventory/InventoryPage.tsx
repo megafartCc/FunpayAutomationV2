@@ -21,6 +21,7 @@ type AccountRow = {
   rentalDurationMinutes?: number | null;
   accountFrozen?: boolean;
   rentalFrozen?: boolean;
+  lowPriority?: boolean;
 };
 
 const INVENTORY_GRID =
@@ -44,6 +45,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   rentalDurationMinutes: item.rental_duration_minutes ?? null,
   accountFrozen: !!item.account_frozen,
   rentalFrozen: !!item.rental_frozen,
+  lowPriority: !!item.low_priority,
 });
 
 type InventoryPageProps = {
@@ -151,6 +153,10 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
       return;
     }
     if (accountActionBusy) return;
+    if (selectedAccount.lowPriority) {
+      onToast?.("Remove low priority before assigning a buyer.", true);
+      return;
+    }
     if (selectedAccount.accountFrozen) {
       onToast?.("Unfreeze the account before assigning a buyer.", true);
       return;
@@ -251,6 +257,29 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     }
   };
 
+  const handleToggleLowPriority = async (nextLowPriority: boolean) => {
+    if (!selectedAccount) {
+      onToast?.("Select an account first.", true);
+      return;
+    }
+    if (accountControlBusy) return;
+    setAccountControlBusy(true);
+    try {
+      const workspaceId =
+        selectedWorkspaceId === "all"
+          ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
+          : (selectedWorkspaceId as number);
+      await api.setLowPriority(selectedAccount.id, nextLowPriority, workspaceId);
+      onToast?.(nextLowPriority ? "Marked as low priority." : "Low priority removed.");
+      await loadAccounts();
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to update low priority.";
+      onToast?.(message, true);
+    } finally {
+      setAccountControlBusy(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
     if (!selectedAccount) {
       onToast?.("Select an account first.", true);
@@ -286,18 +315,21 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
           (() => {
             const rented = !!selectedAccount.owner;
             const frozen = !!selectedAccount.accountFrozen;
-            const stateLabel = frozen ? "Frozen" : rented ? "Rented out" : "Available";
-            const stateClass = frozen
-              ? "bg-slate-100 text-slate-700"
-              : rented
-                ? "bg-amber-50 text-amber-700"
-                : "bg-emerald-50 text-emerald-600";
+            const lowPriority = !!selectedAccount.lowPriority;
+            const stateLabel = lowPriority ? "Low Priority" : frozen ? "Frozen" : rented ? "Rented out" : "Available";
+            const stateClass = lowPriority
+              ? "bg-rose-50 text-rose-600"
+              : frozen
+                ? "bg-slate-100 text-slate-700"
+                : rented
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-emerald-50 text-emerald-600";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
               (selectedAccount.rentalDuration ? selectedAccount.rentalDuration * 60 : null);
             const hoursLabel = formatDuration(totalMinutes);
-            const canAssign = !selectedAccount.owner && !frozen;
+            const canAssign = !selectedAccount.owner && !frozen && !lowPriority;
             const editMmrRaw = accountEditMmr.trim();
             const editMmrValue = editMmrRaw ? Number(editMmrRaw) : null;
             const editMmrValid = editMmrRaw === "" || (Number.isFinite(editMmrValue) && editMmrValue >= 0);
@@ -360,7 +392,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     </button>
                     {!canAssign && (
                       <div className="text-xs text-neutral-500">
-                        {frozen ? "Unfreeze the account before assigning a buyer." : "Release the account first."}
+                        {lowPriority
+                          ? "Remove low priority before assigning a buyer."
+                          : frozen
+                            ? "Unfreeze the account before assigning a buyer."
+                            : "Release the account first."}
                       </div>
                     )}
                   </div>
@@ -428,6 +464,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
   const renderInventoryActionsPanel = () => {
     const frozen = !!selectedAccount?.accountFrozen;
+    const lowPriority = !!selectedAccount?.lowPriority;
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex items-center justify-between">
@@ -451,6 +488,23 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 }`}
               >
                 {frozen ? "Unfreeze account" : "Freeze account"}
+              </button>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="mb-2 text-sm font-semibold text-neutral-800">Low priority</div>
+              <p className="text-xs text-neutral-500">
+                Low priority accounts are excluded from auto-assign and stock lists until restored.
+              </p>
+              <button
+                onClick={() => handleToggleLowPriority(!lowPriority)}
+                disabled={accountControlBusy}
+                className={`mt-3 w-full rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  lowPriority
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                }`}
+              >
+                {lowPriority ? "Remove low priority" : "Mark low priority"}
               </button>
             </div>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -521,12 +575,15 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 {accounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
-                  const stateLabel = frozen ? "Frozen" : rented ? "Rented out" : "Available";
-                  const stateClass = frozen
-                    ? "bg-slate-100 text-slate-700"
-                    : rented
-                      ? "bg-amber-50 text-amber-700"
-                      : "bg-emerald-50 text-emerald-600";
+                  const lowPriority = !!acc.lowPriority;
+                  const stateLabel = lowPriority ? "Low Priority" : frozen ? "Frozen" : rented ? "Rented out" : "Available";
+                  const stateClass = lowPriority
+                    ? "bg-rose-50 text-rose-600"
+                    : frozen
+                      ? "bg-slate-100 text-slate-700"
+                      : rented
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-emerald-50 text-emerald-600";
                   const rowId = acc.id ?? idx;
                   const isSelected = selectedId !== null && String(selectedId) === String(rowId);
                   return (

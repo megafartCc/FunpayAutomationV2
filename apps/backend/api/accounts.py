@@ -51,6 +51,10 @@ class ExtendRequest(BaseModel):
     minutes: int = Field(0, ge=0, le=59)
 
 
+class LowPriorityRequest(BaseModel):
+    low_priority: bool
+
+
 class AccountItem(BaseModel):
     id: int
     workspace_id: int | None = None
@@ -66,6 +70,7 @@ class AccountItem(BaseModel):
     rental_start: str | None = None
     rental_duration: int
     rental_duration_minutes: int | None = None
+    low_priority: int
     account_frozen: int
     rental_frozen: int
     state: str
@@ -77,7 +82,14 @@ class AccountListResponse(BaseModel):
 
 
 def _to_item(record: AccountRecord) -> AccountItem:
-    state = "Available" if not record.owner else "Rented"
+    if record.low_priority:
+        state = "Low Priority"
+    elif record.account_frozen:
+        state = "Frozen"
+    elif record.owner:
+        state = "Rented"
+    else:
+        state = "Available"
     steam_id = None
     if record.mafile_json:
         try:
@@ -110,6 +122,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         rental_start=rental_start,
         rental_duration=record.rental_duration,
         rental_duration_minutes=record.rental_duration_minutes,
+        low_priority=record.low_priority,
         account_frozen=record.account_frozen,
         rental_frozen=record.rental_frozen,
         state=state,
@@ -141,6 +154,28 @@ def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user
     if workspace:
         for item in items:
             item.workspace_name = workspace.name
+    return AccountListResponse(items=[_to_item(item) for item in items])
+
+
+@router.get("/accounts/low-priority", response_model=AccountListResponse)
+def list_low_priority_accounts(
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> AccountListResponse:
+    user_id = int(user.id)
+    if workspace_id is not None:
+        _ensure_workspace(workspace_id, user_id)
+    items = accounts_repo.list_low_priority(user_id, workspace_id)
+    if workspace_id is None:
+        workspaces = workspace_repo.list_by_user(user_id)
+        name_map = {ws.id: ws.name for ws in workspaces}
+        for item in items:
+            item.workspace_name = name_map.get(item.workspace_id)
+    else:
+        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+        if workspace:
+            for item in items:
+                item.workspace_name = workspace.name
     return AccountListResponse(items=[_to_item(item) for item in items])
 
 
@@ -239,6 +274,7 @@ def update_account(
         rental_start=updated.get("rental_start"),
         rental_duration=int(updated.get("rental_duration") or 0),
         rental_duration_minutes=updated.get("rental_duration_minutes"),
+        low_priority=int(updated.get("low_priority") or 0),
         account_frozen=int(updated.get("account_frozen") or 0),
         rental_frozen=int(updated.get("rental_frozen") or 0),
         mafile_json=updated.get("mafile_json"),
@@ -310,6 +346,20 @@ def freeze_account(
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
     return {"success": True, "frozen": payload.frozen}
+
+
+@router.post("/accounts/{account_id}/low-priority")
+def set_low_priority(
+    account_id: int,
+    payload: LowPriorityRequest,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> dict:
+    _ensure_workspace(workspace_id, int(user.id))
+    success = accounts_repo.set_low_priority(account_id, int(user.id), int(workspace_id), payload.low_priority)
+    if not success:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"success": True, "low_priority": payload.low_priority}
 
 
 @router.post("/accounts/{account_id}/steam/deauthorize")

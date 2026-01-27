@@ -118,6 +118,7 @@ const ChatsPage: React.FC = () => {
   const messagesRef = useRef<ChatMessageItem[]>([]);
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
+  const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -217,12 +218,18 @@ const ChatsPage: React.FC = () => {
     async (chatId: number | null, options?: { silent?: boolean; incremental?: boolean }) => {
       if (!workspaceId || !chatId) {
         setMessages([]);
+        historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
         return;
       }
+      const seq = historyRequestRef.current.seq + 1;
+      historyRequestRef.current = { seq, chatId };
+
       const cacheKey = chatHistoryCacheKey(workspaceId, chatId);
       const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
       if (cached) {
         setMessages(cached);
+      } else if (!options?.incremental) {
+        setMessages([]);
       }
       const silent = options?.silent || Boolean(cached) || options?.incremental;
       if (!silent) {
@@ -234,6 +241,7 @@ const ChatsPage: React.FC = () => {
         if ((options?.incremental || cached) && lastServerId > 0) {
           const res = await api.getChatHistory(chatId, workspaceId, 200, lastServerId);
           const incoming = res.items || [];
+          if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
           if (incoming.length) {
             const cleaned = stripPendingIfConfirmed(messagesRef.current, incoming);
             const merged = dedupeMessages([...cleaned, ...incoming]);
@@ -247,18 +255,19 @@ const ChatsPage: React.FC = () => {
         }
         const res = await api.getChatHistory(chatId, workspaceId, 300);
         const items = res.items || [];
+        if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
         setMessages(items);
         writeCache(cacheKey, items.slice(-100));
         setChats((prev) =>
           prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
         );
       } catch (err) {
-        if (!silent) {
+        if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           const message = (err as { message?: string })?.message || "Failed to load chat history.";
           setStatus(message);
         }
       } finally {
-        if (!silent) {
+        if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           setChatLoading(false);
         }
       }

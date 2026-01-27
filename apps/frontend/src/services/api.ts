@@ -27,6 +27,7 @@ export type AccountItem = {
   rental_start?: string | null;
   rental_duration?: number;
   rental_duration_minutes?: number | null;
+  low_priority?: number;
   account_frozen?: number;
   rental_frozen?: number;
   state?: string;
@@ -235,6 +236,8 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   listAccounts: (workspaceId?: number) =>
     request<{ items: AccountItem[] }>(withWorkspace("/accounts", workspaceId), { method: "GET" }),
+  listLowPriorityAccounts: (workspaceId?: number) =>
+    request<{ items: AccountItem[] }>(withWorkspace("/accounts/low-priority", workspaceId), { method: "GET" }),
   createAccount: (payload: AccountCreatePayload) =>
     request<AccountItem>("/accounts", { method: "POST", body: payload }),
   updateAccount: (accountId: number, payload: AccountUpdatePayload, workspaceId?: number | null) =>
@@ -263,6 +266,14 @@ export const api = {
       method: "POST",
       body: { frozen },
     }),
+  setLowPriority: (accountId: number, lowPriority: boolean, workspaceId?: number | null) =>
+    request<{ success: boolean; low_priority: boolean }>(
+      withWorkspace(`/accounts/${accountId}/low-priority`, workspaceId),
+      {
+        method: "POST",
+        body: { low_priority: lowPriority },
+      },
+    ),
   freezeRental: (accountId: number, frozen: boolean, workspaceId?: number | null) =>
     request<{ success: boolean; frozen: boolean }>(withWorkspace(`/rentals/${accountId}/freeze`, workspaceId), {
       method: "POST",

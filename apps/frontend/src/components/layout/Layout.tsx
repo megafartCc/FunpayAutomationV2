@@ -17,6 +17,7 @@ const titles: Record<string, string> = {
   "/orders": "Orders History",
   "/tickets": "Tickets (FunPay)",
   "/blacklist": "Blacklist",
+  "/low-priority": "Low Priority Accounts",
   "/inventory": "Inventory",
   "/lots": "Lots",
   "/chats": "Chats",

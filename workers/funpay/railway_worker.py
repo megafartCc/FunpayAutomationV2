@@ -113,6 +113,29 @@ RENTAL_EXPIRE_DELAY_MESSAGE = (
     "\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u2014 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u0443:\n"
     "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c <\u0447\u0430\u0441\u044b> <ID \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430>"
 )
+LP_REPLACE_WINDOW_MINUTES = 10
+LP_REPLACE_MMR_RANGE = 1000
+LP_REPLACE_NO_CODE_MESSAGE = (
+    "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u0435 \u043a\u043e\u0434 (!\u043a\u043e\u0434), "
+    "\u0437\u0430\u0442\u0435\u043c \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0440\u043e\u0441\u0438\u0442\u044c \u0437\u0430\u043c\u0435\u043d\u0443."
+)
+LP_REPLACE_TOO_LATE_MESSAGE = (
+    "\u0417\u0430\u043c\u0435\u043d\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u0432 \u0442\u0435\u0447\u0435\u043d\u0438\u0435 "
+    "10 \u043c\u0438\u043d\u0443\u0442 \u043f\u043e\u0441\u043b\u0435 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u043a\u043e\u0434\u0430 (!\u043a\u043e\u0434)."
+)
+LP_REPLACE_NO_MMR_MESSAGE = (
+    "\u0414\u043b\u044f \u0437\u0430\u043c\u0435\u043d\u044b \u043d\u0443\u0436\u0435\u043d MMR \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430. "
+    "\u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443."
+)
+LP_REPLACE_NO_MATCH_MESSAGE = (
+    "\u041d\u0435\u0442 \u0441\u0432\u043e\u0431\u043e\u0434\u043d\u043e\u0433\u043e \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u0434\u043b\u044f \u0437\u0430\u043c\u0435\u043d\u044b "
+    "\u0432 \u043f\u0440\u0435\u0434\u0435\u043b\u0430\u0445 \u00b11000 MMR. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443."
+)
+LP_REPLACE_FAILED_MESSAGE = (
+    "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c \u0437\u0430\u043c\u0435\u043d\u0443. "
+    "\u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443."
+)
+LP_REPLACE_SUCCESS_PREFIX = "\u2705 \u0417\u0430\u043c\u0435\u043d\u0430 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430. \u041d\u043e\u0432\u044b\u0439 \u0430\u043a\u043a\u0430\u0443\u043d\u0442:"
 ORDER_ID_RE = RegularExpressions().ORDER_ID
 LOT_NUMBER_RE = re.compile(r"(?:\u2116|#)\s*(\d+)")
 
@@ -366,6 +389,19 @@ def _parse_datetime(value: object) -> datetime | None:
         return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
     except Exception:
         return None
+
+
+def _resolve_rental_minutes(account: dict) -> int:
+    minutes = account.get("rental_duration_minutes")
+    if minutes is None:
+        try:
+            minutes = int(account.get("rental_duration") or 0) * 60
+        except Exception:
+            minutes = 0
+    try:
+        return int(minutes or 0)
+    except Exception:
+        return 0
 
 
 def get_remaining_label(account: dict, now: datetime) -> tuple[str | None, str]:
@@ -1081,6 +1117,8 @@ def fetch_lot_mapping(
         cursor = conn.cursor(dictionary=True)
         if not table_exists(cursor, "lots"):
             return None
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_mmr = column_exists(cursor, "accounts", "mmr")
         params: list = [int(user_id), int(lot_number)]
         where_workspace = ""
         order_clause = " ORDER BY a.id"
@@ -1093,7 +1131,9 @@ def fetch_lot_mapping(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   a.account_frozen, a.rental_frozen,
+                   a.account_frozen, a.rental_frozen
+                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
             JOIN accounts a ON a.id = l.account_id
@@ -1623,6 +1663,7 @@ def fetch_available_lot_accounts(
         has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
         has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
 
         select_fields = [
             "a.ID AS id",
@@ -1635,6 +1676,10 @@ def fetch_available_lot_accounts(
             "a.mmr AS mmr",
             "a.workspace_id AS workspace_id",
         ]
+        if has_low_priority:
+            select_fields.append("a.low_priority AS low_priority")
+        else:
+            select_fields.append("0 AS low_priority")
         if has_lots:
             select_fields.extend(["l.lot_number AS lot_number", "l.lot_url AS lot_url"])
         else:
@@ -1654,6 +1699,8 @@ def fetch_available_lot_accounts(
             where_clauses.append("(a.account_frozen = 0 OR a.account_frozen IS NULL)")
         if has_rental_frozen:
             where_clauses.append("(a.rental_frozen = 0 OR a.rental_frozen IS NULL)")
+        if has_low_priority:
+            where_clauses.append("(a.low_priority = 0 OR a.low_priority IS NULL)")
         if has_lots:
             where_clauses.append("l.lot_number IS NOT NULL")
             if has_account_workspace and has_lot_workspace and workspace_id is not None:
@@ -1692,6 +1739,8 @@ def fetch_lot_account(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor(dictionary=True)
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_mmr = column_exists(cursor, "accounts", "mmr")
         params: list = [user_id, lot_number]
         join_clause = "JOIN accounts a ON a.id = l.account_id"
         where_workspace = ""
@@ -1705,7 +1754,9 @@ def fetch_lot_account(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   a.account_frozen, a.rental_frozen,
+                   a.account_frozen, a.rental_frozen
+                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
             {join_clause}
@@ -1714,6 +1765,7 @@ def fetch_lot_account(
                   AND (a.owner IS NULL OR a.owner = '')
                   AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
                   AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
+                  {"AND (a.low_priority = 0 OR a.low_priority IS NULL)" if has_low_priority else ""}
             {order_clause}
             LIMIT 1
             """,
@@ -1759,6 +1811,96 @@ def assign_account_to_buyer(
             tuple(params),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def replace_rental_account(
+    mysql_cfg: dict,
+    *,
+    old_account_id: int,
+    new_account_id: int,
+    user_id: int,
+    owner: str,
+    workspace_id: int | None,
+    rental_start: datetime,
+    rental_duration: int,
+    rental_duration_minutes: int,
+) -> bool:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+        rental_start_str = rental_start.strftime("%Y-%m-%d %H:%M:%S")
+
+        try:
+            conn.start_transaction()
+        except Exception:
+            pass
+
+        updates = [
+            "owner = %s",
+            "rental_duration = %s",
+            "rental_duration_minutes = %s",
+            "rental_start = %s",
+            "rental_frozen = 0",
+        ]
+        params: list = [owner, int(rental_duration), int(rental_duration_minutes), rental_start_str]
+        if has_frozen_at:
+            updates.append("rental_frozen_at = NULL")
+        if workspace_id is not None and has_last_rented:
+            updates.append("last_rented_workspace_id = %s")
+            params.append(int(workspace_id))
+        params.extend([int(new_account_id), int(user_id)])
+        where_clauses = ["id = %s", "user_id = %s", "(owner IS NULL OR owner = '')"]
+        if has_account_frozen:
+            where_clauses.append("(account_frozen = 0 OR account_frozen IS NULL)")
+        if has_rental_frozen:
+            where_clauses.append("(rental_frozen = 0 OR rental_frozen IS NULL)")
+        if has_low_priority:
+            where_clauses.append("(low_priority = 0 OR low_priority IS NULL)")
+        cursor.execute(
+            f"UPDATE accounts SET {', '.join(updates)} WHERE {' AND '.join(where_clauses)}",
+            tuple(params),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return False
+
+        old_updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+        if has_frozen_at:
+            old_updates.append("rental_frozen_at = NULL")
+        if has_low_priority:
+            old_updates.append("low_priority = 1")
+        old_params: list = [int(old_account_id), int(user_id)]
+        old_where = "id = %s AND user_id = %s"
+        if owner:
+            old_where += " AND LOWER(owner) = %s"
+            old_params.append(normalize_username(owner))
+        if workspace_id is not None and has_last_rented:
+            old_where += " AND last_rented_workspace_id = %s"
+            old_params.append(int(workspace_id))
+        cursor.execute(
+            f"UPDATE accounts SET {', '.join(old_updates)} WHERE {old_where}",
+            tuple(old_params),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return False
+
+        conn.commit()
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
     finally:
         conn.close()
 
@@ -1883,6 +2025,8 @@ def fetch_owner_accounts(
         cursor = conn.cursor(dictionary=True)
         has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_mmr = column_exists(cursor, "accounts", "mmr")
         join_clause = "LEFT JOIN lots l ON l.account_id = a.id AND l.user_id = a.user_id"
         join_params: list = []
         if workspace_id is not None and has_lot_workspace:
@@ -1897,7 +2041,9 @@ def fetch_owner_accounts(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   a.account_frozen, a.rental_frozen{', a.rental_frozen_at' if has_frozen_at else ''},
+                   a.account_frozen, a.rental_frozen{', a.rental_frozen_at' if has_frozen_at else ''}
+                   {', a.low_priority' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM accounts a
             {join_clause}
@@ -2129,6 +2275,116 @@ def handle_code_command(
     return True
 
 
+def handle_low_priority_replace_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Low priority replace command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Low priority replace command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    if not selected:
+        return True
+
+    rental_start = _parse_datetime(selected.get("rental_start"))
+    if rental_start is None:
+        send_chat_message(logger, account, chat_id, LP_REPLACE_NO_CODE_MESSAGE)
+        return True
+    if datetime.utcnow() - rental_start > timedelta(minutes=LP_REPLACE_WINDOW_MINUTES):
+        send_chat_message(logger, account, chat_id, LP_REPLACE_TOO_LATE_MESSAGE)
+        return True
+
+    raw_mmr = selected.get("mmr")
+    try:
+        target_mmr = int(raw_mmr)
+    except Exception:
+        target_mmr = None
+    if target_mmr is None:
+        send_chat_message(logger, account, chat_id, LP_REPLACE_NO_MMR_MESSAGE)
+        return True
+
+    try:
+        available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
+    except mysql.connector.Error as exc:
+        logger.warning("Low priority replace lookup failed: %s", exc)
+        send_chat_message(logger, account, chat_id, LP_REPLACE_FAILED_MESSAGE)
+        return True
+
+    replacement = _select_replacement_account(
+        available,
+        target_mmr=target_mmr,
+        exclude_id=int(selected.get("id") or 0),
+        max_delta=LP_REPLACE_MMR_RANGE,
+    )
+    if not replacement:
+        send_chat_message(logger, account, chat_id, LP_REPLACE_NO_MATCH_MESSAGE)
+        return True
+
+    rental_minutes = _resolve_rental_minutes(selected)
+    try:
+        rental_units = int(selected.get("rental_duration") or 0)
+    except Exception:
+        rental_units = 0
+    if rental_units <= 0 and rental_minutes > 0:
+        rental_units = max(1, (rental_minutes + 59) // 60)
+
+    ok = replace_rental_account(
+        mysql_cfg,
+        old_account_id=int(selected.get("id") or 0),
+        new_account_id=int(replacement.get("id") or 0),
+        user_id=int(user_id),
+        owner=sender_username,
+        workspace_id=workspace_id,
+        rental_start=rental_start,
+        rental_duration=rental_units,
+        rental_duration_minutes=rental_minutes,
+    )
+    if not ok:
+        send_chat_message(logger, account, chat_id, LP_REPLACE_FAILED_MESSAGE)
+        return True
+
+    replacement_info = dict(replacement)
+    replacement_info["owner"] = sender_username
+    replacement_info["rental_start"] = rental_start
+    replacement_info["rental_duration"] = rental_units
+    replacement_info["rental_duration_minutes"] = rental_minutes
+    replacement_info["account_frozen"] = 0
+    replacement_info["rental_frozen"] = 0
+    message = f"{LP_REPLACE_SUCCESS_PREFIX}\n{build_account_message(replacement_info, rental_minutes, False)}"
+    send_chat_message(logger, account, chat_id, message)
+    return True
+
+
 def _select_account_for_command(
     logger: logging.Logger,
     account: Account,
@@ -2151,6 +2407,34 @@ def _select_account_for_command(
             return acc
     send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
     return None
+
+
+def _select_replacement_account(
+    available: list[dict],
+    *,
+    target_mmr: int,
+    exclude_id: int,
+    max_delta: int = LP_REPLACE_MMR_RANGE,
+) -> dict | None:
+    candidates: list[tuple[int, int, dict]] = []
+    for acc in available:
+        if int(acc.get("id") or 0) == exclude_id:
+            continue
+        raw_mmr = acc.get("mmr")
+        if raw_mmr is None:
+            continue
+        try:
+            mmr = int(raw_mmr)
+        except Exception:
+            continue
+        diff = abs(mmr - target_mmr)
+        if diff > max_delta:
+            continue
+        candidates.append((diff, mmr, acc))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1], int(item[2].get("id") or 0)))
+    return candidates[0][2]
 
 
 def handle_pause_command(
@@ -2467,7 +2751,7 @@ def handle_order_purchased(
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
-    if mapping.get("account_frozen") or mapping.get("rental_frozen"):
+    if mapping.get("account_frozen") or mapping.get("rental_frozen") or mapping.get("low_priority"):
         log_order_history(
             mysql_cfg,
             order_id=order_id,
@@ -2630,9 +2914,7 @@ def handle_command(
         "!\u0430\u043a\u043a": handle_account_command,
         "!\u043a\u043e\u0434": handle_code_command,
         "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c": lambda *a: _log_command_stub(*a, action="extend"),
-        "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(
-            *a, action="lp_replace"
-        ),
+        "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430": handle_low_priority_replace_command,
         "!\u043e\u0442\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(*a, action="cancel"),
         "!\u0430\u0434\u043c\u0438\u043d": lambda *a: _log_command_stub(*a, action="admin"),
         "!\u043f\u0430\u0443\u0437\u0430": handle_pause_command,

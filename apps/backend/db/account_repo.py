@@ -26,6 +26,7 @@ class AccountRecord:
     rental_start: Optional[str]
     rental_duration: int
     rental_duration_minutes: Optional[int]
+    low_priority: int
     account_frozen: int
     rental_frozen: int
     mafile_json: Optional[str] = None
@@ -76,6 +77,7 @@ class MySQLAccountRepo:
             cursor = conn.cursor()
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
             has_last_rented = self._column_exists(cursor, "last_rented_workspace_id")
+            has_low_priority = self._column_exists(cursor, "low_priority")
             cursor = conn.cursor(dictionary=True)
             columns = (
                 "a.id, a.user_id, a.workspace_id, "
@@ -86,6 +88,8 @@ class MySQLAccountRepo:
                 columns += ", rental_frozen_at"
             if has_last_rented:
                 columns += ", last_rented_workspace_id"
+            if has_low_priority:
+                columns += ", low_priority"
             cursor.execute(
                 f"SELECT {columns} FROM accounts a "
                 "WHERE a.id = %s AND a.user_id = %s LIMIT 1",
@@ -98,16 +102,18 @@ class MySQLAccountRepo:
     def list_by_user(self, user_id: int) -> List[AccountRecord]:
         conn = self._get_conn()
         try:
+            has_low_priority = self._column_exists(conn.cursor(), "low_priority")
             cursor = conn.cursor(dictionary=True)
+            low_priority_select = ", a.low_priority" if has_low_priority else ""
             cursor.execute(
-                """
+                f"""
                 SELECT a.id, a.user_id, a.workspace_id,
                        w.name AS workspace_name,
                        a.last_rented_workspace_id,
                        lw.name AS last_rented_workspace_name,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen
+                       a.account_frozen, a.rental_frozen{low_priority_select}
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
@@ -134,6 +140,7 @@ class MySQLAccountRepo:
                     rental_start=row.get("rental_start"),
                     rental_duration=int(row.get("rental_duration") or 0),
                     rental_duration_minutes=row.get("rental_duration_minutes"),
+                    low_priority=int(row.get("low_priority") or 0),
                     account_frozen=int(row.get("account_frozen") or 0),
                     rental_frozen=int(row.get("rental_frozen") or 0),
                     mafile_json=row.get("mafile_json"),
@@ -146,16 +153,18 @@ class MySQLAccountRepo:
     def list_by_workspace(self, user_id: int, workspace_id: int) -> List[AccountRecord]:
         conn = self._get_conn()
         try:
+            has_low_priority = self._column_exists(conn.cursor(), "low_priority")
             cursor = conn.cursor(dictionary=True)
+            low_priority_select = ", a.low_priority" if has_low_priority else ""
             cursor.execute(
-                """
+                f"""
                 SELECT a.id, a.user_id, a.workspace_id,
                        w.name AS workspace_name,
                        a.last_rented_workspace_id,
                        lw.name AS last_rented_workspace_name,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen
+                       a.account_frozen, a.rental_frozen{low_priority_select}
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
@@ -182,6 +191,7 @@ class MySQLAccountRepo:
                     rental_start=row.get("rental_start"),
                     rental_duration=int(row.get("rental_duration") or 0),
                     rental_duration_minutes=row.get("rental_duration_minutes"),
+                    low_priority=int(row.get("low_priority") or 0),
                     account_frozen=int(row.get("account_frozen") or 0),
                     rental_frozen=int(row.get("rental_frozen") or 0),
                     mafile_json=row.get("mafile_json"),
@@ -271,7 +281,7 @@ class MySQLAccountRepo:
                        lw.name AS last_rented_workspace_name,
                        a.account_name, a.login, a.password, a.lot_url, a.mmr,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       a.account_frozen, a.rental_frozen
+                       a.account_frozen, a.rental_frozen, a.low_priority
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
@@ -298,6 +308,7 @@ class MySQLAccountRepo:
                 rental_start=row.get("rental_start"),
                 rental_duration=int(row.get("rental_duration") or 0),
                 rental_duration_minutes=row.get("rental_duration_minutes"),
+                low_priority=int(row.get("low_priority") or 0),
                 account_frozen=int(row.get("account_frozen") or 0),
                 rental_frozen=int(row.get("rental_frozen") or 0),
             )
@@ -376,6 +387,62 @@ class MySQLAccountRepo:
                     mafile_json=row.get("mafile_json"),
                     workspace_id=row.get("active_workspace_id"),
                     workspace_name=row.get("active_workspace_name"),
+                )
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
+    def list_low_priority(self, user_id: int, workspace_id: int | None = None) -> List[AccountRecord]:
+        conn = self._get_conn()
+        try:
+            if not self._column_exists(conn.cursor(), "low_priority"):
+                return []
+            cursor = conn.cursor(dictionary=True)
+            params: list = [user_id]
+            workspace_clause = ""
+            if workspace_id is not None:
+                workspace_clause = " AND a.workspace_id = %s"
+                params.append(workspace_id)
+            cursor.execute(
+                f"""
+                SELECT a.id, a.user_id, a.workspace_id,
+                       w.name AS workspace_name,
+                       a.last_rented_workspace_id,
+                       lw.name AS last_rented_workspace_name,
+                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
+                       a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.account_frozen, a.rental_frozen, a.low_priority
+                FROM accounts a
+                LEFT JOIN workspaces w ON w.id = a.workspace_id
+                LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
+                WHERE a.user_id = %s AND a.low_priority = 1{workspace_clause}
+                ORDER BY a.id DESC
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall() or []
+            return [
+                AccountRecord(
+                    id=int(row["id"]),
+                    user_id=int(row["user_id"]),
+                    workspace_id=row.get("workspace_id"),
+                    workspace_name=row.get("workspace_name"),
+                    last_rented_workspace_id=row.get("last_rented_workspace_id"),
+                    last_rented_workspace_name=row.get("last_rented_workspace_name"),
+                    account_name=row["account_name"],
+                    login=row["login"],
+                    password=row["password"],
+                    lot_url=row.get("lot_url"),
+                    mmr=row.get("mmr"),
+                    owner=row.get("owner"),
+                    rental_start=row.get("rental_start"),
+                    rental_duration=int(row.get("rental_duration") or 0),
+                    rental_duration_minutes=row.get("rental_duration_minutes"),
+                    low_priority=int(row.get("low_priority") or 0),
+                    account_frozen=int(row.get("account_frozen") or 0),
+                    rental_frozen=int(row.get("rental_frozen") or 0),
+                    mafile_json=row.get("mafile_json"),
                 )
                 for row in rows
             ]
@@ -470,6 +537,21 @@ class MySQLAccountRepo:
             cursor.execute(
                 "UPDATE accounts SET account_frozen = %s WHERE id = %s AND user_id = %s",
                 (1 if frozen else 0, account_id, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def set_low_priority(self, account_id: int, user_id: int, workspace_id: int, low_priority: bool) -> bool:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor()
+            if not self._column_exists(cursor, "low_priority"):
+                return False
+            cursor.execute(
+                "UPDATE accounts SET low_priority = %s WHERE id = %s AND user_id = %s",
+                (1 if low_priority else 0, account_id, user_id),
             )
             conn.commit()
             return cursor.rowcount > 0
