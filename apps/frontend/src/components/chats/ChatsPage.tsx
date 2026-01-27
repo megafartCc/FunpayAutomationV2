@@ -49,9 +49,11 @@ type CacheEnvelope<T> = {
   items: T[];
 };
 
-const chatListCacheKey = (workspaceId: number) => `chat:list:${CHAT_CACHE_VERSION}:${workspaceId}`;
-const chatHistoryCacheKey = (workspaceId: number, chatId: number) =>
-  `chat:history:${CHAT_CACHE_VERSION}:${workspaceId}:${chatId}`;
+const cacheWorkspaceKey = (workspaceId: number | null) => (workspaceId === null ? "all" : String(workspaceId));
+const chatListCacheKey = (workspaceId: number | null) =>
+  `chat:list:${CHAT_CACHE_VERSION}:${cacheWorkspaceKey(workspaceId)}`;
+const chatHistoryCacheKey = (workspaceId: number | null, chatId: number) =>
+  `chat:history:${CHAT_CACHE_VERSION}:${cacheWorkspaceKey(workspaceId)}:${chatId}`;
 
 const readCache = <T,>(key: string, ttlMs: number): T[] | null => {
   try {
@@ -245,6 +247,16 @@ const ChatsPage: React.FC = () => {
     [workspaceId, chats],
   );
 
+  const getWorkspaceIdForChat = useCallback(
+    (chatId: number | null) => {
+      if (workspaceId !== null) return workspaceId;
+      if (!chatId) return null;
+      const match = chats.find((chat) => chat.chat_id === chatId);
+      return match?.workspace_id ?? null;
+    },
+    [workspaceId, chats],
+  );
+
   const updateChatPreview = useCallback(
     (chatId: number, items: ChatMessageItem[]) => {
       if (!items.length) return;
@@ -376,8 +388,6 @@ const ChatsPage: React.FC = () => {
       if (cached) {
         setMessages(cached);
         updateChatPreview(chatId, cached);
-      } else if (!options?.incremental) {
-        setMessages([]);
       }
       const silent = options?.silent || Boolean(cached) || options?.incremental;
       if (!silent) {
@@ -601,7 +611,7 @@ const ChatsPage: React.FC = () => {
     }
     setRentalActionBusy(true);
     try {
-      await api.extendAccount(selectedRental.id, hours, minutes, workspaceId);
+      await api.extendAccount(selectedRental.id, hours, minutes, workspaceIdForChat);
       setExtendHours("");
       setExtendMinutes("");
       await loadRentals(true);
@@ -622,7 +632,7 @@ const ChatsPage: React.FC = () => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(selectedRental.id, workspaceId);
+      await api.releaseAccount(selectedRental.id, workspaceIdForChat);
       await loadRentals(true);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to release rental.";
@@ -641,7 +651,7 @@ const ChatsPage: React.FC = () => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedRental.id, nextFrozen, workspaceId);
+      await api.freezeRental(selectedRental.id, nextFrozen, workspaceIdForChat);
       await loadRentals(true);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to update freeze state.";
@@ -663,7 +673,7 @@ const ChatsPage: React.FC = () => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.replaceRental(selectedRental.id, workspaceId);
+      await api.replaceRental(selectedRental.id, workspaceIdForChat);
       await loadRentals(true);
       if (selectedChatId) {
         await loadHistory(selectedChatId, { silent: true });
@@ -682,7 +692,9 @@ const ChatsPage: React.FC = () => {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
-            <p className="text-sm text-neutral-500">Workspace scoped chat inbox.</p>
+            <p className="text-sm text-neutral-500">
+              {workspaceId === null ? "All workspaces combined for faster triage." : "Workspace scoped chat inbox."}
+            </p>
           </div>
           <button
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
@@ -699,11 +711,11 @@ const ChatsPage: React.FC = () => {
 
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
           <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="flex items-center gap-2">
-              <input
-                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                placeholder="Search chats"
-                value={chatSearch}
+          <div className="flex items-center gap-2">
+            <input
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+              placeholder="Search chats"
+              value={chatSearch}
                 onChange={(event) => setChatSearch(event.target.value)}
               />
               <button
