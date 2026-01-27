@@ -53,7 +53,7 @@ class MySQLBlacklistRepo:
             params: list = [int(user_id)]
             where = "WHERE user_id = %s"
             if workspace_id is not None:
-                where += " AND workspace_id = %s"
+                where += " AND (workspace_id = %s OR workspace_id IS NULL)"
                 params.append(int(workspace_id))
             if query:
                 where += " AND owner LIKE %s"
@@ -95,7 +95,7 @@ class MySQLBlacklistRepo:
             params: list = [int(user_id)]
             where = "WHERE user_id = %s"
             if workspace_id is not None:
-                where += " AND workspace_id = %s"
+                where += " AND (workspace_id = %s OR workspace_id IS NULL)"
                 params.append(int(workspace_id))
             cursor.execute(
                 f"""
@@ -139,7 +139,11 @@ class MySQLBlacklistRepo:
                 )
             else:
                 cursor.execute(
-                    "SELECT 1 FROM blacklist WHERE owner = %s AND user_id = %s AND workspace_id = %s LIMIT 1",
+                    """
+                    SELECT 1 FROM blacklist
+                    WHERE owner = %s AND user_id = %s AND (workspace_id = %s OR workspace_id IS NULL)
+                    LIMIT 1
+                    """,
                     (owner_key, int(user_id), int(workspace_id)),
                 )
             return cursor.fetchone() is not None
@@ -160,6 +164,29 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if workspace_id is None:
+                cursor.execute(
+                    """
+                    SELECT id FROM blacklist
+                    WHERE owner = %s AND user_id = %s AND workspace_id IS NULL
+                    LIMIT 1
+                    """,
+                    (owner_key, int(user_id)),
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    if reason_value is None:
+                        return False
+                    cursor.execute(
+                        """
+                        UPDATE blacklist
+                        SET reason = %s
+                        WHERE owner = %s AND user_id = %s AND workspace_id IS NULL
+                        """,
+                        (reason_value, owner_key, int(user_id)),
+                    )
+                    conn.commit()
+                    return cursor.rowcount > 0
             try:
                 cursor.execute(
                     """

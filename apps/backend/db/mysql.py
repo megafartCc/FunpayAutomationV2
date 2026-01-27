@@ -182,6 +182,7 @@ def ensure_schema() -> None:
                 owner VARCHAR(255) NOT NULL,
                 account_name VARCHAR(255) NULL,
                 account_id BIGINT NULL,
+                steam_id VARCHAR(32) NULL,
                 rental_minutes INT NULL,
                 lot_number INT NULL,
                 amount INT DEFAULT 1,
@@ -196,6 +197,15 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'order_history' AND column_name = 'steam_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE order_history ADD COLUMN steam_id VARCHAR(32) NULL")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS blacklist (

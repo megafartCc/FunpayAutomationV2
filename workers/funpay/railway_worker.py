@@ -672,7 +672,7 @@ def is_blacklisted(
         params: list = [owner_key, int(user_id)]
         workspace_clause = ""
         if workspace_id is not None:
-            workspace_clause = " AND workspace_id = %s"
+            workspace_clause = " AND (workspace_id = %s OR workspace_id IS NULL)"
             params.append(int(workspace_id))
         cursor.execute(
             f"SELECT 1 FROM blacklist WHERE owner = %s AND user_id = %s{workspace_clause} LIMIT 1",
@@ -732,6 +732,7 @@ def log_order_history(
     workspace_id: int | None = None,
     account_id: int | None = None,
     account_name: str | None = None,
+    steam_id: str | None = None,
     rental_minutes: int | None = None,
     lot_number: int | None = None,
     amount: int | None = None,
@@ -750,28 +751,54 @@ def log_order_history(
         cursor = conn.cursor()
         if not table_exists(cursor, "order_history"):
             return
-        cursor.execute(
-            """
-            INSERT INTO order_history (
-                order_id, owner, account_name, account_id, rental_minutes,
-                lot_number, amount, price, action, user_id, workspace_id
+        has_steam_id = column_exists(cursor, "order_history", "steam_id")
+        if has_steam_id:
+            cursor.execute(
+                """
+                INSERT INTO order_history (
+                    order_id, owner, account_name, account_id, steam_id, rental_minutes,
+                    lot_number, amount, price, action, user_id, workspace_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    order_key,
+                    owner_key,
+                    account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                    int(account_id) if account_id is not None else None,
+                    steam_id.strip() if isinstance(steam_id, str) and steam_id.strip() else None,
+                    int(rental_minutes) if rental_minutes is not None else None,
+                    int(lot_number) if lot_number is not None else None,
+                    int(amount) if amount is not None else None,
+                    float(price) if price is not None else None,
+                    action,
+                    int(user_id),
+                    int(workspace_id) if workspace_id is not None else None,
+                ),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                order_key,
-                owner_key,
-                account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
-                int(account_id) if account_id is not None else None,
-                int(rental_minutes) if rental_minutes is not None else None,
-                int(lot_number) if lot_number is not None else None,
-                int(amount) if amount is not None else None,
-                float(price) if price is not None else None,
-                action,
-                int(user_id),
-                int(workspace_id) if workspace_id is not None else None,
-            ),
-        )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO order_history (
+                    order_id, owner, account_name, account_id, rental_minutes,
+                    lot_number, amount, price, action, user_id, workspace_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    order_key,
+                    owner_key,
+                    account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                    int(account_id) if account_id is not None else None,
+                    int(rental_minutes) if rental_minutes is not None else None,
+                    int(lot_number) if lot_number is not None else None,
+                    int(amount) if amount is not None else None,
+                    float(price) if price is not None else None,
+                    action,
+                    int(user_id),
+                    int(workspace_id) if workspace_id is not None else None,
+                ),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -792,18 +819,13 @@ def get_blacklist_compensation_total(
         cursor = conn.cursor()
         if not table_exists(cursor, "blacklist_logs"):
             return 0
-        params: list = [owner_key, int(user_id)]
-        workspace_clause = ""
-        if workspace_id is not None:
-            workspace_clause = " AND workspace_id = %s"
-            params.append(int(workspace_id))
         cursor.execute(
             f"""
             SELECT COALESCE(SUM(amount), 0)
             FROM blacklist_logs
-            WHERE owner = %s AND user_id = %s AND action = 'blacklist_comp'{workspace_clause}
+            WHERE owner = %s AND user_id = %s AND action = 'blacklist_comp'
             """,
-            tuple(params),
+            (owner_key, int(user_id)),
         )
         row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else 0
@@ -826,14 +848,9 @@ def remove_blacklist_entry(
         cursor = conn.cursor()
         if not table_exists(cursor, "blacklist"):
             return False
-        params: list = [owner_key, int(user_id)]
-        workspace_clause = ""
-        if workspace_id is not None:
-            workspace_clause = " AND workspace_id = %s"
-            params.append(int(workspace_id))
         cursor.execute(
-            f"DELETE FROM blacklist WHERE owner = %s AND user_id = %s{workspace_clause}",
-            tuple(params),
+            "DELETE FROM blacklist WHERE owner = %s AND user_id = %s",
+            (owner_key, int(user_id)),
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -863,7 +880,9 @@ def fetch_lot_mapping(
             order_clause = " ORDER BY CASE WHEN l.workspace_id = %s THEN 0 ELSE 1 END, a.id"
         cursor.execute(
             f"""
-            SELECT a.id, a.account_name, a.login, a.rental_duration, a.rental_duration_minutes,
+            SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
+                   a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   a.account_frozen, a.rental_frozen,
                    l.lot_number, l.lot_url
             FROM lots l
             JOIN accounts a ON a.id = l.account_id
@@ -1799,7 +1818,7 @@ def handle_pause_command(
         frozen_at=now,
     )
     if not ok:
-        send_chat_message(logger, account, chat_id, "❌ Не удалось поставить аренду на паузу.")
+        send_chat_message(logger, account, chat_id, "\u274c \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443.")
         return True
 
     pause_message = RENTAL_PAUSED_MESSAGE
@@ -1865,7 +1884,7 @@ def handle_resume_command(
         rental_start=new_start,
     )
     if not ok:
-        send_chat_message(logger, account, chat_id, "❌ Не удалось снять паузу.")
+        send_chat_message(logger, account, chat_id, "\u274c \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043d\u044f\u0442\u044c \u043f\u0430\u0443\u0437\u0443.")
         return True
 
     resume_message = RENTAL_RESUMED_MESSAGE
@@ -1943,26 +1962,41 @@ def handle_order_purchased(
         amount = 1
     if amount <= 0:
         amount = 1
+    price_value = None
+    raw_price = getattr(order, "sum", None)
+    if raw_price is None:
+        raw_price = getattr(order, "price", None)
+    try:
+        if raw_price is not None:
+            price_value = float(raw_price)
+    except Exception:
+        price_value = None
 
-    log_order_history(
-        mysql_cfg,
-        order_id=order_id,
-        owner=buyer,
-        user_id=int(user_id),
-        workspace_id=workspace_id,
-        lot_number=lot_number,
-        amount=amount,
-        action="purchase",
-    )
+    lot_mapping = fetch_lot_mapping(mysql_cfg, int(user_id), int(lot_number), workspace_id)
+    steam_id = _steam_id_from_mafile(lot_mapping.get("mafile_json")) if lot_mapping else None
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
         comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
         if comp_threshold_minutes <= 0:
             comp_threshold_minutes = max(env_int("BLACKLIST_COMP_HOURS", 5), 0) * 60
         unit_minutes_default = env_int("BLACKLIST_COMP_UNIT_MINUTES", 60)
-        lot_mapping = fetch_lot_mapping(mysql_cfg, int(user_id), int(lot_number), workspace_id)
         unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
         paid_minutes = max(0, int(unit_minutes) * int(amount))
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            account_id=lot_mapping.get("id") if lot_mapping else None,
+            account_name=lot_mapping.get("account_name") if lot_mapping else None,
+            steam_id=steam_id,
+            rental_minutes=paid_minutes,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="blacklist_comp",
+        )
         log_blacklist_event(
             mysql_cfg,
             owner=buyer,
@@ -2020,19 +2054,58 @@ def handle_order_purchased(
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
-    mapping = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id=workspace_id)
+    mapping = lot_mapping
     if not mapping:
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="unmapped",
+        )
         send_chat_message(logger, account, chat_id, ORDER_LOT_UNMAPPED)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen"):
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            account_id=mapping.get("id"),
+            account_name=mapping.get("account_name"),
+            steam_id=steam_id,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="busy",
+        )
         send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
     owner = mapping.get("owner")
     if owner and normalize_username(owner) != normalize_username(buyer):
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            account_id=mapping.get("id"),
+            account_name=mapping.get("account_name"),
+            steam_id=steam_id,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="busy",
+        )
         send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
@@ -2051,6 +2124,21 @@ def handle_order_purchased(
             total_minutes=total_minutes,
             workspace_id=workspace_id,
         )
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            account_id=mapping.get("id"),
+            account_name=mapping.get("account_name"),
+            steam_id=steam_id,
+            rental_minutes=total_minutes,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="assign",
+        )
     else:
         updated_account = extend_rental_for_buyer(
             mysql_cfg,
@@ -2062,9 +2150,38 @@ def handle_order_purchased(
             workspace_id=workspace_id,
         )
         if not updated_account:
+            log_order_history(
+                mysql_cfg,
+                order_id=order_id,
+                owner=buyer,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                account_id=mapping.get("id"),
+                account_name=mapping.get("account_name"),
+                steam_id=steam_id,
+                lot_number=lot_number,
+                amount=amount,
+                price=price_value,
+                action="busy",
+            )
             send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
+        log_order_history(
+            mysql_cfg,
+            order_id=order_id,
+            owner=buyer,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            account_id=mapping.get("id"),
+            account_name=mapping.get("account_name"),
+            steam_id=steam_id,
+            rental_minutes=total_minutes,
+            lot_number=lot_number,
+            amount=amount,
+            price=price_value,
+            action="extend",
+        )
 
     message = build_account_message(updated_account or mapping, total_minutes, include_timer_note=True)
     send_chat_message(logger, account, chat_id, message)

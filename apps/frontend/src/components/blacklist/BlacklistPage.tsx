@@ -7,6 +7,11 @@ type BlacklistPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
 };
 
+type ResolvedWorkspace = {
+  id: number | null;
+  name?: string | null;
+};
+
 const BLACKLIST_GRID =
   "40px minmax(180px,1.2fr) minmax(240px,1.6fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
 
@@ -17,10 +22,22 @@ const formatDate = (value?: string | null) => {
   return dt.toLocaleString();
 };
 
+const formatWorkspaceLabel = (
+  workspaceId: number | null | undefined,
+  workspaces: { id: number; name: string; is_default?: boolean }[],
+  workspaceName?: string | null,
+) => {
+  if (workspaceId && workspaceName) return `${workspaceName} (ID ${workspaceId})`;
+  if (workspaceName) return workspaceName;
+  if (!workspaceId) return "Global";
+  const match = workspaces.find((item) => item.id === workspaceId);
+  return match?.name ? `${match.name} (ID ${workspaceId})` : `Workspace ${workspaceId}`;
+};
+
 const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
-  const { selectedId: selectedWorkspaceId } = useWorkspace();
-  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
-  const locked = selectedWorkspaceId === "all";
+  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
+  const isAllWorkspaces = selectedWorkspaceId === "all";
+  const workspaceId = isAllWorkspaces ? null : (selectedWorkspaceId as number);
 
   const [blacklistEntries, setBlacklistEntries] = useState<BlacklistEntry[]>([]);
   const [blacklistQuery, setBlacklistQuery] = useState("");
@@ -35,10 +52,11 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   const [blacklistResolving, setBlacklistResolving] = useState(false);
   const [blacklistLogs, setBlacklistLogs] = useState<BlacklistLog[]>([]);
   const [blacklistLogsLoading, setBlacklistLogsLoading] = useState(false);
+  const [resolvedWorkspace, setResolvedWorkspace] = useState<ResolvedWorkspace | null>(null);
 
   const resolveOrderOwner = useCallback(
     async (orderId: string) => {
-      if (locked || !workspaceId) {
+      if (!workspaceId && !isAllWorkspaces) {
         onToast?.("Select a workspace to manage the blacklist.", true);
         return null;
       }
@@ -49,34 +67,42 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       }
       setBlacklistResolving(true);
       try {
-        const res = await api.resolveOrder(trimmed, workspaceId);
+        const res = await api.resolveOrder(trimmed, workspaceId ?? undefined);
         if (!res?.owner) {
           onToast?.("Buyer not found for this order yet.", true);
+          setResolvedWorkspace(null);
           return null;
         }
         setBlacklistOwner(res.owner);
-        onToast?.(`Buyer found: ${res.owner}`);
+        const workspaceLabel =
+          res.workspace_id || res.workspace_name
+            ? formatWorkspaceLabel(res.workspace_id ?? null, workspaces, res.workspace_name)
+            : null;
+        setResolvedWorkspace({
+          id: res.workspace_id ?? null,
+          name: res.workspace_name ?? null,
+        });
+        onToast?.(
+          workspaceLabel ? `Buyer found: ${res.owner} (Workspace: ${workspaceLabel})` : `Buyer found: ${res.owner}`,
+        );
         return res.owner;
       } catch (err) {
         const message = (err as { message?: string })?.message || "Order lookup failed.";
         onToast?.(message, true);
+        setResolvedWorkspace(null);
         return null;
       } finally {
         setBlacklistResolving(false);
       }
     },
-    [locked, workspaceId, onToast],
+    [workspaceId, isAllWorkspaces, onToast, workspaces],
   );
 
   const loadBlacklist = useCallback(async () => {
-    if (!workspaceId) {
-      setBlacklistEntries([]);
-      setBlacklistSelected([]);
-      return;
-    }
+    const effectiveWorkspaceId = workspaceId ?? undefined;
     setBlacklistLoading(true);
     try {
-      const res = await api.listBlacklist(workspaceId, blacklistQuery.trim() || undefined);
+      const res = await api.listBlacklist(effectiveWorkspaceId, blacklistQuery.trim() || undefined);
       setBlacklistEntries(res.items || []);
       setBlacklistSelected((prev) => prev.filter((owner) => res.items.some((entry) => entry.owner === owner)));
     } catch (err) {
@@ -88,13 +114,10 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   }, [workspaceId, blacklistQuery, onToast]);
 
   const loadBlacklistLogs = useCallback(async () => {
-    if (!workspaceId) {
-      setBlacklistLogs([]);
-      return;
-    }
+    const effectiveWorkspaceId = workspaceId ?? undefined;
     setBlacklistLogsLoading(true);
     try {
-      const res = await api.listBlacklistLogs(workspaceId, 200);
+      const res = await api.listBlacklistLogs(effectiveWorkspaceId, 200);
       setBlacklistLogs(res.items || []);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to load blacklist activity.";
@@ -127,7 +150,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   };
 
   const handleAddBlacklist = async () => {
-    if (locked || !workspaceId) {
+    if (!workspaceId && !isAllWorkspaces) {
       onToast?.("Select a workspace to manage the blacklist.", true);
       return;
     }
@@ -146,11 +169,12 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     try {
       const entry = await api.createBlacklist(
         { owner, reason: blacklistReason.trim() || null, order_id: orderId || null },
-        workspaceId,
+        workspaceId ?? undefined,
       );
       setBlacklistOwner("");
       setBlacklistOrderId("");
       setBlacklistReason("");
+      setResolvedWorkspace(null);
       setBlacklistEntries((prev) => [entry, ...prev.filter((item) => item.id !== entry.id)]);
       onToast?.("User added to blacklist.");
       await loadBlacklist();
@@ -177,7 +201,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
 
   const handleSaveBlacklistEdit = async () => {
     if (blacklistEditingId === null || blacklistEditingId === undefined) return;
-    if (locked || !workspaceId) {
+    if (!workspaceId && !isAllWorkspaces) {
       onToast?.("Select a workspace to manage the blacklist.", true);
       return;
     }
@@ -190,7 +214,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       const entry = await api.updateBlacklist(
         Number(blacklistEditingId),
         { owner, reason: blacklistEditReason.trim() || null },
-        workspaceId,
+        workspaceId ?? undefined,
       );
       onToast?.("Blacklist entry updated.");
       cancelEditBlacklist();
@@ -207,12 +231,12 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       onToast?.("Select users to unblacklist.", true);
       return;
     }
-    if (locked || !workspaceId) {
+    if (!workspaceId && !isAllWorkspaces) {
       onToast?.("Select a workspace to manage the blacklist.", true);
       return;
     }
     try {
-      await api.removeBlacklist(blacklistSelected, workspaceId);
+      await api.removeBlacklist(blacklistSelected, workspaceId ?? undefined);
       onToast?.("Selected users removed from blacklist.");
       setBlacklistSelected([]);
       await loadBlacklist();
@@ -228,13 +252,13 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       onToast?.("Blacklist is already empty.", true);
       return;
     }
-    if (locked || !workspaceId) {
+    if (!workspaceId && !isAllWorkspaces) {
       onToast?.("Select a workspace to manage the blacklist.", true);
       return;
     }
     if (!window.confirm("Remove everyone from the blacklist?")) return;
     try {
-      await api.clearBlacklist(workspaceId);
+      await api.clearBlacklist(workspaceId ?? undefined);
       onToast?.("Blacklist cleared.");
       setBlacklistSelected([]);
       await loadBlacklist();
@@ -274,23 +298,26 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
         <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
             <div className="mb-2 text-sm font-semibold text-neutral-800">Add to blacklist</div>
-            {locked && (
+            {isAllWorkspaces && (
               <div className="mb-3 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-                Select a workspace to add or edit blacklist entries.
+                All workspaces selected - blacklist applies globally.
               </div>
             )}
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                 <input
                   value={blacklistOrderId}
-                  onChange={(e) => setBlacklistOrderId(e.target.value)}
+                  onChange={(e) => {
+                    setBlacklistOrderId(e.target.value);
+                    setResolvedWorkspace(null);
+                  }}
                   placeholder="Order ID (optional)"
-                  disabled={locked || blacklistResolving}
+                  disabled={blacklistResolving}
                   className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                 />
                 <button
                   onClick={handleResolveBlacklistOrder}
-                  disabled={locked || blacklistResolving}
+                  disabled={blacklistResolving}
                   className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
                 >
                   Find buyer
@@ -298,21 +325,32 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
               </div>
               <input
                 value={blacklistOwner}
-                onChange={(e) => setBlacklistOwner(e.target.value)}
+                onChange={(e) => {
+                  setBlacklistOwner(e.target.value);
+                  if (resolvedWorkspace) setResolvedWorkspace(null);
+                }}
                 placeholder="Buyer username"
-                disabled={locked}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
+              {resolvedWorkspace ? (
+                <div className="text-xs text-neutral-500">
+                  Order workspace:{" "}
+                  {formatWorkspaceLabel(
+                    resolvedWorkspace.id ?? null,
+                    workspaces,
+                    resolvedWorkspace.name ?? null,
+                  )}
+                </div>
+              ) : null}
               <input
                 value={blacklistReason}
                 onChange={(e) => setBlacklistReason(e.target.value)}
                 placeholder="Reason (optional)"
-                disabled={locked}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <button
                 onClick={handleAddBlacklist}
-                disabled={locked || blacklistResolving || (!blacklistOwner.trim() && !blacklistOrderId.trim())}
+                disabled={blacklistResolving || (!blacklistOwner.trim() && !blacklistOrderId.trim())}
                 className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
                 {blacklistResolving ? "Resolving..." : "Add user"}
@@ -326,20 +364,19 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
               onChange={(e) => setBlacklistQuery(e.target.value)}
               placeholder="Search by buyer"
               type="search"
-              disabled={locked}
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={handleRemoveSelected}
-                disabled={locked || !blacklistSelected.length}
+                disabled={!blacklistSelected.length}
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
               >
                 Unblacklist selected
               </button>
               <button
                 onClick={handleClearBlacklist}
-                disabled={locked || !blacklistEntries.length}
+                disabled={!blacklistEntries.length}
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
               >
                 Unblacklist all
@@ -402,9 +439,14 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                             className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                           />
                         ) : (
-                          <span className="min-w-0 truncate font-semibold text-neutral-900">
-                            {entry.owner}
-                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-neutral-900">{entry.owner}</div>
+                            {isAllWorkspaces && (
+                              <div className="text-xs text-neutral-400">
+                                {formatWorkspaceLabel(entry.workspace_id ?? null, workspaces)}
+                              </div>
+                            )}
+                          </div>
                         )}
                         {isEditing ? (
                           <input
@@ -460,7 +502,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
             </div>
             <button
               onClick={() => loadBlacklistLogs()}
-              disabled={locked || blacklistLogsLoading}
+              disabled={blacklistLogsLoading}
               className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
             >
               Refresh

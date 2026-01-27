@@ -105,6 +105,25 @@ export type OrderResolveItem = {
   account_name?: string | null;
   account_id?: number | null;
   amount?: number | null;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  created_at?: string | null;
+};
+
+export type OrderHistoryItem = {
+  id: number;
+  order_id: string;
+  buyer: string;
+  account_name?: string | null;
+  account_id?: number | null;
+  steam_id?: string | null;
+  rental_minutes?: number | null;
+  lot_number?: number | null;
+  amount?: number | null;
+  price?: number | null;
+  action?: string | null;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
   created_at?: string | null;
 };
 
@@ -258,20 +277,30 @@ export const api = {
     const suffix = params.toString();
     return request<{ items: BlacklistLog[] }>(`/blacklist/logs${suffix ? `?${suffix}` : ""}`, { method: "GET" });
   },
-  resolveOrder: (orderId: string, workspaceId: number) => {
+  resolveOrder: (orderId: string, workspaceId?: number | null) => {
     const params = new URLSearchParams();
     params.set("order_id", orderId);
     return request<OrderResolveItem>(withWorkspace(`/orders/resolve?${params.toString()}`, workspaceId), {
       method: "GET",
     });
   },
-  createBlacklist: (payload: BlacklistCreatePayload, workspaceId: number) =>
+  listOrdersHistory: (workspaceId?: number | null, query?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (query) params.set("query", query);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: OrderHistoryItem[] }>(
+      withWorkspace(`/orders/history${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
+  createBlacklist: (payload: BlacklistCreatePayload, workspaceId?: number | null) =>
     request<BlacklistEntry>(withWorkspace("/blacklist", workspaceId), { method: "POST", body: payload }),
-  updateBlacklist: (entryId: number, payload: BlacklistUpdatePayload, workspaceId: number) =>
+  updateBlacklist: (entryId: number, payload: BlacklistUpdatePayload, workspaceId?: number | null) =>
     request<BlacklistEntry>(withWorkspace(`/blacklist/${entryId}`, workspaceId), { method: "PATCH", body: payload }),
-  removeBlacklist: (owners: string[], workspaceId: number) =>
+  removeBlacklist: (owners: string[], workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/remove", workspaceId), { method: "POST", body: { owners } }),
-  clearBlacklist: (workspaceId: number) =>
+  clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
   createWorkspace: (payload: { name: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>

@@ -15,11 +15,15 @@ class OrderHistoryItem:
     owner: str
     account_name: Optional[str]
     account_id: Optional[int]
+    steam_id: Optional[str]
     rental_minutes: Optional[int]
     lot_number: Optional[int]
     amount: Optional[int]
+    price: Optional[float]
+    action: Optional[str]
     user_id: int
     workspace_id: Optional[int]
+    workspace_name: Optional[str]
     created_at: Optional[str]
 
 
@@ -53,9 +57,11 @@ class MySQLOrderHistoryRepo:
                 params.append(int(workspace_id))
             cursor.execute(
                 f"""
-                SELECT id, order_id, owner, account_name, account_id, rental_minutes, lot_number,
-                       amount, user_id, workspace_id, created_at
-                FROM order_history
+                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                       oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
+                FROM order_history oh
+                LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
                 WHERE user_id = %s AND order_id = %s{workspace_clause}
                 ORDER BY id DESC
                 LIMIT 1
@@ -72,9 +78,11 @@ class MySQLOrderHistoryRepo:
                     params.append(int(workspace_id))
                 cursor.execute(
                     f"""
-                    SELECT id, order_id, owner, account_name, account_id, rental_minutes, lot_number,
-                           amount, user_id, workspace_id, created_at
-                    FROM order_history
+                    SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                           oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                           oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
+                    FROM order_history oh
+                    LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
                     WHERE user_id = %s AND order_id LIKE %s{workspace_clause}
                     ORDER BY id DESC
                     LIMIT 1
@@ -90,12 +98,78 @@ class MySQLOrderHistoryRepo:
                 owner=row.get("owner") or "",
                 account_name=row.get("account_name"),
                 account_id=row.get("account_id"),
+                steam_id=row.get("steam_id"),
                 rental_minutes=row.get("rental_minutes"),
                 lot_number=row.get("lot_number"),
                 amount=row.get("amount"),
+                price=row.get("price"),
+                action=row.get("action"),
                 user_id=int(row.get("user_id") or user_id),
                 workspace_id=row.get("workspace_id"),
+                workspace_name=row.get("workspace_name"),
                 created_at=str(row.get("created_at")) if row.get("created_at") is not None else None,
             )
+        finally:
+            conn.close()
+
+    def list_history(
+        self,
+        user_id: int,
+        workspace_id: int | None = None,
+        *,
+        query: str | None = None,
+        limit: int = 200,
+    ) -> list[OrderHistoryItem]:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            params: list = [int(user_id)]
+            where = "WHERE oh.user_id = %s"
+            if workspace_id is not None:
+                where += " AND (oh.workspace_id = %s OR oh.workspace_id IS NULL)"
+                params.append(int(workspace_id))
+            if query:
+                q = query.strip().lower()
+                like = f"%{q}%"
+                where += (
+                    " AND (LOWER(oh.order_id) LIKE %s OR LOWER(oh.owner) LIKE %s OR "
+                    "LOWER(oh.account_name) LIKE %s OR LOWER(oh.steam_id) LIKE %s OR "
+                    "CAST(oh.account_id AS CHAR) LIKE %s OR CAST(oh.lot_number AS CHAR) LIKE %s)"
+                )
+                params.extend([like, like, like, like, like, like])
+            cursor.execute(
+                f"""
+                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                       oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
+                FROM order_history oh
+                LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
+                {where}
+                ORDER BY oh.id DESC
+                LIMIT %s
+                """,
+                tuple(params + [int(max(1, min(limit, 500)))]),
+            )
+            rows = cursor.fetchall() or []
+            return [
+                OrderHistoryItem(
+                    id=int(row["id"]),
+                    order_id=str(row.get("order_id") or ""),
+                    owner=row.get("owner") or "",
+                    account_name=row.get("account_name"),
+                    account_id=row.get("account_id"),
+                    steam_id=row.get("steam_id"),
+                    rental_minutes=row.get("rental_minutes"),
+                    lot_number=row.get("lot_number"),
+                    amount=row.get("amount"),
+                    price=row.get("price"),
+                    action=row.get("action"),
+                    user_id=int(row.get("user_id") or user_id),
+                    workspace_id=row.get("workspace_id"),
+                    workspace_name=row.get("workspace_name"),
+                    created_at=str(row.get("created_at")) if row.get("created_at") is not None else None,
+                )
+                for row in rows
+            ]
         finally:
             conn.close()

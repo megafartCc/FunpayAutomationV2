@@ -59,7 +59,7 @@ class BlacklistRemove(BaseModel):
 
 def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
     if workspace_id is None:
-        raise HTTPException(status_code=400, detail="workspace_id is required")
+        return
     workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
     if not workspace:
         raise HTTPException(status_code=400, detail="Select a workspace for blacklist.")
@@ -125,20 +125,32 @@ def add_blacklist(
     user_id = int(user.id)
     _ensure_workspace(workspace_id, user_id)
     owner = (payload.owner or "").strip()
+    resolved_workspace_id = None
+    resolved_workspace_name = None
     if not owner and payload.order_id:
         resolved = orders_repo.resolve_order(payload.order_id, user_id, workspace_id)
         if resolved:
             owner = resolved.owner
+            resolved_workspace_id = resolved.workspace_id
+            resolved_workspace_name = resolved.workspace_name
     if not owner:
         raise HTTPException(status_code=400, detail="Owner is required.")
     ok = blacklist_repo.add_blacklist_entry(owner, payload.reason, user_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=400, detail="User already blacklisted.")
+    details_parts = []
+    if payload.order_id:
+        details_parts.append(f"order_id={payload.order_id}")
+    if resolved_workspace_id is not None:
+        details_parts.append(f"workspace_id={resolved_workspace_id}")
+        if resolved_workspace_name:
+            details_parts.append(f"workspace={resolved_workspace_name}")
+    details_value = "; ".join(details_parts) if details_parts else None
     blacklist_repo.log_blacklist_event(
         owner,
         "add",
         reason=payload.reason,
-        details=f"order_id={payload.order_id}" if payload.order_id else None,
+        details=details_value,
         user_id=user_id,
         workspace_id=workspace_id,
     )
