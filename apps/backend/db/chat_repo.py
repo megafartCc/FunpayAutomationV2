@@ -51,24 +51,37 @@ class MySQLChatRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            join_params: list = [int(user_id), int(workspace_id)]
             params: list = [int(user_id), int(workspace_id)]
-            where = "WHERE user_id = %s AND workspace_id = %s"
+            time_expr = "c.last_message_time"
+            join_sql = """
+                LEFT JOIN (
+                    SELECT chat_id, MAX(sent_time) AS last_sent_time
+                    FROM chat_messages
+                    WHERE user_id = %s AND workspace_id = %s
+                    GROUP BY chat_id
+                ) m ON m.chat_id = c.chat_id
+            """
+            time_expr = "COALESCE(m.last_sent_time, c.last_message_time)"
+            where = "WHERE c.user_id = %s AND c.workspace_id = %s"
             if query:
                 q = f"%{query.strip().lower()}%"
-                where += " AND (LOWER(name) LIKE %s OR LOWER(last_message_text) LIKE %s)"
+                where += " AND (LOWER(c.name) LIKE %s OR LOWER(c.last_message_text) LIKE %s)"
                 params.extend([q, q])
             elif since is not None:
-                where += " AND last_message_time >= %s"
+                where += f" AND {time_expr} >= %s"
                 params.append(since)
             cursor.execute(
                 f"""
-                SELECT id, chat_id, name, last_message_text, last_message_time, unread, user_id, workspace_id
-                FROM chats
+                SELECT c.id, c.chat_id, c.name, c.last_message_text, {time_expr} AS last_message_time,
+                       c.unread, c.user_id, c.workspace_id
+                FROM chats c
+                {join_sql}
                 {where}
-                ORDER BY (unread IS NULL), unread DESC, last_message_time DESC, id DESC
+                ORDER BY (c.unread IS NULL), c.unread DESC, {time_expr} DESC, c.id DESC
                 LIMIT %s
                 """,
-                tuple(params + [int(max(1, min(limit, 500)))]),
+                tuple(join_params + params + [int(max(1, min(limit, 500)))]),
             )
             rows = cursor.fetchall() or []
             return [
