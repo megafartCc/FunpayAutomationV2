@@ -148,8 +148,15 @@ const ChatsPage: React.FC = () => {
   const { chatId: chatIdParam } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { selectedId: selectedWorkspaceId } = useWorkspace();
-  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
+  const { workspaces } = useWorkspace();
+  const workspaceId = null;
+  const workspaceNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const ws of workspaces) {
+      map.set(ws.id, ws.name);
+    }
+    return map;
+  }, [workspaces]);
   const routeChatId = useMemo(() => {
     if (!chatIdParam) return null;
     const parsed = Number(chatIdParam);
@@ -241,7 +248,24 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        if (workspaceId && !chatSearch.trim()) {
+        if (workspaceId !== null && !chatSearch.trim()) {
+          writeCache(chatListCacheKey(workspaceId), next);
+        }
+        return next;
+      });
+    },
+    [workspaceId, chatSearch],
+  );
+
+  const markChatRead = useCallback(
+    (chatId: number) => {
+      setChats((prev) => {
+        const next = prev.map((chat) =>
+          chat.chat_id === chatId
+            ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+            : chat,
+        );
+        if (workspaceId !== null && !chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
@@ -252,17 +276,8 @@ const ChatsPage: React.FC = () => {
 
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
-      if (!workspaceId) {
-        setChats([]);
-        setSelectedChatId(null);
-        setMessages([]);
-        setStatus("Select a workspace to view chats.");
-        listSinceRef.current = null;
-        hasLoadedChatsRef.current = false;
-        return;
-      }
       const trimmedQuery = query?.trim() || "";
-      const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
+      const cacheKey = trimmedQuery || workspaceId === null ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
         setChats(cached);
@@ -329,7 +344,14 @@ const ChatsPage: React.FC = () => {
 
   const loadHistory = useCallback(
     async (chatId: number | null, options?: { silent?: boolean; incremental?: boolean }) => {
-      if (!workspaceId || !chatId) {
+      if (!chatId) {
+        setMessages([]);
+        historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
+        return;
+      }
+      const workspaceIdForChat =
+        chats.find((chat) => chat.chat_id === chatId)?.workspace_id ?? workspaceId;
+      if (workspaceIdForChat === null || workspaceIdForChat === undefined) {
         setMessages([]);
         historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
         return;
@@ -337,7 +359,7 @@ const ChatsPage: React.FC = () => {
       const seq = historyRequestRef.current.seq + 1;
       historyRequestRef.current = { seq, chatId };
 
-      const cacheKey = chatHistoryCacheKey(workspaceId, chatId);
+      const cacheKey = chatHistoryCacheKey(workspaceIdForChat, chatId);
       const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
       if (cached) {
         setMessages(cached);
@@ -353,7 +375,7 @@ const ChatsPage: React.FC = () => {
         const baseItems = cached ?? messagesRef.current;
         const lastServerId = getLastServerMessageId(baseItems);
         if ((options?.incremental || cached) && lastServerId > 0) {
-          const res = await api.getChatHistory(chatId, workspaceId, 200, lastServerId);
+          const res = await api.getChatHistory(chatId, workspaceIdForChat, 200, lastServerId);
           const incoming = res.items || [];
           if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
           if (incoming.length) {
@@ -363,28 +385,16 @@ const ChatsPage: React.FC = () => {
             updateChatPreview(chatId, merged);
             writeCache(cacheKey, merged.slice(-100));
           }
-          setChats((prev) =>
-            prev.map((chat) =>
-              chat.chat_id === chatId
-                ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
-                : chat,
-            ),
-          );
+          markChatRead(chatId);
           return;
         }
-        const res = await api.getChatHistory(chatId, workspaceId, 300);
+        const res = await api.getChatHistory(chatId, workspaceIdForChat, 300);
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
         setMessages(items);
         updateChatPreview(chatId, items);
         writeCache(cacheKey, items.slice(-100));
-        setChats((prev) =>
-          prev.map((chat) =>
-            chat.chat_id === chatId
-              ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
-              : chat,
-          ),
-        );
+        markChatRead(chatId);
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           const message = (err as { message?: string })?.message || "Failed to load chat history.";
@@ -396,15 +406,11 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId],
+    [workspaceId, markChatRead, updateChatPreview, chats],
   );
 
   const loadRentals = useCallback(
     async (silent = false) => {
-      if (!workspaceId) {
-        setRentals([]);
-        return;
-      }
       if (!silent) setRentalsLoading(true);
       try {
         const res = await api.listActiveRentals(workspaceId);
@@ -434,7 +440,6 @@ const ChatsPage: React.FC = () => {
   }, [chatSearch, loadChats]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
     if (chatSearch.trim()) return undefined;
     const handle = window.setInterval(() => {
       void loadChats(chatSearch, { silent: true, incremental: true });
@@ -443,7 +448,6 @@ const ChatsPage: React.FC = () => {
   }, [workspaceId, chatSearch, loadChats]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
     const handle = window.setInterval(() => {
       void loadRentals(true);
     }, 15_000);
@@ -455,7 +459,7 @@ const ChatsPage: React.FC = () => {
   }, [selectedChatId, loadHistory]);
 
   useEffect(() => {
-    if (!workspaceId || !selectedChatId) return undefined;
+    if (!selectedChatId) return undefined;
     const handle = window.setInterval(() => {
       void loadHistory(selectedChatId, { silent: true, incremental: true });
     }, 6_000);
@@ -511,7 +515,8 @@ const ChatsPage: React.FC = () => {
   const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedChatId) return;
-    if (!workspaceId) return;
+    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
+    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
     const text = draft.trim();
     if (!text) return;
     const optimistic: ChatMessageItem = {
@@ -523,9 +528,9 @@ const ChatsPage: React.FC = () => {
       sent_time: new Date().toISOString(),
       by_bot: 1,
       message_type: "pending",
-      workspace_id: workspaceId,
+      workspace_id: workspaceIdForChat,
     };
-    const historyKey = chatHistoryCacheKey(workspaceId, selectedChatId);
+    const historyKey = chatHistoryCacheKey(workspaceIdForChat, selectedChatId);
     setMessages((prev) => {
       const next = [...prev, optimistic];
       writeCache(historyKey, next.slice(-100));
@@ -533,7 +538,7 @@ const ChatsPage: React.FC = () => {
     });
     setDraft("");
     try {
-      await api.sendChatMessage(selectedChatId, text, workspaceId);
+      await api.sendChatMessage(selectedChatId, text, workspaceIdForChat);
       setChats((prev) => {
         const next = prev.map((chat) =>
           chat.chat_id === selectedChatId
@@ -545,7 +550,9 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        writeCache(chatListCacheKey(workspaceId), next);
+        if (workspaceIdForChat !== null) {
+          writeCache(chatListCacheKey(workspaceIdForChat), next);
+        }
         return next;
       });
     } catch (err) {
@@ -559,7 +566,8 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    if (!workspaceId) return;
+    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
+    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
     if (rentalActionBusy) return;
     const hours = Number(extendHours || 0);
     const minutes = Number(extendMinutes || 0);
@@ -573,7 +581,7 @@ const ChatsPage: React.FC = () => {
     }
     setRentalActionBusy(true);
     try {
-      await api.extendAccount(selectedRental.id, hours, minutes, workspaceId);
+      await api.extendAccount(selectedRental.id, hours, minutes, workspaceIdForChat);
       setExtendHours("");
       setExtendMinutes("");
       await loadRentals(true);
@@ -590,11 +598,12 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    if (!workspaceId) return;
+    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
+    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(selectedRental.id, workspaceId);
+      await api.releaseAccount(selectedRental.id, workspaceIdForChat);
       await loadRentals(true);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to release rental.";
@@ -609,11 +618,12 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    if (!workspaceId) return;
+    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
+    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedRental.id, nextFrozen, workspaceId);
+      await api.freezeRental(selectedRental.id, nextFrozen, workspaceIdForChat);
       await loadRentals(true);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to update freeze state.";
@@ -624,8 +634,9 @@ const ChatsPage: React.FC = () => {
   };
 
   const handleReplaceRental = async () => {
-    if (!workspaceId) {
-      setStatus("Select a workspace to replace rentals.");
+    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
+    if (workspaceIdForChat === null || workspaceIdForChat === undefined) {
+      setStatus("Select a chat to replace rentals.");
       return;
     }
     if (!selectedRental) {
@@ -635,7 +646,7 @@ const ChatsPage: React.FC = () => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.replaceRental(selectedRental.id, workspaceId);
+      await api.replaceRental(selectedRental.id, workspaceIdForChat);
       await loadRentals(true);
       if (selectedChatId) {
         await loadHistory(selectedChatId, { silent: true });
@@ -654,7 +665,7 @@ const ChatsPage: React.FC = () => {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
-            <p className="text-sm text-neutral-500">Workspace scoped chat inbox.</p>
+            <p className="text-sm text-neutral-500">All workspaces combined for faster triage.</p>
           </div>
           <button
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
@@ -671,11 +682,11 @@ const ChatsPage: React.FC = () => {
 
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
           <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="flex items-center gap-2">
-              <input
-                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                placeholder="Search chats"
-                value={chatSearch}
+          <div className="flex items-center gap-2">
+            <input
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+              placeholder="Search chats"
+              value={chatSearch}
                 onChange={(event) => setChatSearch(event.target.value)}
               />
               <button
@@ -697,6 +708,9 @@ const ChatsPage: React.FC = () => {
                   const adminCount = Number(chat.admin_unread_count || 0);
                   const hasAdmin = adminCount > 0 || Boolean(chat.admin_requested);
                   const unreadCount = Number(chat.unread || 0);
+                  const workspaceLabel = chat.workspace_id
+                    ? workspaceNameMap.get(chat.workspace_id) || `Workspace ${chat.workspace_id}`
+                    : "Global";
                   return (
                     <button
                       key={chat.chat_id}
@@ -712,6 +726,13 @@ const ChatsPage: React.FC = () => {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="truncate text-sm font-semibold">{chat.name || "Buyer"}</div>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            isActive ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"
+                          }`}
+                        >
+                          {workspaceLabel}
+                        </span>
                         <span className={`text-[11px] ${isActive ? "text-neutral-200" : "text-neutral-400"}`}>
                           {formatTime(chat.last_message_time)}
                         </span>
@@ -760,6 +781,14 @@ const ChatsPage: React.FC = () => {
                   <div className="text-xs text-neutral-500">
                     {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
                   </div>
+                  {selectedChat ? (
+                    <div className="mt-1 inline-flex rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-600">
+                      {selectedChat.workspace_id
+                        ? workspaceNameMap.get(selectedChat.workspace_id) ||
+                          `Workspace ${selectedChat.workspace_id}`
+                        : "Global"}
+                    </div>
+                  ) : null}
                 </div>
                 <button
                   className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
@@ -938,6 +967,15 @@ const ChatsPage: React.FC = () => {
               <div className="mt-3 space-y-1 text-xs text-neutral-600">
                 <div>Buyer: {selectedChat?.name || "-"}</div>
                 <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
+                <div>
+                  Workspace:{" "}
+                  {selectedChat
+                    ? selectedChat.workspace_id
+                      ? workspaceNameMap.get(selectedChat.workspace_id) ||
+                        `Workspace ${selectedChat.workspace_id}`
+                      : "Global"
+                    : "-"}
+                </div>
                 <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
               </div>
             </div>
