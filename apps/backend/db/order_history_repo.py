@@ -62,7 +62,7 @@ class MySQLOrderHistoryRepo:
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
-                WHERE user_id = %s AND order_id = %s{workspace_clause}
+                WHERE oh.user_id = %s AND oh.order_id = %s{workspace_clause}
                 ORDER BY id DESC
                 LIMIT 1
                 """,
@@ -83,7 +83,7 @@ class MySQLOrderHistoryRepo:
                            oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                     FROM order_history oh
                     LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
-                    WHERE user_id = %s AND order_id LIKE %s{workspace_clause}
+                    WHERE oh.user_id = %s AND oh.order_id LIKE %s{workspace_clause}
                     ORDER BY id DESC
                     LIMIT 1
                     """,
