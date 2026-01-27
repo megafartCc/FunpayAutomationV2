@@ -274,6 +274,23 @@ const ChatsPage: React.FC = () => {
     [workspaceId, chatSearch],
   );
 
+  const markChatRead = useCallback(
+    (chatId: number) => {
+      setChats((prev) => {
+        const next = prev.map((chat) =>
+          chat.chat_id === chatId
+            ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+            : chat,
+        );
+        if (workspaceId && !chatSearch.trim()) {
+          writeCache(chatListCacheKey(workspaceId), next);
+        }
+        return next;
+      });
+    },
+    [workspaceId, chatSearch],
+  );
+
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       const trimmedQuery = query?.trim() || "";
