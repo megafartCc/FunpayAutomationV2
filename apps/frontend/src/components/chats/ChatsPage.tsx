@@ -484,24 +484,26 @@ const ChatsPage: React.FC = () => {
                   Loading messages...
                 </div>
               ) : messages.length ? (
-                messages.map((message) => {
-                  const isBot = Boolean(message.by_bot);
-                  return (
-                    <div
-                      key={`${message.id}-${message.message_id}`}
-                      className={`max-w-[78%] rounded-xl border px-3 py-2 text-sm ${
-                        isBot
-                          ? "ml-auto border-neutral-900 bg-neutral-900 text-white"
-                          : "border-neutral-200 bg-white text-neutral-700"
-                      }`}
-                    >
-                      <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
-                        {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
+                <div className="flex flex-col gap-3">
+                  {messages.map((message) => {
+                    const isBot = Boolean(message.by_bot);
+                    return (
+                      <div
+                        key={`${message.id}-${message.message_id}`}
+                        className={`w-fit max-w-[72%] rounded-xl border px-3 py-2 text-sm break-words ${
+                          isBot
+                            ? "ml-auto self-end border-neutral-900 bg-neutral-900 text-white"
+                            : "self-start border-neutral-200 bg-white text-neutral-700"
+                        }`}
+                      >
+                        <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
+                          {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
+                        </div>
+                        <div className="mt-2 whitespace-pre-wrap break-words">{message.text || "(empty)"}</div>
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap">{message.text || "(empty)"}</div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               ) : selectedChatId ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
                   No stored messages yet. New messages will appear automatically.

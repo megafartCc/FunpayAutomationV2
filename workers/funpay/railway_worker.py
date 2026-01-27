@@ -1669,6 +1669,7 @@ def fetch_available_lot_accounts(
             "a.ID AS id",
             "a.account_name AS account_name",
             "a.login AS login",
+            "a.password AS password",
             "a.owner AS owner",
             "a.rental_start AS rental_start",
             "a.rental_duration AS rental_duration",
