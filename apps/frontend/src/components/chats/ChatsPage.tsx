@@ -165,10 +165,6 @@ const ChatsPage: React.FC = () => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  useEffect(() => {
-    void loadRentals();
-  }, [loadRentals]);
-
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
       if (!items.length) return null;
@@ -333,6 +329,10 @@ const ChatsPage: React.FC = () => {
     },
     [workspaceId],
   );
+
+  useEffect(() => {
+    void loadRentals();
+  }, [loadRentals]);
 
   useEffect(() => {
     void loadChats(chatSearch);
