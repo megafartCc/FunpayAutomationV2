@@ -178,6 +178,8 @@ const ChatsPage: React.FC = () => {
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
   const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
+  const historyCacheRef = useRef<Map<number, ChatMessageItem[]>>(new Map());
+  const historyCacheTimeRef = useRef<Map<number, number>>(new Map());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const keepScrollPinnedRef = useRef(true);
@@ -205,6 +207,8 @@ const ChatsPage: React.FC = () => {
   useEffect(() => {
     listSinceRef.current = null;
     hasLoadedChatsRef.current = false;
+    historyCacheRef.current.clear();
+    historyCacheTimeRef.current.clear();
   }, [workspaceId]);
 
   useEffect(() => {
@@ -327,42 +331,86 @@ const ChatsPage: React.FC = () => {
     [workspaceId, ensureSelection],
   );
 
+  const persistHistoryCache = useCallback(
+    (chatId: number, items: ChatMessageItem[]) => {
+      historyCacheRef.current.set(chatId, items);
+      historyCacheTimeRef.current.set(chatId, Date.now());
+      if (workspaceId) {
+        const cacheKey = chatHistoryCacheKey(workspaceId, chatId);
+        writeCache(cacheKey, items.slice(-100));
+      }
+    },
+    [workspaceId],
+  );
+
   const loadHistory = useCallback(
-    async (chatId: number | null, options?: { silent?: boolean; incremental?: boolean }) => {
+    async (
+      chatId: number | null,
+      options?: { silent?: boolean; incremental?: boolean; updateView?: boolean },
+    ) => {
       if (!workspaceId || !chatId) {
-        setMessages([]);
-        historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
+        if (options?.updateView !== false) {
+          setMessages([]);
+          historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
+        }
         return;
       }
       const seq = historyRequestRef.current.seq + 1;
       historyRequestRef.current = { seq, chatId };
 
       const cacheKey = chatHistoryCacheKey(workspaceId, chatId);
-      const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
+      const memoryCached = options?.incremental ? null : historyCacheRef.current.get(chatId) || null;
+      const cached =
+        memoryCached ?? (options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS));
+      const shouldUpdateView = options?.updateView !== false;
       if (cached) {
-        setMessages(cached);
-        updateChatPreview(chatId, cached);
-      } else if (!options?.incremental) {
+        persistHistoryCache(chatId, cached);
+        if (shouldUpdateView) {
+          setMessages(cached);
+          updateChatPreview(chatId, cached);
+        }
+      } else if (!options?.incremental && shouldUpdateView) {
         setMessages([]);
       }
-      const silent = options?.silent || Boolean(cached) || options?.incremental;
-      if (!silent) {
+      const silent = options?.silent || !shouldUpdateView || Boolean(cached) || options?.incremental;
+      if (!silent && shouldUpdateView) {
         setChatLoading(true);
       }
       try {
-        const baseItems = cached ?? messagesRef.current;
+        const baseItems =
+          cached ?? historyCacheRef.current.get(chatId) ?? (shouldUpdateView ? messagesRef.current : []);
         const lastServerId = getLastServerMessageId(baseItems);
         if ((options?.incremental || cached) && lastServerId > 0) {
           const res = await api.getChatHistory(chatId, workspaceId, 200, lastServerId);
           const incoming = res.items || [];
           if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
           if (incoming.length) {
-            const cleaned = stripPendingIfConfirmed(messagesRef.current, incoming);
+            const cleaned = stripPendingIfConfirmed(baseItems, incoming);
             const merged = dedupeMessages([...cleaned, ...incoming]);
-            setMessages(merged);
-            updateChatPreview(chatId, merged);
-            writeCache(cacheKey, merged.slice(-100));
+            persistHistoryCache(chatId, merged);
+            if (shouldUpdateView) {
+              setMessages(merged);
+              updateChatPreview(chatId, merged);
+            }
           }
+          if (shouldUpdateView) {
+            setChats((prev) =>
+              prev.map((chat) =>
+                chat.chat_id === chatId
+                  ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+                  : chat,
+              ),
+            );
+          }
+          return;
+        }
+        const res = await api.getChatHistory(chatId, workspaceId, 300);
+        const items = res.items || [];
+        if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
+        persistHistoryCache(chatId, items);
+        if (shouldUpdateView) {
+          setMessages(items);
+          updateChatPreview(chatId, items);
           setChats((prev) =>
             prev.map((chat) =>
               chat.chat_id === chatId
@@ -370,33 +418,19 @@ const ChatsPage: React.FC = () => {
                 : chat,
             ),
           );
-          return;
         }
-        const res = await api.getChatHistory(chatId, workspaceId, 300);
-        const items = res.items || [];
-        if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
-        setMessages(items);
-        updateChatPreview(chatId, items);
-        writeCache(cacheKey, items.slice(-100));
-        setChats((prev) =>
-          prev.map((chat) =>
-            chat.chat_id === chatId
-              ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
-              : chat,
-          ),
-        );
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           const message = (err as { message?: string })?.message || "Failed to load chat history.";
           setStatus(message);
         }
       } finally {
-        if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
+        if (!silent && shouldUpdateView && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           setChatLoading(false);
         }
       }
     },
-    [workspaceId],
+    [persistHistoryCache, workspaceId],
   );
 
   const loadRentals = useCallback(
@@ -459,6 +493,19 @@ const ChatsPage: React.FC = () => {
     const handle = window.setInterval(() => {
       void loadHistory(selectedChatId, { silent: true, incremental: true });
     }, 6_000);
+    return () => window.clearInterval(handle);
+  }, [workspaceId, selectedChatId, loadHistory]);
+
+  useEffect(() => {
+    if (!workspaceId) return undefined;
+    const handle = window.setInterval(() => {
+      const cachedIds = Array.from(historyCacheRef.current.keys());
+      if (!cachedIds.length) return;
+      cachedIds.forEach((chatId) => {
+        if (chatId === selectedChatId) return;
+        void loadHistory(chatId, { silent: true, incremental: true, updateView: false });
+      });
+    }, 10_000);
     return () => window.clearInterval(handle);
   }, [workspaceId, selectedChatId, loadHistory]);
 
