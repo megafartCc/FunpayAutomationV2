@@ -351,7 +351,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
               <span>Buyer</span>
               <span>MMR</span>
               <span>Workspace</span>
-              <span>Actions</span>
+              <span className="justify-self-end text-right">Actions</span>
             </div>
             <div className="max-h-[520px] overflow-y-auto">
               {loading ? (
@@ -391,7 +391,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                       </div>
                       <span className="text-xs text-neutral-500">{acc.mmr}</span>
                       <span className="truncate text-xs text-neutral-500">{workspaceLabel}</span>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 justify-self-end">
                         {chatHref ? (
                           <Link
                             to={chatHref}
