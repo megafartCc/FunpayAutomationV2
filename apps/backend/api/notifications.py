@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from api.auth import get_current_user
+from api.deps import get_current_user
 from db.notifications_repo import MySQLNotificationsRepo
 
 router = APIRouter()
