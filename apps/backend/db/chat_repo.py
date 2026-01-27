@@ -44,7 +44,7 @@ class MySQLChatRepo:
     def list_chats(
         self,
         user_id: int,
-        workspace_id: int | None,
+        workspace_id: int,
         *,
         query: str | None = None,
         since: datetime | None = None,
@@ -53,22 +53,19 @@ class MySQLChatRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
-            join_params: list = [int(user_id)]
-            params: list = [int(user_id)]
+            join_params: list = [int(user_id), int(workspace_id)]
+            params: list = [int(user_id), int(workspace_id)]
             time_expr = "c.last_message_time"
             join_sql = """
                 LEFT JOIN (
-                    SELECT chat_id, workspace_id, MAX(sent_time) AS last_sent_time
+                    SELECT chat_id, MAX(sent_time) AS last_sent_time
                     FROM chat_messages
-                    WHERE user_id = %s
-                    GROUP BY chat_id, workspace_id
-                ) m ON m.chat_id = c.chat_id AND m.workspace_id <=> c.workspace_id
+                    WHERE user_id = %s AND workspace_id = %s
+                    GROUP BY chat_id
+                ) m ON m.chat_id = c.chat_id
             """
             time_expr = "COALESCE(m.last_sent_time, c.last_message_time)"
-            where = "WHERE c.user_id = %s"
-            if workspace_id is not None:
-                where += " AND c.workspace_id = %s"
-                params.append(int(workspace_id))
+            where = "WHERE c.user_id = %s AND c.workspace_id = %s"
             if query:
                 q = f"%{query.strip().lower()}%"
                 where += " AND (LOWER(c.name) LIKE %s OR LOWER(c.last_message_text) LIKE %s)"

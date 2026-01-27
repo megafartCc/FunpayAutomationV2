@@ -85,15 +85,21 @@ def _format_duration_minutes(total_minutes: int) -> str:
     return f"{minutes} мин"
 
 
-def _build_admin_replace_message(account: dict, total_minutes: int) -> str:
-    name = account.get("account_name") or account.get("login") or f"ID {account.get('id')}"
+def _build_admin_replace_message(new_account: dict, old_account: dict, total_minutes: int) -> str:
+    name = new_account.get("account_name") or new_account.get("login") or f"ID {new_account.get('id')}"
+    old_name = old_account.get("account_name") or old_account.get("login") or f"ID {old_account.get('id')}"
     lines = [
         "✅ Админ сделал вам замену аккаунта.",
+        "Предыдущий аккаунт отключен и освобожден:",
+        f"ID: {old_account.get('id')}",
+        f"Название: {old_name}",
+        f"Логин: {old_account.get('login')}",
+        "",
         "Ваш аккаунт:",
-        f"ID: {account.get('id')}",
+        f"ID: {new_account.get('id')}",
         f"Название: {name}",
-        f"Логин: {account.get('login')}",
-        f"Пароль: {account.get('password')}",
+        f"Логин: {new_account.get('login')}",
+        f"Пароль: {new_account.get('password')}",
         f"Аренда: {_format_duration_minutes(total_minutes)}",
         "",
         "⏱️ Отсчет аренды начнется после первого получения кода (!код).",
@@ -323,29 +329,20 @@ def replace_rental(
         target_mmr = int(account.get("mmr"))
     except Exception:
         target_mmr = None
-    max_delta = payload.mmr_range if payload and payload.mmr_range is not None else 1000
-    effective_workspace_id = account.get("last_rented_workspace_id") or account.get("workspace_id") or workspace_id
-    if effective_workspace_id is None:
-        log_replacement_event("failed", "Workspace missing for replacement.", account)
-        raise HTTPException(status_code=400, detail="Workspace missing for replacement")
-    replacement = None
-    if target_mmr is not None:
-        replacement = accounts_repo.find_replacement_account(
-            user_id=int(user.id),
-            workspace_id=int(effective_workspace_id),
-            target_mmr=target_mmr,
-            exclude_id=int(account_id),
-            max_delta=int(max_delta),
-        )
-    if replacement is None:
-        replacement = accounts_repo.find_available_account(
-            user_id=int(user.id),
-            workspace_id=int(effective_workspace_id),
-            exclude_id=int(account_id),
-        )
+    if target_mmr is None:
+        log_replacement_event("failed", "MMR missing for replacement.", account)
+        raise HTTPException(status_code=400, detail="MMR missing for replacement")
+
+    replacement = accounts_repo.find_replacement_account(
+        user_id=int(user.id),
+        workspace_id=int(workspace_id),
+        target_mmr=target_mmr,
+        exclude_id=int(account_id),
+        max_delta=1000,
+    )
     if not replacement:
-        log_replacement_event("failed", "No replacement account found.", account)
-        raise HTTPException(status_code=404, detail="No replacement account found")
+        log_replacement_event("failed", "No replacement account found within 1000 MMR.", account)
+        raise HTTPException(status_code=404, detail="No replacement account found within 1000 MMR")
 
     rental_start = account.get("rental_start")
     if isinstance(rental_start, datetime):
@@ -373,7 +370,7 @@ def replace_rental(
         new_account_id=int(replacement.get("id") or 0),
         user_id=int(user.id),
         owner=str(owner),
-        workspace_id=int(effective_workspace_id),
+        workspace_id=int(workspace_id),
         rental_start=rental_start_str,
         rental_duration=base_hours,
         rental_duration_minutes=base_minutes,
@@ -395,9 +392,9 @@ def replace_rental(
 
     notify_owner(
         user_id=int(user.id),
-        workspace_id=int(effective_workspace_id),
+        workspace_id=int(workspace_id),
         owner=owner,
-        text=_build_admin_replace_message(replacement, base_minutes),
+        text=_build_admin_replace_message(replacement, account, base_minutes),
     )
     log_replacement_event(
         "ok",
