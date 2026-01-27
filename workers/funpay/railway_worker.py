@@ -101,6 +101,9 @@ RENTAL_PAUSE_IN_MATCH_MESSAGE = (
     "\u26a0\ufe0f \u041d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443 \u0432\u043e \u0432\u0440\u0435\u043c\u044f \u043c\u0430\u0442\u0447\u0430. "
     "\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u043c\u0430\u0442\u0447 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0441\u043d\u043e\u0432\u0430."
 )
+RENTAL_CODE_BLOCKED_MESSAGE = (
+    "\u23f8\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435, \u043a\u043e\u0434\u044b \u043d\u0430 \u0432\u0440\u0435\u043c\u044f \u043f\u0430\u0443\u0437\u044b \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b."
+)
 RENTAL_NOT_PAUSED_MESSAGE = (
     "\u25b6\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
 )
@@ -2644,9 +2647,14 @@ def handle_code_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
+    active_accounts = [acc for acc in accounts if not acc.get("rental_frozen")]
+    if not active_accounts:
+        send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
+        return True
+
     lines = ["\u041a\u043e\u0434\u044b Steam Guard:"]
     started_now = False
-    for acc in accounts:
+    for acc in active_accounts:
         display_name = build_display_name(acc)
         ok, code = get_steam_guard_code(acc.get("mafile_json"))
         login = acc.get("login") or "-"
@@ -2902,6 +2910,8 @@ def handle_pause_command(
     if not ok:
         send_chat_message(logger, account, chat_id, "\u274c \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443.")
         return True
+
+    deauthorize_account_sessions(logger, selected)
 
     pause_message = RENTAL_PAUSED_MESSAGE
     if len(accounts) > 1:
