@@ -251,6 +251,28 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS notification_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                event_type VARCHAR(64) NOT NULL,
+                status VARCHAR(16) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                message TEXT NULL,
+                owner VARCHAR(255) NULL,
+                account_name VARCHAR(255) NULL,
+                account_id BIGINT NULL,
+                order_id VARCHAR(32) NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_notifications_user_ws (user_id, workspace_id),
+                INDEX idx_notifications_event (event_type),
+                INDEX idx_notifications_owner (owner),
+                INDEX idx_notifications_account (account_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS chats (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 chat_id BIGINT NOT NULL,

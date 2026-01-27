@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
 from db.workspace_repo import MySQLWorkspaceRepo
+from db.notifications_repo import MySQLNotificationsRepo
 from services.steam_service import deauthorize_sessions, SteamWorkerError
 from services.chat_notify import notify_owner
 
@@ -16,6 +17,7 @@ from services.chat_notify import notify_owner
 router = APIRouter()
 accounts_repo = MySQLAccountRepo()
 workspace_repo = MySQLWorkspaceRepo()
+notifications_repo = MySQLNotificationsRepo()
 
 
 class AccountCreate(BaseModel):
@@ -397,6 +399,26 @@ def steam_deauthorize(account_id: int, workspace_id: int | None = None, user=Dep
             mafile_json=account.mafile_json,
         )
     except SteamWorkerError as exc:
+        notifications_repo.log_notification(
+            event_type="deauthorize",
+            status="failed",
+            title="Manual Steam deauthorize",
+            message=exc.message,
+            account_name=account.account_name,
+            account_id=account.id,
+            user_id=int(user.id),
+            workspace_id=int(workspace_id),
+        )
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
+    notifications_repo.log_notification(
+        event_type="deauthorize",
+        status="ok",
+        title="Manual Steam deauthorize",
+        message="Deauthorize request completed.",
+        account_name=account.account_name,
+        account_id=account.id,
+        user_id=int(user.id),
+        workspace_id=int(workspace_id),
+    )
     return {"success": True}
