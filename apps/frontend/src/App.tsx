@@ -153,6 +153,7 @@ const AppRoutes: React.FC = () => {
           <Route path="low-priority" element={<LowPriorityAccountsPage onToast={showToast} />} />
           <Route path="lots" element={<LotsPage />} />
           <Route path="chats" element={<ChatsPage />} />
+          <Route path="chats/:chatId" element={<ChatsPage />} />
           <Route path="add-account" element={<AddAccountPage />} />
           <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
           <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />

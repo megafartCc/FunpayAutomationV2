@@ -1,16 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../services/api";
 import type { ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
-const formatTime = (value?: string | number | null) => {
-  if (value === null || value === undefined || value === "") return "";
+const normalizeMskTime = (raw: string) => {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(trimmed)) {
+    return `${trimmed.replace(" ", "T")}+03:00`;
+  }
+  return trimmed;
+};
+
+const parseMskTimestamp = (value?: string | number | null) => {
+  if (value === null || value === undefined || value === "") return null;
   const raw = String(value);
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const normalized = normalizeMskTime(raw);
   const ts = Date.parse(normalized);
-  if (Number.isNaN(ts)) return raw;
-  return new Date(ts).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+  if (Number.isNaN(ts)) return null;
+  return new Date(ts);
+};
+
+const formatTime = (value?: string | number | null) => {
+  const dt = parseMskTimestamp(value);
+  if (!dt) return value ? String(value) : "";
+  return dt.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
 
 const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();
@@ -89,10 +106,8 @@ const dedupeMessages = (items: ChatMessageItem[]) => {
 };
 
 const parseChatTime = (value?: string | null) => {
-  if (!value) return 0;
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return 0;
-  return dt.getTime();
+  const dt = parseMskTimestamp(value);
+  return dt ? dt.getTime() : 0;
 };
 
 const statusPill = (status?: string | null) => {
@@ -123,8 +138,16 @@ const mergeChatUpdates = (prev: ChatItem[], incoming: ChatItem[]) => {
 };
 
 const ChatsPage: React.FC = () => {
+  const { chatId: chatIdParam } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { selectedId: selectedWorkspaceId } = useWorkspace();
   const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
+  const routeChatId = useMemo(() => {
+    if (!chatIdParam) return null;
+    const parsed = Number(chatIdParam);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [chatIdParam]);
 
   const [chatSearch, setChatSearch] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -134,7 +157,7 @@ const ChatsPage: React.FC = () => {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatListLoading, setChatListLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
-  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(() => routeChatId);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -148,10 +171,29 @@ const ChatsPage: React.FC = () => {
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
   const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const keepScrollPinnedRef = useRef(true);
+  const pendingScrollRef = useRef(false);
+
+  const syncChatRoute = useCallback(
+    (chatId: number | null) => {
+      if (!chatId) return;
+      const nextPath = `/chats/${chatId}${location.search}`;
+      if (location.pathname === `/chats/${chatId}`) return;
+      navigate(nextPath);
+    },
+    [navigate, location.pathname, location.search],
+  );
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    if (!routeChatId) return;
+    setSelectedChatId(routeChatId);
+  }, [routeChatId]);
 
   useEffect(() => {
     listSinceRef.current = null;
@@ -170,10 +212,36 @@ const ChatsPage: React.FC = () => {
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
       if (!items.length) return null;
+      if (routeChatId && items.some((chat) => chat.chat_id === routeChatId)) return routeChatId;
       if (current && items.some((chat) => chat.chat_id === current)) return current;
       return items[0]?.chat_id ?? null;
     });
-  }, []);
+  }, [routeChatId]);
+
+  const updateChatPreview = useCallback(
+    (chatId: number, items: ChatMessageItem[]) => {
+      if (!items.length) return;
+      const last = items[items.length - 1];
+      if (!last) return;
+      setChats((prev) => {
+        const next = prev.map((chat) =>
+          chat.chat_id === chatId
+            ? {
+                ...chat,
+                last_message_text: last.text || chat.last_message_text,
+                last_message_time: last.sent_time || chat.last_message_time,
+                unread: 0,
+              }
+            : chat,
+        );
+        if (workspaceId && !chatSearch.trim()) {
+          writeCache(chatListCacheKey(workspaceId), next);
+        }
+        return next;
+      });
+    },
+    [workspaceId, chatSearch],
+  );
 
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
@@ -284,6 +352,7 @@ const ChatsPage: React.FC = () => {
             const cleaned = stripPendingIfConfirmed(messagesRef.current, incoming);
             const merged = dedupeMessages([...cleaned, ...incoming]);
             setMessages(merged);
+            updateChatPreview(chatId, merged);
             writeCache(cacheKey, merged.slice(-100));
           }
           setChats((prev) =>
@@ -295,6 +364,7 @@ const ChatsPage: React.FC = () => {
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
         setMessages(items);
+        updateChatPreview(chatId, items);
         writeCache(cacheKey, items.slice(-100));
         setChats((prev) =>
           prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
@@ -376,6 +446,20 @@ const ChatsPage: React.FC = () => {
     return () => window.clearInterval(handle);
   }, [workspaceId, selectedChatId, loadHistory]);
 
+  useEffect(() => {
+    if (!selectedChatId) return;
+    pendingScrollRef.current = true;
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    if (!messageListRef.current || !messageEndRef.current) return;
+    if (!messages.length) return;
+    if (pendingScrollRef.current || keepScrollPinnedRef.current) {
+      pendingScrollRef.current = false;
+      messageEndRef.current.scrollIntoView({ block: "end" });
+    }
+  }, [messages, selectedChatId]);
+
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.chat_id === selectedChatId) || null,
     [chats, selectedChatId],
@@ -403,6 +487,9 @@ const ChatsPage: React.FC = () => {
 
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
+    pendingScrollRef.current = true;
+    keepScrollPinnedRef.current = true;
+    syncChatRoute(chatId);
   };
 
   const handleSend = async (event: React.FormEvent) => {
@@ -661,7 +748,16 @@ const ChatsPage: React.FC = () => {
                     Loading messages...
                   </div>
                 ) : messages.length ? (
-                  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+                  <div
+                    ref={messageListRef}
+                    className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
+                    onScroll={() => {
+                      const el = messageListRef.current;
+                      if (!el) return;
+                      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+                      keepScrollPinnedRef.current = distance < 120;
+                    }}
+                  >
                     {messages.map((message) => {
                       const isBot = Boolean(message.by_bot);
                       return (
@@ -682,6 +778,7 @@ const ChatsPage: React.FC = () => {
                         </div>
                       );
                     })}
+                    <div ref={messageEndRef} />
                   </div>
                 ) : selectedChatId ? (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">

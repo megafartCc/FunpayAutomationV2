@@ -29,7 +29,9 @@ const titles: Record<string, string> = {
 
 const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const location = useLocation();
-  const title = titles[location.pathname] || "Dashboard";
+  const title =
+    titles[location.pathname] ||
+    (location.pathname.startsWith("/chats") ? "Chats" : "Dashboard");
   const initial = user.username?.[0]?.toUpperCase() || "U";
 
   return (

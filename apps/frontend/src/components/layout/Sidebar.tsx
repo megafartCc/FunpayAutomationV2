@@ -192,7 +192,9 @@ const navIdToPath: Record<string, string> = {
 const pathToNavId = (path: string): string => {
   const clean = path.toLowerCase();
   const found = Object.entries(navIdToPath).find(([, p]) => p === clean);
-  return found?.[0] || "overview";
+  if (found) return found[0];
+  if (clean.startsWith("/chats/")) return "chats";
+  return "overview";
 };
 
 const Sidebar: React.FC = () => {
