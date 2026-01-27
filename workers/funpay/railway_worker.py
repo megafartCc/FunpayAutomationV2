@@ -45,6 +45,7 @@ COMMAND_PREFIXES = (
     "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430",
     "!\u043e\u0442\u043c\u0435\u043d\u0430",
     "!\u0430\u0434\u043c\u0438\u043d",
+    "!admin",
     "!\u043f\u0430\u0443\u0437\u0430",
     "!\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
 )
@@ -96,6 +97,13 @@ RENTAL_PAUSE_ALREADY_USED_MESSAGE = (
 RENTAL_ALREADY_PAUSED_MESSAGE = (
     "\u23f8\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u0443\u0436\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
 )
+RENTAL_PAUSE_IN_MATCH_MESSAGE = (
+    "\u26a0\ufe0f \u041d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443 \u0432\u043e \u0432\u0440\u0435\u043c\u044f \u043c\u0430\u0442\u0447\u0430. "
+    "\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u043c\u0430\u0442\u0447 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0441\u043d\u043e\u0432\u0430."
+)
+RENTAL_CODE_BLOCKED_MESSAGE = (
+    "\u23f8\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435, \u043a\u043e\u0434\u044b \u043d\u0430 \u0432\u0440\u0435\u043c\u044f \u043f\u0430\u0443\u0437\u044b \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b."
+)
 RENTAL_NOT_PAUSED_MESSAGE = (
     "\u25b6\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
 )
@@ -106,6 +114,11 @@ RENTAL_PAUSE_EXPIRED_MESSAGE = (
     "\u23f0 \u041f\u0430\u0443\u0437\u0430 \u0438\u0441\u0442\u0435\u043a\u043b\u0430 (\u043f\u0440\u043e\u0448\u043b\u043e 1 \u0447\u0430\u0441). \u0410\u0440\u0435\u043d\u0434\u0430 \u0432\u043e\u0437\u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
 )
 RENTAL_EXPIRED_MESSAGE = "\u0410\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c. \u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043a\u0440\u044b\u0442."
+ADMIN_CALLED_MESSAGE = (
+    "\u0411\u044b\u043b \u0432\u044b\u0437\u0432\u0430\u043d \u0430\u0434\u043c\u0438\u043d, \u043f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430 \u043e\u0436\u0438\u0434\u0430\u0439\u0442\u0435. "
+    "\u0412 \u0441\u043a\u043e\u0440\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u0438 \u0432\u0430\u043c \u043f\u043e\u043c\u043e\u0433\u0443\u0442, "
+    "\u043f\u043e\u043a\u0430 \u0447\u0442\u043e \u043e\u043f\u0438\u0448\u0438\u0442\u0435 \u0441\u0432\u043e\u044e \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u0443 \u0432\u043a\u0440\u0430\u0442\u0446\u0435."
+)
 RENTAL_EXPIRE_DELAY_MESSAGE = (
     "\u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c, \u043d\u043e \u043c\u044b \u0432\u0438\u0434\u0438\u043c, \u0447\u0442\u043e \u0432\u044b \u0432 \u043c\u0430\u0442\u0447\u0435.\n"
     "\u0423 \u0432\u0430\u0441 \u0435\u0441\u0442\u044c \u0432\u0440\u0435\u043c\u044f, \u0447\u0442\u043e\u0431\u044b \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u044c \u043c\u0430\u0442\u0447. \u0427\u0435\u0440\u0435\u0437 1 \u043c\u0438\u043d\u0443\u0442\u0443 \u044f \u043f\u0440\u043e\u0432\u0435\u0440\u044e \u0441\u043d\u043e\u0432\u0430.\n"
@@ -1763,15 +1776,15 @@ def update_rental_freeze_state(
 def deauthorize_account_sessions(
     logger: logging.Logger,
     account_row: dict,
-) -> bool:
+) -> tuple[bool, str]:
     base = os.getenv("STEAM_WORKER_URL", "").strip()
     if not base:
-        return False
+        return False, "STEAM_WORKER_URL is not set."
     login = account_row.get("login") or account_row.get("account_name")
     password = account_row.get("password") or ""
     mafile_json = account_row.get("mafile_json")
     if not login or not password or not mafile_json:
-        return False
+        return False, "Missing Steam credentials or mafile."
     url = f"{base.rstrip('/')}/api/steam/deauthorize"
     timeout = env_int("STEAM_WORKER_TIMEOUT", 90)
     payload = {
@@ -1783,11 +1796,15 @@ def deauthorize_account_sessions(
         resp = requests.post(url, json=payload, timeout=timeout)
     except requests.RequestException as exc:
         logger.warning("Steam worker request failed: %s", exc)
-        return False
+        return False, f"Steam worker request failed: {exc}"
     if resp.ok:
-        return True
+        return True, "Steam worker deauthorization completed successfully."
+    detail = ""
+    content = (resp.text or "").strip()
+    if content:
+        detail = f" Response: {content[:300]}"
     logger.warning("Steam worker error (status %s).", resp.status_code)
-    return False
+    return False, f"Steam worker error status {resp.status_code}.{detail}"
 
 
 def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> None:
@@ -1957,13 +1974,17 @@ def process_rental_monitor(
             continue
 
         if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
-            deauth_ok = deauthorize_account_sessions(logger, row)
+            deauth_ok, deauth_detail = deauthorize_account_sessions(logger, row)
+            base_message = "Auto deauthorize triggered by rental expiration."
+            detail_message = deauth_detail or base_message
+            if not deauth_ok:
+                detail_message = f"Auto deauthorize failed: {deauth_detail}"
             log_notification_event(
                 mysql_cfg,
                 event_type="deauthorize",
                 status="ok" if deauth_ok else "failed",
                 title="Steam deauthorize on expiry",
-                message="Auto deauthorize triggered by rental expiration.",
+                message=detail_message,
                 owner=owner,
                 account_name=row.get("account_name") or row.get("login"),
                 account_id=account_id,
@@ -2626,9 +2647,14 @@ def handle_code_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
+    active_accounts = [acc for acc in accounts if not acc.get("rental_frozen")]
+    if not active_accounts:
+        send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
+        return True
+
     lines = ["\u041a\u043e\u0434\u044b Steam Guard:"]
     started_now = False
-    for acc in accounts:
+    for acc in active_accounts:
         display_name = build_display_name(acc)
         ok, code = get_steam_guard_code(acc.get("mafile_json"))
         login = acc.get("login") or "-"
@@ -2864,6 +2890,13 @@ def handle_pause_command(
         send_chat_message(logger, account, chat_id, RENTAL_PAUSE_ALREADY_USED_MESSAGE)
         return True
 
+    steam_id = _steam_id_from_mafile(selected.get("mafile_json"))
+    if steam_id:
+        presence = fetch_presence(steam_id)
+        if presence.get("in_match"):
+            send_chat_message(logger, account, chat_id, RENTAL_PAUSE_IN_MATCH_MESSAGE)
+            return True
+
     now = datetime.utcnow()
     ok = update_rental_freeze_state(
         mysql_cfg,
@@ -2877,6 +2910,8 @@ def handle_pause_command(
     if not ok:
         send_chat_message(logger, account, chat_id, "\u274c \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443.")
         return True
+
+    deauthorize_account_sessions(logger, selected)
 
     pause_message = RENTAL_PAUSED_MESSAGE
     if len(accounts) > 1:
@@ -3273,6 +3308,41 @@ def _log_command_stub(
     return True
 
 
+def _handle_admin_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+    action: str,
+) -> bool:
+    _log_command_stub(
+        logger,
+        account,
+        site_username,
+        site_user_id,
+        workspace_id,
+        chat_name,
+        sender_username,
+        chat_id,
+        command,
+        args,
+        chat_url,
+        action,
+    )
+    if not chat_id:
+        logger.warning("Admin command ignored (missing chat_id).")
+        return False
+    send_chat_message(logger, account, int(chat_id), ADMIN_CALLED_MESSAGE)
+    return True
+
+
 def handle_command(
     logger: logging.Logger,
     account: Account,
@@ -3293,7 +3363,8 @@ def handle_command(
         "!\u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c": lambda *a: _log_command_stub(*a, action="extend"),
         "!\u043b\u043f\u0437\u0430\u043c\u0435\u043d\u0430": handle_low_priority_replace_command,
         "!\u043e\u0442\u043c\u0435\u043d\u0430": lambda *a: _log_command_stub(*a, action="cancel"),
-        "!\u0430\u0434\u043c\u0438\u043d": lambda *a: _log_command_stub(*a, action="admin"),
+        "!\u0430\u0434\u043c\u0438\u043d": lambda *a: _handle_admin_command(*a, action="admin"),
+        "!admin": lambda *a: _handle_admin_command(*a, action="admin"),
         "!\u043f\u0430\u0443\u0437\u0430": handle_pause_command,
         "!\u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c": handle_resume_command,
     }
