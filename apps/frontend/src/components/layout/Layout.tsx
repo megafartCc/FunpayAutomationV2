@@ -35,17 +35,17 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const initial = user.username?.[0]?.toUpperCase() || "U";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50">
-      <Sidebar />
-      <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceProvider>
+    <WorkspaceProvider>
+      <div className="flex h-screen overflow-hidden bg-neutral-50">
+        <Sidebar />
+        <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden">
           <TopBar title={title} userInitial={initial} onLogout={onLogout} />
           <main className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
             <Outlet />
           </main>
-        </WorkspaceProvider>
+        </div>
       </div>
-    </div>
+    </WorkspaceProvider>
   );
 };
 

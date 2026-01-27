@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
+
+import { api } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 const DashboardIcon = () => (
   <svg width="18" height="19" viewBox="0 0 18 19" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -202,6 +205,50 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const activeNav = pathToNavId(location.pathname);
   const totalBlacklisted = 0;
+  const { selectedId } = useWorkspace();
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [chatAdminCount, setChatAdminCount] = useState(0);
+  const workspaceId = selectedId === "all" ? null : (selectedId as number);
+
+  const chatBadge = useMemo(() => {
+    if (!workspaceId) return null;
+    if (chatAdminCount > 0) return { label: String(chatAdminCount), tone: "admin" as const };
+    if (chatUnreadCount > 0) return { label: String(chatUnreadCount), tone: "unread" as const };
+    return null;
+  }, [workspaceId, chatAdminCount, chatUnreadCount]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadChatBadges = async () => {
+      if (!workspaceId) {
+        if (isMounted) {
+          setChatUnreadCount(0);
+          setChatAdminCount(0);
+        }
+        return;
+      }
+      try {
+        const res = await api.listChats(workspaceId, undefined, 200);
+        if (!isMounted) return;
+        const items = res.items || [];
+        const unread = items.reduce((total, item) => total + Number(item.unread || 0), 0);
+        const admin = items.reduce((total, item) => total + Number(item.admin_unread_count || 0), 0);
+        setChatUnreadCount(unread);
+        setChatAdminCount(admin);
+      } catch {
+        if (isMounted) {
+          setChatUnreadCount(0);
+          setChatAdminCount(0);
+        }
+      }
+    };
+    void loadChatBadges();
+    const handle = window.setInterval(loadChatBadges, 12_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(handle);
+    };
+  }, [workspaceId]);
 
   return (
     <aside className="relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)]">
@@ -212,6 +259,7 @@ const Sidebar: React.FC = () => {
             {NAV_ITEMS.filter((i) => !BOTTOM_NAV_IDS.has(i.id)).map((item) => {
               const isActive = activeNav === item.id;
               const showBlacklistBadge = item.id === "blacklist" && totalBlacklisted > 0;
+              const showChatBadge = item.id === "chats" && chatBadge;
               return (
                 <motion.button
                   key={item.id}
@@ -246,6 +294,19 @@ const Sidebar: React.FC = () => {
                       {totalBlacklisted}
                     </span>
                   )}
+                  {showChatBadge && chatBadge ? (
+                    <span
+                      className={`relative z-10 ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : chatBadge.tone === "admin"
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {chatBadge.label}
+                    </span>
+                  ) : null}
                 </motion.button>
               );
             })}
