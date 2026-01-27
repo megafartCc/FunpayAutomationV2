@@ -5,27 +5,27 @@ import { api } from "../../services/api";
 import type { ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
-const normalizeMskTime = (raw: string) => {
+const normalizeUtcTime = (raw: string) => {
   const trimmed = raw.trim();
   if (!trimmed) return trimmed;
   if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) return trimmed;
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(trimmed)) {
-    return `${trimmed.replace(" ", "T")}+03:00`;
+    return `${trimmed.replace(" ", "T")}Z`;
   }
   return trimmed;
 };
 
-const parseMskTimestamp = (value?: string | number | null) => {
+const parseUtcTimestamp = (value?: string | number | null) => {
   if (value === null || value === undefined || value === "") return null;
   const raw = String(value);
-  const normalized = normalizeMskTime(raw);
+  const normalized = normalizeUtcTime(raw);
   const ts = Date.parse(normalized);
   if (Number.isNaN(ts)) return null;
   return new Date(ts);
 };
 
 const formatTime = (value?: string | number | null) => {
-  const dt = parseMskTimestamp(value);
+  const dt = parseUtcTimestamp(value);
   if (!dt) return value ? String(value) : "";
   return dt.toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
@@ -106,7 +106,7 @@ const dedupeMessages = (items: ChatMessageItem[]) => {
 };
 
 const parseChatTime = (value?: string | null) => {
-  const dt = parseMskTimestamp(value);
+  const dt = parseUtcTimestamp(value);
   return dt ? dt.getTime() : 0;
 };
 

@@ -409,7 +409,49 @@ _CHAT_TIME_RE_YMD = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(
 _CHAT_TIME_RE_DMY = re.compile(r"\b(\d{1,2})[./](\d{1,2})[./](\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
 _CHAT_TIME_RE_DM = re.compile(r"\b(\d{1,2})[./](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
 _CHAT_TIME_RE_TIME = re.compile(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+_CHAT_TIME_RE_RU_MONTH = re.compile(
+    r"\b(?P<day>\d{1,2})\s+(?P<month>[а-яё\.]+)\s*(?P<year>\d{4})?,?\s+"
+    r"(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?\b",
+    re.IGNORECASE,
+)
 _MSK_OFFSET = timedelta(hours=3)
+_RU_MONTHS = {
+    "января": 1,
+    "январь": 1,
+    "янв": 1,
+    "февраля": 2,
+    "февраль": 2,
+    "фев": 2,
+    "марта": 3,
+    "март": 3,
+    "мар": 3,
+    "апреля": 4,
+    "апрель": 4,
+    "апр": 4,
+    "мая": 5,
+    "май": 5,
+    "июня": 6,
+    "июнь": 6,
+    "июл": 7,
+    "июля": 7,
+    "июль": 7,
+    "августа": 8,
+    "август": 8,
+    "авг": 8,
+    "сентября": 9,
+    "сентябрь": 9,
+    "сен": 9,
+    "сент": 9,
+    "октября": 10,
+    "октябрь": 10,
+    "окт": 10,
+    "ноября": 11,
+    "ноябрь": 11,
+    "ноя": 11,
+    "декабря": 12,
+    "декабрь": 12,
+    "дек": 12,
+}
 
 
 def _msk_now() -> datetime:
@@ -485,6 +527,28 @@ def _parse_funpay_datetime(text: str | None) -> datetime | None:
 
     lowered = raw.lower()
     yesterday_flag = "\u0432\u0447\u0435\u0440\u0430" in lowered or "yesterday" in lowered
+    match = _CHAT_TIME_RE_RU_MONTH.search(raw)
+    if match:
+        day = int(match.group("day"))
+        month_raw = match.group("month") or ""
+        month_key = re.sub(r"[^a-zA-Zа-яА-ЯёЁ]", "", month_raw).lower()
+        month = _RU_MONTHS.get(month_key)
+        if month:
+            year_raw = match.group("year")
+            now_msk = _msk_now()
+            year_val = int(year_raw) if year_raw else now_msk.year
+            dt_msk = datetime(
+                year_val,
+                month,
+                day,
+                int(match.group("hour")),
+                int(match.group("minute")),
+                int(match.group("second") or 0),
+            )
+            if not year_raw and dt_msk > now_msk + timedelta(days=1):
+                dt_msk = dt_msk.replace(year=dt_msk.year - 1)
+            return _msk_to_utc(dt_msk)
+
     match = _CHAT_TIME_RE_TIME.search(raw)
     if match:
         hour, minute, second = match.groups()
@@ -531,6 +595,9 @@ def _extract_datetime_from_html(html: str | None) -> datetime | None:
             ("time" in class_lower or "date" in class_lower)
             and ("chat" in class_lower or "contact" in class_lower or "msg" in class_lower)
         ):
+            title = el.get("title")
+            if title:
+                candidates.append(str(title))
             text = el.get_text(" ", strip=True)
             if text:
                 candidates.append(text)
