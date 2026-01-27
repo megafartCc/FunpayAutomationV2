@@ -85,15 +85,21 @@ def _format_duration_minutes(total_minutes: int) -> str:
     return f"{minutes} мин"
 
 
-def _build_admin_replace_message(account: dict, total_minutes: int) -> str:
-    name = account.get("account_name") or account.get("login") or f"ID {account.get('id')}"
+def _build_admin_replace_message(new_account: dict, old_account: dict, total_minutes: int) -> str:
+    name = new_account.get("account_name") or new_account.get("login") or f"ID {new_account.get('id')}"
+    old_name = old_account.get("account_name") or old_account.get("login") or f"ID {old_account.get('id')}"
     lines = [
         "✅ Админ сделал вам замену аккаунта.",
+        "Предыдущий аккаунт отключен и освобожден:",
+        f"ID: {old_account.get('id')}",
+        f"Название: {old_name}",
+        f"Логин: {old_account.get('login')}",
+        "",
         "Ваш аккаунт:",
-        f"ID: {account.get('id')}",
+        f"ID: {new_account.get('id')}",
         f"Название: {name}",
-        f"Логин: {account.get('login')}",
-        f"Пароль: {account.get('password')}",
+        f"Логин: {new_account.get('login')}",
+        f"Пароль: {new_account.get('password')}",
         f"Аренда: {_format_duration_minutes(total_minutes)}",
         "",
         "⏱️ Отсчет аренды начнется после первого получения кода (!код).",
@@ -388,7 +394,7 @@ def replace_rental(
         user_id=int(user.id),
         workspace_id=int(workspace_id),
         owner=owner,
-        text=_build_admin_replace_message(replacement, base_minutes),
+        text=_build_admin_replace_message(replacement, account, base_minutes),
     )
     log_replacement_event(
         "ok",
