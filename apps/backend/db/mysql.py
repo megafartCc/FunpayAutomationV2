@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -33,6 +34,15 @@ class MySQLPool:
         if self._pool is None:
             self.init_pool()
         assert self._pool is not None
+        attempts = int(os.getenv("MYSQL_POOL_RETRY_ATTEMPTS", "3"))
+        delay = float(os.getenv("MYSQL_POOL_RETRY_DELAY", "0.05"))
+        for attempt in range(max(1, attempts)):
+            try:
+                return self._pool.get_connection()
+            except mysql.connector.errors.PoolError:
+                if attempt + 1 >= attempts:
+                    raise
+                time.sleep(delay)
         return self._pool.get_connection()
 
 
