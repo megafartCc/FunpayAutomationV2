@@ -10,10 +10,11 @@ const {
 } = process.env;
 
 const app = express();
+
 // CORS for browser clients (dashboard is on a different Railway origin)
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
@@ -52,24 +53,27 @@ client.on("friendsList", () => {
 setInterval(() => {
   if (!loggedOn) return;
   const ids = Object.keys(client.myFriends || {});
-  if (ids.length) {
-    client.getPersonas(ids);
-  }
+  if (ids.length) client.getPersonas(ids);
 }, 30000);
 
 client.on("user", (sid, user) => {
   const id64 = sid.getSteamID64();
   const previous = presence.get(id64);
+
   let rpRaw = user.rich_presence || {};
+  // Some updates come as empty array; keep last known raw if we have it
   if (Array.isArray(rpRaw) && rpRaw.length === 0 && previous) {
     rpRaw = previous.rich_presence_raw || rpRaw;
   }
+
   const rp = Array.isArray(rpRaw)
     ? Object.fromEntries(rpRaw.map((entry) => [entry.key, entry.value]))
     : rpRaw;
+
   if (user.gameid === "570" || user.gameid === 570) {
     console.log("[bridge] Dota RP", id64, rpRaw);
   }
+
   presence.set(id64, {
     steamid64: id64,
     persona_state: user.persona_state,
@@ -83,13 +87,16 @@ client.on("user", (sid, user) => {
 
 function isInDotaMatch(rp) {
   if (!rp || typeof rp !== "object") return false;
+
   const status = String(rp.status || "").toLowerCase();
   const display = String(rp.steam_display || "").toLowerCase();
   const lobby = String(rp.lobby || "").toLowerCase();
+
   const hasLevel = rp.level !== undefined;
   const hasMatchId = rp.matchid !== undefined || rp.watchable_match_id !== undefined;
   const hasStateOrMode = rp.state !== undefined || rp.mode !== undefined;
   const hasLobbyId = rp.lobby_id !== undefined || rp.lobbyid !== undefined || lobby.length > 0;
+
   const lobbyStates = ["run", "serversetup"];
   const indicators = [
     "heroselection",
@@ -103,7 +110,9 @@ function isInDotaMatch(rp) {
     "private_lobby",
     "finding_match",
   ];
+
   const lobbyStateHit = lobbyStates.some((kw) => lobby.includes(`lobby_state: ${kw}`));
+
   return (
     hasLevel ||
     hasMatchId ||
@@ -138,15 +147,18 @@ function normalizeKey(key) {
 
 function getRichPresenceValue(rp, rpRaw, key) {
   const target = normalizeKey(key);
+
   if (rp && typeof rp === "object") {
     for (const [k, v] of Object.entries(rp)) {
       if (normalizeKey(k) === target) return v;
     }
   }
+
   if (Array.isArray(rpRaw)) {
     const entry = rpRaw.find((e) => normalizeKey(e.key) === target);
     if (entry) return entry.value;
   }
+
   return undefined;
 }
 
@@ -160,13 +172,7 @@ function parseIntMaybe(value) {
 }
 
 function extractHeroToken(rp, rpRaw) {
-  const candidates = [
-    rp?.param2,
-    rp?.hero,
-    rp?.hero_name,
-    rp?.heroname,
-    rp?.npc_dota_hero,
-  ];
+  const candidates = [rp?.param2, rp?.hero, rp?.hero_name, rp?.heroname, rp?.npc_dota_hero];
   for (const value of candidates) {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
@@ -226,9 +232,7 @@ function formatMatchTime(seconds) {
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   return `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
@@ -265,66 +269,64 @@ function updateMatchStart(id64, inMatch, matchId, heroKey) {
       });
       return { entry: matchStart.get(id64), reset: true };
     }
+
     const heroChanged = heroKey && entry.heroKey && heroKey !== entry.heroKey;
     const matchChanged = matchId && entry.matchId && matchId !== entry.matchId;
     const reset = heroChanged || matchChanged;
+
     if (reset) {
       entry.startedAt = now;
       entry.matchId = matchId || null;
       entry.heroKey = heroKey || null;
     } else {
-      if (matchId && !entry.matchId) {
-        entry.matchId = matchId;
-      }
-      if (heroKey && !entry.heroKey) {
-        entry.heroKey = heroKey;
-      }
+      if (matchId && !entry.matchId) entry.matchId = matchId;
+      if (heroKey && !entry.heroKey) entry.heroKey = heroKey;
     }
+
     entry.lastSeenAt = now;
     entry.graceUntil = null;
     return { entry, reset };
   }
 
   if (!entry) return;
-  if (!entry.graceUntil) {
-    entry.graceUntil = now + MATCH_GRACE_MS;
-  }
-  if (entry.graceUntil <= now) {
-    matchStart.delete(id64);
-  }
+  if (!entry.graceUntil) entry.graceUntil = now + MATCH_GRACE_MS;
+  if (entry.graceUntil <= now) matchStart.delete(id64);
   return { entry, reset: false };
 }
 
 function derivePresence(data) {
   const rp = data.rich_presence || {};
   const rpRaw = data.rich_presence_raw || [];
+
   const lobbyRaw =
     rp.lobby ||
     (Array.isArray(rpRaw)
       ? rpRaw.find((e) => (e.key || "").toLowerCase() === "lobby")?.value || ""
       : "");
+
   const lobbyLower = String(lobbyRaw || "").toLowerCase();
   const lobbyStateHit = /lobby_state:\s*(run|serversetup)/.test(lobbyLower);
+
   const statusLower = String(rp.status || "").toLowerCase();
   const displayLower = String(rp.steam_display || "").toLowerCase();
   const statusKeywords = ["private_lobby", "finding_match", "playing", "match", "ranked", "turbo"];
-  const statusHit = statusKeywords.some(
-    (kw) => statusLower.includes(kw) || displayLower.includes(kw)
-  );
+  const statusHit = statusKeywords.some((kw) => statusLower.includes(kw) || displayLower.includes(kw));
+
   const inMatch = isInDotaMatch(rp) || isInDotaMatchRaw(rpRaw) || lobbyStateHit || statusHit;
   const inGame = !!(data.in_game || data.appid || lobbyRaw || statusHit);
+
   const matchId = extractMatchId(rp, rpRaw);
   const heroToken = extractHeroToken(rp, rpRaw);
   const heroKey = normalizeKey(heroToken);
+
   const update = updateMatchStart(data.steamid64, inMatch, matchId, heroKey || null);
 
   const heroName = toHeroDisplay(heroToken);
   const heroLevel = null;
 
   let matchSeconds = extractMatchSeconds(rp, rpRaw);
-  if (update?.reset) {
-    matchSeconds = 0;
-  }
+  if (update?.reset) matchSeconds = 0;
+
   if (!update?.reset && matchSeconds !== null && matchSeconds > 0) {
     const expectedStart = Date.now() - matchSeconds * 1000;
     const entry = matchStart.get(data.steamid64);
@@ -338,12 +340,12 @@ function derivePresence(data) {
       });
     }
   }
+
   if ((matchSeconds === null || matchSeconds <= 0) && inMatch) {
     const entry = matchStart.get(data.steamid64);
-    if (entry?.startedAt) {
-      matchSeconds = Math.max(0, Math.floor((Date.now() - entry.startedAt) / 1000));
-    }
+    if (entry?.startedAt) matchSeconds = Math.max(0, Math.floor((Date.now() - entry.startedAt) / 1000));
   }
+
   const matchTime = formatMatchTime(matchSeconds);
 
   return {
@@ -352,11 +354,66 @@ function derivePresence(data) {
     lobbyRaw,
     inMatch,
     inGame,
+    matchId,
     heroToken,
     heroName,
     heroLevel,
     matchSeconds,
     matchTime,
+  };
+}
+
+function requireDebugToken(req, res, next) {
+  // If you set PRESENCE_DEBUG_TOKEN, endpoint is protected
+  if (PRESENCE_DEBUG_TOKEN) {
+    const token = req.query.token || req.headers["x-debug-token"];
+    if (token !== PRESENCE_DEBUG_TOKEN) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+  }
+  next();
+}
+
+function buildDebugView(data) {
+  const derived = derivePresence(data);
+
+  // Make it super easy to scan raw rich presence (even if it is an object)
+  const rawPairs = Array.isArray(derived.rpRaw)
+    ? derived.rpRaw.map((e) => ({ key: e.key, value: e.value }))
+    : Object.entries(derived.rpRaw || {}).map(([key, value]) => ({ key, value }));
+
+  const rpPairs = derived.rp && typeof derived.rp === "object"
+    ? Object.entries(derived.rp).map(([key, value]) => ({ key, value }))
+    : [];
+
+  const searchableText = [
+    ...rpPairs.map((p) => `${String(p.key).toLowerCase()}=${String(p.value).toLowerCase()}`),
+    ...rawPairs.map((p) => `${String(p.key).toLowerCase()}=${String(p.value).toLowerCase()}`),
+    `lobby=${String(derived.lobbyRaw || "").toLowerCase()}`,
+    `appid=${String(data.appid || "").toLowerCase()}`,
+  ].join(" | ");
+
+  return {
+    steamid64: data.steamid64,
+    persona_state: data.persona_state,
+    appid: data.appid,
+    in_game_flag: data.in_game,
+    last_updated: data.last_updated,
+    derived: {
+      in_game: derived.inGame,
+      in_match: derived.inMatch,
+      lobby_info: derived.lobbyRaw || "",
+      match_id: derived.matchId || null,
+      hero_token: derived.heroToken || null,
+      hero_name: derived.heroName || null,
+      hero_level: derived.heroLevel ?? null,
+      match_seconds: derived.matchSeconds ?? null,
+      match_time: derived.matchTime ?? null,
+    },
+    rich_presence_object: derived.rp,     // object form
+    rich_presence_pairs: rpPairs,         // array form (easy to read)
+    rich_presence_raw_pairs: rawPairs,    // raw from steam-user
+    searchable_text: searchableText,      // one-line string you can grep visually
   };
 }
 
@@ -385,7 +442,9 @@ app.get("/presence/:steamid", (req, res) => {
   const sid = req.params.steamid;
   const data = presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
+
   const derived = derivePresence(data);
+
   res.json({
     in_game: derived.inGame,
     in_match: derived.inMatch,
@@ -416,7 +475,42 @@ app.get("/presencefull/:steamid", (req, res) => {
       hero_level: derived.heroLevel ?? null,
       match_seconds: derived.matchSeconds ?? null,
       match_time: derived.matchTime ?? null,
+      match_id: derived.matchId ?? null,
+      in_game: derived.inGame,
+      in_match: derived.inMatch,
+      lobby_info: derived.lobbyRaw || "",
     },
+  });
+});
+
+/**
+ * NEW: Debug endpoint that shows EVERYTHING in a clean, readable way.
+ * Protected by PRESENCE_DEBUG_TOKEN if you set it.
+ *
+ * Usage:
+ *   /debug/presence/STEAMID64?token=YOUR_TOKEN
+ * or:
+ *   curl -H "x-debug-token: YOUR_TOKEN" https://.../debug/presence/STEAMID64
+ */
+app.get("/debug/presence/:steamid", requireDebugToken, (req, res) => {
+  const sid = req.params.steamid;
+  const data = presence.get(sid);
+  if (!data) return res.status(404).json({ error: "not_found" });
+
+  res.json(buildDebugView(data));
+});
+
+/**
+ * Optional convenience: list cached IDs (debug only).
+ * Helpful if you forget the exact steamid64 keys in your map.
+ *
+ * Usage:
+ *   /debug/keys?token=YOUR_TOKEN
+ */
+app.get("/debug/keys", requireDebugToken, (_req, res) => {
+  res.json({
+    count: presence.size,
+    steamids: Array.from(presence.keys()).slice(0, 500),
   });
 });
 
