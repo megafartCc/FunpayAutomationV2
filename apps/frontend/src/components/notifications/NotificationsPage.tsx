@@ -59,7 +59,6 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [eventFilter, setEventFilter] = useState("all");
-  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
@@ -167,13 +166,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                       <span
                         className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}
                       >
-                        <button
-                          type="button"
-                          className="outline-none"
-                          onClick={() => setSelectedNotification(notification)}
-                        >
-                          {pill.label}
-                        </button>
+                        {pill.label}
                       </span>
                       <span className="min-w-0 truncate text-xs text-neutral-600">{details}</span>
                       <div className="min-w-0">
@@ -201,71 +194,6 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
-      {selectedNotification && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-neutral-900">
-                  {eventLabel(selectedNotification.event_type)}
-                </div>
-                <div className="text-xs text-neutral-500">{selectedNotification.title || "-"}</div>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
-                onClick={() => setSelectedNotification(null)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="mt-4 grid gap-3 text-xs text-neutral-600">
-              <div>
-                <div className="text-[11px] font-semibold text-neutral-500">Status</div>
-                <div>{selectedNotification.status || "-"}</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-neutral-500">Details</div>
-                <div className="whitespace-pre-wrap break-words text-sm text-neutral-700">
-                  {selectedNotification.message || "-"}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold text-neutral-500">Account</div>
-                  <div>
-                    {selectedNotification.account_name ||
-                      (selectedNotification.account_id ? `Account ${selectedNotification.account_id}` : "-")}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold text-neutral-500">Buyer</div>
-                  <div>{selectedNotification.owner || "-"}</div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold text-neutral-500">Order</div>
-                  <div className="font-mono">{selectedNotification.order_id || "-"}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold text-neutral-500">Workspace</div>
-                  <div>
-                    {formatWorkspaceLabel(
-                      selectedNotification.workspace_id,
-                      selectedNotification.workspace_name,
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-neutral-500">Date</div>
-                <div>{formatMoscowDateTime(selectedNotification.created_at)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
