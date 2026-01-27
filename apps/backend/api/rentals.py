@@ -237,7 +237,7 @@ def freeze_rental(
             user_id=int(user.id),
             workspace_id=int(workspace_id),
             owner=account.get("owner"),
-            text=f"Админ поставил аренду на паузу для аккаунта {account_id}.",
+            text="Администратор заморозил вашу аренду. Доступ приостановлен.",
         )
         return {"success": True, "frozen": True}
 
@@ -276,7 +276,7 @@ def freeze_rental(
         user_id=int(user.id),
         workspace_id=int(workspace_id),
         owner=account.get("owner"),
-        text=f"Админ снял паузу аренды для аккаунта {account_id}.",
+        text="Администратор разморозил вашу аренду. Доступ восстановлен. Что бы получить код еще раз пропишите команду !код",
     )
     return {"success": True, "frozen": False}
 

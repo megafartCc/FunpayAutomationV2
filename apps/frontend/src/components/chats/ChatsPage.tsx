@@ -49,9 +49,11 @@ type CacheEnvelope<T> = {
   items: T[];
 };
 
-const chatListCacheKey = (workspaceId: number) => `chat:list:${CHAT_CACHE_VERSION}:${workspaceId}`;
-const chatHistoryCacheKey = (workspaceId: number, chatId: number) =>
-  `chat:history:${CHAT_CACHE_VERSION}:${workspaceId}:${chatId}`;
+const cacheWorkspaceKey = (workspaceId: number | null) => (workspaceId === null ? "all" : String(workspaceId));
+const chatListCacheKey = (workspaceId: number | null) =>
+  `chat:list:${CHAT_CACHE_VERSION}:${cacheWorkspaceKey(workspaceId)}`;
+const chatHistoryCacheKey = (workspaceId: number | null, chatId: number) =>
+  `chat:history:${CHAT_CACHE_VERSION}:${cacheWorkspaceKey(workspaceId)}:${chatId}`;
 
 const readCache = <T,>(key: string, ttlMs: number): T[] | null => {
   try {
@@ -148,8 +150,8 @@ const ChatsPage: React.FC = () => {
   const { chatId: chatIdParam } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { workspaces } = useWorkspace();
-  const workspaceId = null;
+  const { workspaces, selectedId: selectedWorkspaceId } = useWorkspace();
+  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
   const workspaceNameMap = useMemo(() => {
     const map = new Map<number, string>();
     for (const ws of workspaces) {
@@ -248,7 +250,7 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        if (workspaceId !== null && !chatSearch.trim()) {
+        if (!chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
@@ -265,7 +267,7 @@ const ChatsPage: React.FC = () => {
             ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
             : chat,
         );
-        if (workspaceId !== null && !chatSearch.trim()) {
+        if (!chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
@@ -364,8 +366,6 @@ const ChatsPage: React.FC = () => {
       if (cached) {
         setMessages(cached);
         updateChatPreview(chatId, cached);
-      } else if (!options?.incremental) {
-        setMessages([]);
       }
       const silent = options?.silent || Boolean(cached) || options?.incremental;
       if (!silent) {
@@ -550,7 +550,7 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        if (workspaceIdForChat !== null) {
+        if (!chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceIdForChat), next);
         }
         return next;
@@ -665,7 +665,9 @@ const ChatsPage: React.FC = () => {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
-            <p className="text-sm text-neutral-500">All workspaces combined for faster triage.</p>
+            <p className="text-sm text-neutral-500">
+              {workspaceId === null ? "All workspaces combined for faster triage." : "Workspace scoped chat inbox."}
+            </p>
           </div>
           <button
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
@@ -708,6 +710,7 @@ const ChatsPage: React.FC = () => {
                   const adminCount = Number(chat.admin_unread_count || 0);
                   const hasAdmin = adminCount > 0 || Boolean(chat.admin_requested);
                   const unreadCount = Number(chat.unread || 0);
+                  const showWorkspacePill = workspaceId === null;
                   const workspaceLabel = chat.workspace_id
                     ? workspaceNameMap.get(chat.workspace_id) || `Workspace ${chat.workspace_id}`
                     : "Global";
@@ -726,13 +729,15 @@ const ChatsPage: React.FC = () => {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="truncate text-sm font-semibold">{chat.name || "Buyer"}</div>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            isActive ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"
-                          }`}
-                        >
-                          {workspaceLabel}
-                        </span>
+                        {showWorkspacePill ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isActive ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"
+                            }`}
+                          >
+                            {workspaceLabel}
+                          </span>
+                        ) : null}
                         <span className={`text-[11px] ${isActive ? "text-neutral-200" : "text-neutral-400"}`}>
                           {formatTime(chat.last_message_time)}
                         </span>
@@ -781,7 +786,7 @@ const ChatsPage: React.FC = () => {
                   <div className="text-xs text-neutral-500">
                     {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
                   </div>
-                  {selectedChat ? (
+                  {selectedChat && workspaceId === null ? (
                     <div className="mt-1 inline-flex rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-600">
                       {selectedChat.workspace_id
                         ? workspaceNameMap.get(selectedChat.workspace_id) ||
@@ -967,15 +972,17 @@ const ChatsPage: React.FC = () => {
               <div className="mt-3 space-y-1 text-xs text-neutral-600">
                 <div>Buyer: {selectedChat?.name || "-"}</div>
                 <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
-                <div>
-                  Workspace:{" "}
-                  {selectedChat
-                    ? selectedChat.workspace_id
-                      ? workspaceNameMap.get(selectedChat.workspace_id) ||
-                        `Workspace ${selectedChat.workspace_id}`
-                      : "Global"
-                    : "-"}
-                </div>
+                {workspaceId === null ? (
+                  <div>
+                    Workspace:{" "}
+                    {selectedChat
+                      ? selectedChat.workspace_id
+                        ? workspaceNameMap.get(selectedChat.workspace_id) ||
+                          `Workspace ${selectedChat.workspace_id}`
+                        : "Global"
+                      : "-"}
+                  </div>
+                ) : null}
                 <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
               </div>
             </div>
