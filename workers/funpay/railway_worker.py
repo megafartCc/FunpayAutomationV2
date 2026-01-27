@@ -880,6 +880,13 @@ def invalidate_chat_cache(user_id: int, workspace_id: int | None, chat_id: int) 
             continue
 
 
+def _is_admin_command(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return "!админ" in lowered or "!admin" in lowered
+
+
 def fetch_presence(steam_id: str | None) -> dict:
     if not steam_id:
         return {}
@@ -1093,8 +1100,11 @@ def upsert_chat_summary(
             return
         cursor.execute(
             """
-            INSERT INTO chats (chat_id, name, last_message_text, last_message_time, unread, user_id, workspace_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO chats (
+                chat_id, name, last_message_text, last_message_time, unread,
+                admin_unread_count, admin_requested, user_id, workspace_id
+            )
+            VALUES (%s, %s, %s, %s, %s, 0, 0, %s, %s)
             ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 last_message_text = VALUES(last_message_text),
@@ -1160,6 +1170,21 @@ def insert_chat_message(
                 int(workspace_id) if workspace_id is not None else None,
             ),
         )
+        inserted = cursor.rowcount == 1
+        if inserted and _is_admin_command(text) and not by_bot:
+            cursor.execute(
+                """
+                UPDATE chats
+                SET admin_unread_count = admin_unread_count + 1,
+                    admin_requested = 1
+                WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+                """,
+                (
+                    int(user_id),
+                    int(workspace_id) if workspace_id is not None else None,
+                    int(chat_id),
+                ),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -1309,6 +1334,65 @@ def log_order_history(
                     int(workspace_id) if workspace_id is not None else None,
                 ),
             )
+        conn.commit()
+        log_notification_event(
+            mysql_cfg,
+            event_type="purchase",
+            status="ok",
+            title="Order activity",
+            message=f"Order {order_key} action: {action}.",
+            owner=owner_key,
+            account_name=account_name,
+            account_id=account_id,
+            order_id=order_key,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
+    finally:
+        conn.close()
+
+
+def log_notification_event(
+    mysql_cfg: dict,
+    *,
+    event_type: str,
+    status: str,
+    title: str,
+    user_id: int,
+    workspace_id: int | None = None,
+    message: str | None = None,
+    owner: str | None = None,
+    account_name: str | None = None,
+    account_id: int | None = None,
+    order_id: str | None = None,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "notification_logs"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO notification_logs (
+                event_type, status, title, message, owner, account_name,
+                account_id, order_id, user_id, workspace_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                event_type,
+                status,
+                title,
+                message,
+                normalize_owner_name(owner) if owner else None,
+                account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                int(account_id) if account_id is not None else None,
+                order_id.strip() if isinstance(order_id, str) and order_id.strip() else None,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -1873,8 +1957,32 @@ def process_rental_monitor(
             continue
 
         if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
-            deauthorize_account_sessions(logger, row)
+            deauth_ok = deauthorize_account_sessions(logger, row)
+            log_notification_event(
+                mysql_cfg,
+                event_type="deauthorize",
+                status="ok" if deauth_ok else "failed",
+                title="Steam deauthorize on expiry",
+                message="Auto deauthorize triggered by rental expiration.",
+                owner=owner,
+                account_name=row.get("account_name") or row.get("login"),
+                account_id=account_id,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
         released = release_account_in_db(mysql_cfg, account_id, int(user_id), workspace_id)
+        log_notification_event(
+            mysql_cfg,
+            event_type="rental_expired",
+            status="ok" if released else "failed",
+            title="Rental expired",
+            message="Rental expired and account was released." if released else "Rental expired but release failed.",
+            owner=owner,
+            account_name=row.get("account_name") or row.get("login"),
+            account_id=account_id,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
         if released:
             send_message_by_owner(logger, account, owner, RENTAL_EXPIRED_MESSAGE)
         _clear_expire_delay_state(state, account_id)

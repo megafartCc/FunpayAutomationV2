@@ -17,6 +17,8 @@ class ChatSummary:
     last_message_text: Optional[str]
     last_message_time: Optional[str]
     unread: int
+    admin_unread_count: int
+    admin_requested: int
     user_id: int
     workspace_id: Optional[int]
 
@@ -74,11 +76,12 @@ class MySQLChatRepo:
             cursor.execute(
                 f"""
                 SELECT c.id, c.chat_id, c.name, c.last_message_text, {time_expr} AS last_message_time,
-                       c.unread, c.user_id, c.workspace_id
+                       c.unread, c.admin_unread_count, c.admin_requested, c.user_id, c.workspace_id
                 FROM chats c
                 {join_sql}
                 {where}
-                ORDER BY (c.unread IS NULL), c.unread DESC, {time_expr} DESC, c.id DESC
+                ORDER BY (c.admin_requested IS NULL), c.admin_requested DESC,
+                         (c.unread IS NULL), c.unread DESC, {time_expr} DESC, c.id DESC
                 LIMIT %s
                 """,
                 tuple(join_params + params + [int(max(1, min(limit, 500)))]),
@@ -92,6 +95,8 @@ class MySQLChatRepo:
                     last_message_text=row.get("last_message_text"),
                     last_message_time=str(row.get("last_message_time")) if row.get("last_message_time") else None,
                     unread=int(row.get("unread") or 0),
+                    admin_unread_count=int(row.get("admin_unread_count") or 0),
+                    admin_requested=int(row.get("admin_requested") or 0),
                     user_id=int(row.get("user_id") or user_id),
                     workspace_id=row.get("workspace_id"),
                 )
@@ -221,12 +226,14 @@ class MySQLChatRepo:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                UPDATE chats
-                SET unread = 0
-                WHERE user_id = %s AND workspace_id = %s AND chat_id = %s
-                """,
-                (int(user_id), int(workspace_id), int(chat_id)),
-            )
+            UPDATE chats
+            SET unread = 0,
+                admin_unread_count = 0,
+                admin_requested = 0
+            WHERE user_id = %s AND workspace_id = %s AND chat_id = %s
+            """,
+            (int(user_id), int(workspace_id), int(chat_id)),
+        )
             conn.commit()
         finally:
             conn.close()

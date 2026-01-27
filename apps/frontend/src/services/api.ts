@@ -128,6 +128,21 @@ export type OrderHistoryItem = {
   created_at?: string | null;
 };
 
+export type NotificationItem = {
+  id: number;
+  event_type: string;
+  status: string;
+  title: string;
+  message?: string | null;
+  owner?: string | null;
+  account_name?: string | null;
+  account_id?: number | null;
+  order_id?: string | null;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  created_at?: string | null;
+};
+
 export type ActiveRentalItem = {
   id: number;
   account: string;
@@ -164,6 +179,8 @@ export type ChatItem = {
   last_message_text?: string | null;
   last_message_time?: string | null;
   unread?: number;
+  admin_unread_count?: number;
+  admin_requested?: number;
   workspace_id?: number | null;
 };
 
@@ -332,6 +349,15 @@ export const api = {
     const suffix = params.toString();
     return request<{ items: OrderHistoryItem[] }>(
       withWorkspace(`/orders/history${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
+  listNotifications: (workspaceId?: number | null, limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: NotificationItem[] }>(
+      withWorkspace(`/notifications${suffix ? `?${suffix}` : ""}`, workspaceId),
       { method: "GET" },
     );
   },
