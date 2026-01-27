@@ -15,10 +15,16 @@ const LotsPage: React.FC = () => {
 
   const accountOptions = useMemo(
     () =>
-      accounts.map((acc) => ({
-        id: acc.id,
-        label: `${acc.account_name} (ID ${acc.id})`,
-      })),
+      accounts.map((acc) => {
+        const hasWorkspace = Boolean(acc.workspace_name || acc.workspace_id);
+        const workspaceLabel = hasWorkspace
+          ? `• ${acc.workspace_name || `ID ${acc.workspace_id}`}`
+          : "";
+        return {
+          id: acc.id,
+          label: `${acc.account_name} (ID ${acc.id}) ${workspaceLabel}`.trim(),
+        };
+      }),
     [accounts],
   );
 
@@ -38,7 +44,7 @@ const LotsPage: React.FC = () => {
     }
     let mounted = true;
     setLoading(true);
-    Promise.all([api.listAccounts(selectedWorkspaceId as number), api.listLots(selectedWorkspaceId as number)])
+    Promise.all([api.listAccounts(), api.listLots(selectedWorkspaceId as number)])
       .then(([accountsRes, lotsRes]) => {
         if (!mounted) return;
         setAccounts(accountsRes.items || []);
