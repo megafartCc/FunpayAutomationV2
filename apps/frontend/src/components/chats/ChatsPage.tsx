@@ -250,7 +250,7 @@ const ChatsPage: React.FC = () => {
               }
             : chat,
         );
-        if (!chatSearch.trim()) {
+        if (workspaceId !== null && !chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
@@ -267,7 +267,7 @@ const ChatsPage: React.FC = () => {
             ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
             : chat,
         );
-        if (!chatSearch.trim()) {
+        if (workspaceId !== null && !chatSearch.trim()) {
           writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
@@ -279,7 +279,16 @@ const ChatsPage: React.FC = () => {
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       const trimmedQuery = query?.trim() || "";
-      const cacheKey = trimmedQuery || workspaceId === null ? null : chatListCacheKey(workspaceId);
+      if (workspaceId === null) {
+        setChats([]);
+        setSelectedChatId(null);
+        setMessages([]);
+        setStatus("Select a workspace to view chats.");
+        listSinceRef.current = null;
+        hasLoadedChatsRef.current = false;
+        return;
+      }
+      const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
         setChats(cached);
@@ -351,9 +360,7 @@ const ChatsPage: React.FC = () => {
         historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
         return;
       }
-      const workspaceIdForChat =
-        chats.find((chat) => chat.chat_id === chatId)?.workspace_id ?? workspaceId;
-      if (workspaceIdForChat === null || workspaceIdForChat === undefined) {
+      if (workspaceId === null) {
         setMessages([]);
         historyRequestRef.current = { seq: historyRequestRef.current.seq + 1, chatId: null };
         return;
@@ -406,7 +413,7 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId, markChatRead, updateChatPreview, chats],
+    [workspaceId, markChatRead, updateChatPreview],
   );
 
   const loadRentals = useCallback(
@@ -515,8 +522,7 @@ const ChatsPage: React.FC = () => {
   const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedChatId) return;
-    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
-    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
+    if (workspaceId === null) return;
     const text = draft.trim();
     if (!text) return;
     const optimistic: ChatMessageItem = {
@@ -551,7 +557,7 @@ const ChatsPage: React.FC = () => {
             : chat,
         );
         if (!chatSearch.trim()) {
-          writeCache(chatListCacheKey(workspaceIdForChat), next);
+          writeCache(chatListCacheKey(workspaceId), next);
         }
         return next;
       });
@@ -566,8 +572,7 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
-    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
+    if (workspaceId === null) return;
     if (rentalActionBusy) return;
     const hours = Number(extendHours || 0);
     const minutes = Number(extendMinutes || 0);
@@ -598,8 +603,7 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
-    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
+    if (workspaceId === null) return;
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
@@ -618,8 +622,7 @@ const ChatsPage: React.FC = () => {
       setStatus("Select an active rental first.");
       return;
     }
-    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
-    if (workspaceIdForChat === null || workspaceIdForChat === undefined) return;
+    if (workspaceId === null) return;
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
@@ -634,9 +637,8 @@ const ChatsPage: React.FC = () => {
   };
 
   const handleReplaceRental = async () => {
-    const workspaceIdForChat = selectedChat?.workspace_id ?? workspaceId;
-    if (workspaceIdForChat === null || workspaceIdForChat === undefined) {
-      setStatus("Select a chat to replace rentals.");
+    if (workspaceId === null) {
+      setStatus("Select a workspace to replace rentals.");
       return;
     }
     if (!selectedRental) {
@@ -710,7 +712,6 @@ const ChatsPage: React.FC = () => {
                   const adminCount = Number(chat.admin_unread_count || 0);
                   const hasAdmin = adminCount > 0 || Boolean(chat.admin_requested);
                   const unreadCount = Number(chat.unread || 0);
-                  const showWorkspacePill = workspaceId === null;
                   const workspaceLabel = chat.workspace_id
                     ? workspaceNameMap.get(chat.workspace_id) || `Workspace ${chat.workspace_id}`
                     : "Global";
@@ -729,7 +730,7 @@ const ChatsPage: React.FC = () => {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="truncate text-sm font-semibold">{chat.name || "Buyer"}</div>
-                        {showWorkspacePill ? (
+                        {workspaceId === null ? (
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                               isActive ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-600"
@@ -972,17 +973,15 @@ const ChatsPage: React.FC = () => {
               <div className="mt-3 space-y-1 text-xs text-neutral-600">
                 <div>Buyer: {selectedChat?.name || "-"}</div>
                 <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
-                {workspaceId === null ? (
-                  <div>
-                    Workspace:{" "}
-                    {selectedChat
-                      ? selectedChat.workspace_id
-                        ? workspaceNameMap.get(selectedChat.workspace_id) ||
-                          `Workspace ${selectedChat.workspace_id}`
-                        : "Global"
-                      : "-"}
-                  </div>
-                ) : null}
+                <div>
+                  Workspace:{" "}
+                  {selectedChat
+                    ? selectedChat.workspace_id
+                      ? workspaceNameMap.get(selectedChat.workspace_id) ||
+                        `Workspace ${selectedChat.workspace_id}`
+                      : "Global"
+                    : "-"}
+                </div>
                 <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
               </div>
             </div>
