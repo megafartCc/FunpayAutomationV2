@@ -14,6 +14,7 @@ import BlacklistPage from "./components/blacklist/BlacklistPage";
 import OrdersHistoryPage from "./components/orders/OrdersHistoryPage";
 import ChatsPage from "./components/chats/ChatsPage";
 import LowPriorityAccountsPage from "./components/lowPriority/LowPriorityAccountsPage";
+import NotificationsPage from "./components/notifications/NotificationsPage";
 
 type Toast = { message: string; isError?: boolean } | null;
 
@@ -156,7 +157,7 @@ const AppRoutes: React.FC = () => {
           <Route path="chats/:chatId" element={<ChatsPage />} />
           <Route path="add-account" element={<AddAccountPage />} />
           <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
-          <Route path="notifications" element={<DashboardPlaceholder title="Notifications" />} />
+          <Route path="notifications" element={<NotificationsPage onToast={showToast} />} />
           <Route path="settings" element={<SettingsPage onToast={showToast} />} />
         </Route>
       </Routes>
