@@ -97,6 +97,10 @@ RENTAL_PAUSE_ALREADY_USED_MESSAGE = (
 RENTAL_ALREADY_PAUSED_MESSAGE = (
     "\u23f8\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u0443\u0436\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
 )
+RENTAL_PAUSE_IN_MATCH_MESSAGE = (
+    "\u26a0\ufe0f \u041d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0435\u043d\u0434\u0443 \u043d\u0430 \u043f\u0430\u0443\u0437\u0443 \u0432\u043e \u0432\u0440\u0435\u043c\u044f \u043c\u0430\u0442\u0447\u0430. "
+    "\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u043c\u0430\u0442\u0447 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0441\u043d\u043e\u0432\u0430."
+)
 RENTAL_NOT_PAUSED_MESSAGE = (
     "\u25b6\ufe0f \u0410\u0440\u0435\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430 \u043f\u0430\u0443\u0437\u0435."
 )
@@ -2877,6 +2881,13 @@ def handle_pause_command(
     if frozen_at:
         send_chat_message(logger, account, chat_id, RENTAL_PAUSE_ALREADY_USED_MESSAGE)
         return True
+
+    steam_id = _steam_id_from_mafile(selected.get("mafile_json"))
+    if steam_id:
+        presence = fetch_presence(steam_id)
+        if presence.get("in_match"):
+            send_chat_message(logger, account, chat_id, RENTAL_PAUSE_IN_MATCH_MESSAGE)
+            return True
 
     now = datetime.utcnow()
     ok = update_rental_freeze_state(
