@@ -40,7 +40,7 @@ const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCa
 
 const ADMIN_REPLACE_LABEL = "Replace account (admin)";
 
-const CHAT_CACHE_VERSION = "v1";
+const CHAT_CACHE_VERSION = "v2";
 const CHAT_LIST_CACHE_TTL_MS = 30_000;
 const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
 
