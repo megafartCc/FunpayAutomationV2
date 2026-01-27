@@ -160,7 +160,7 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
         steam_id = _steam_id_from_mafile(record.mafile_json)
         presence = fetch_presence(steam_id)
-        status = presence_status_label(presence)
+        status = "Frozen" if int(getattr(record, "rental_frozen", 0) or 0) else presence_status_label(presence)
         hero = ""
         match_time = ""
         if presence:
@@ -237,7 +237,7 @@ def freeze_rental(
             user_id=int(user.id),
             workspace_id=int(workspace_id),
             owner=account.get("owner"),
-            text=f"Админ поставил аренду на паузу для аккаунта {account_id}.",
+            text="Администратор заморозил вашу аренду. Доступ приостановлен.",
         )
         return {"success": True, "frozen": True}
 
@@ -276,7 +276,7 @@ def freeze_rental(
         user_id=int(user.id),
         workspace_id=int(workspace_id),
         owner=account.get("owner"),
-        text=f"Админ снял паузу аренды для аккаунта {account_id}.",
+        text="Администратор разморозил вашу аренду. Доступ восстановлен. Что бы получить код еще раз пропишите команду !код",
     )
     return {"success": True, "frozen": False}
 
