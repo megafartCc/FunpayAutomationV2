@@ -1132,7 +1132,7 @@ def fetch_lot_mapping(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen
-                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority` AS `low_priority`' if has_low_priority else ', 0 AS `low_priority`'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
@@ -1677,9 +1677,9 @@ def fetch_available_lot_accounts(
             "a.workspace_id AS workspace_id",
         ]
         if has_low_priority:
-            select_fields.append("a.`low_priority` AS low_priority")
+            select_fields.append("a.`low_priority` AS `low_priority`")
         else:
-            select_fields.append("0 AS low_priority")
+            select_fields.append("0 AS `low_priority`")
         if has_lots:
             select_fields.extend(["l.lot_number AS lot_number", "l.lot_url AS lot_url"])
         else:
@@ -1755,7 +1755,7 @@ def fetch_lot_account(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen
-                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority` AS `low_priority`' if has_low_priority else ', 0 AS `low_priority`'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM lots l
@@ -2042,7 +2042,7 @@ def fetch_owner_accounts(
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json,
                    a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    a.account_frozen, a.rental_frozen{', a.rental_frozen_at' if has_frozen_at else ''}
-                   {', a.`low_priority`' if has_low_priority else ', 0 AS low_priority'}
+                   {', a.`low_priority` AS `low_priority`' if has_low_priority else ', 0 AS `low_priority`'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
             FROM accounts a
