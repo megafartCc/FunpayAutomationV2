@@ -119,6 +119,8 @@ LOT_NUMBER_RE = re.compile(r"(?:\u2116|#)\s*(\d+)")
 _processed_orders: dict[str, set[str]] = {}
 _processed_orders_lock = threading.Lock()
 _redis_client = None
+_chat_history_prefetch_seen: dict[tuple[int, int | None, int], float] = {}
+_chat_history_prefetch_lock = threading.Lock()
 
 
 @dataclass
@@ -529,6 +531,56 @@ def _presence_cache_empty_ttl_seconds() -> int:
     return int(os.getenv("PRESENCE_CACHE_EMPTY_TTL_SECONDS", "5"))
 
 
+def _chat_history_prefetch_cooldown_seconds() -> int:
+    return int(os.getenv("CHAT_HISTORY_PREFETCH_COOLDOWN_SECONDS", "600"))
+
+
+def _should_prefetch_history(user_id: int, workspace_id: int | None, chat_id: int) -> bool:
+    now = time.time()
+    key = (int(user_id), int(workspace_id) if workspace_id is not None else -1, int(chat_id))
+    cooldown = _chat_history_prefetch_cooldown_seconds()
+    with _chat_history_prefetch_lock:
+        last = _chat_history_prefetch_seen.get(key)
+        if last is not None and now - last < cooldown:
+            return False
+        _chat_history_prefetch_seen[key] = now
+    return True
+
+
+def _chat_cache_workspace_key(workspace_id: int | None) -> str:
+    return "none" if workspace_id is None else str(int(workspace_id))
+
+
+def _chat_list_cache_pattern(user_id: int, workspace_id: int | None) -> str:
+    return f"chat:list:{int(user_id)}:{_chat_cache_workspace_key(workspace_id)}:*"
+
+
+def _chat_history_cache_pattern(user_id: int, workspace_id: int | None, chat_id: int) -> str:
+    return f"chat:history:{int(user_id)}:{_chat_cache_workspace_key(workspace_id)}:{int(chat_id)}:*"
+
+
+def invalidate_chat_cache(user_id: int, workspace_id: int | None, chat_id: int) -> None:
+    cache = _get_redis()
+    if not cache:
+        return
+    patterns = [
+        _chat_list_cache_pattern(user_id, workspace_id),
+        _chat_history_cache_pattern(user_id, workspace_id, chat_id),
+    ]
+    for pattern in patterns:
+        try:
+            batch: list[str] = []
+            for key in cache.scan_iter(match=pattern):
+                batch.append(str(key))
+                if len(batch) >= 200:
+                    cache.delete(*batch)
+                    batch.clear()
+            if batch:
+                cache.delete(*batch)
+        except Exception:
+            continue
+
+
 def fetch_presence(steam_id: str | None) -> dict:
     if not steam_id:
         return {}
@@ -747,7 +799,12 @@ def upsert_chat_summary(
             ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 last_message_text = VALUES(last_message_text),
-                last_message_time = VALUES(last_message_time),
+                last_message_time = CASE
+                    WHEN VALUES(last_message_time) IS NULL THEN last_message_time
+                    WHEN last_message_text IS NULL OR VALUES(last_message_text) <> last_message_text
+                        THEN VALUES(last_message_time)
+                    ELSE last_message_time
+                END,
                 unread = VALUES(unread)
             """,
             (
@@ -807,6 +864,7 @@ def insert_chat_message(
         conn.commit()
     finally:
         conn.close()
+    invalidate_chat_cache(int(user_id), workspace_id, int(chat_id))
 
 
 def fetch_chat_outbox(
@@ -1051,6 +1109,94 @@ def fetch_lot_mapping(
         conn.close()
 
 
+def fetch_chats_missing_history(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chat_ids: list[int],
+) -> list[int]:
+    if not chat_ids:
+        return []
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "chat_messages"):
+            return list(chat_ids)
+        placeholders = ", ".join(["%s"] * len(chat_ids))
+        cursor.execute(
+            f"""
+            SELECT DISTINCT chat_id
+            FROM chat_messages
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id IN ({placeholders})
+            """,
+            tuple([int(user_id), int(workspace_id) if workspace_id is not None else None, *chat_ids]),
+        )
+        existing = {int(row[0]) for row in (cursor.fetchall() or [])}
+        return [cid for cid in chat_ids if int(cid) not in existing]
+    finally:
+        conn.close()
+
+
+def prefetch_chat_histories(
+    logger: logging.Logger,
+    mysql_cfg: dict,
+    account: Account,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chats: dict[int, str | None],
+) -> None:
+    if not env_bool("CHAT_HISTORY_PREFETCH_ENABLED", True):
+        return
+    max_chats = env_int("CHAT_HISTORY_PREFETCH_LIMIT", 8)
+    if max_chats <= 0:
+        return
+    chat_ids = list(chats.keys())
+    missing = fetch_chats_missing_history(
+        mysql_cfg,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+        chat_ids=chat_ids,
+    )
+    if not missing:
+        return
+    missing = [cid for cid in missing if _should_prefetch_history(int(user_id), workspace_id, cid)]
+    if not missing:
+        return
+    missing = missing[:max_chats]
+    batch_size = env_int("CHAT_HISTORY_PREFETCH_BATCH", 4)
+    msg_limit = env_int("CHAT_HISTORY_PREFETCH_MESSAGES", 50)
+    for idx in range(0, len(missing), max(1, batch_size)):
+        chunk = missing[idx : idx + max(1, batch_size)]
+        try:
+            histories = account.get_chats_histories({cid: chats.get(cid) for cid in chunk}) or {}
+        except Exception as exc:
+            logger.debug("Chat history prefetch failed: %s", exc)
+            continue
+        for chat_id, messages in histories.items():
+            if not messages:
+                continue
+            trimmed = messages[-msg_limit:] if msg_limit > 0 else messages
+            for msg in trimmed:
+                try:
+                    insert_chat_message(
+                        mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=workspace_id,
+                        chat_id=int(chat_id),
+                        message_id=int(getattr(msg, "id", 0) or 0),
+                        author=getattr(msg, "author", None) or getattr(msg, "chat_name", None),
+                        text=getattr(msg, "text", None),
+                        by_bot=bool(getattr(msg, "by_bot", False)),
+                        message_type=getattr(getattr(msg, "type", None), "name", None),
+                        sent_time=None,
+                    )
+                except Exception:
+                    continue
+
+
 def sync_chats_list(
     mysql_cfg: dict,
     account: Account,
@@ -1062,6 +1208,7 @@ def sync_chats_list(
         chats_map = account.get_chats(update=True) or {}
     except Exception:
         return
+    chat_names: dict[int, str | None] = {}
     for chat in chats_map.values():
         try:
             upsert_chat_summary(
@@ -1074,8 +1221,18 @@ def sync_chats_list(
                 unread=bool(getattr(chat, "unread", False)),
                 last_message_time=datetime.utcnow(),
             )
+            chat_names[int(chat.id)] = getattr(chat, "name", None)
         except Exception:
             continue
+    if chat_names:
+        prefetch_chat_histories(
+            logging.getLogger("funpay.worker"),
+            mysql_cfg,
+            account,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            chats=chat_names,
+        )
 
 
 def process_chat_outbox(

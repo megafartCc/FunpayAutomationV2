@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 import mysql.connector
@@ -44,6 +45,7 @@ class MySQLChatRepo:
         workspace_id: int,
         *,
         query: str | None = None,
+        since: datetime | None = None,
         limit: int = 200,
     ) -> list[ChatSummary]:
         conn = self._get_conn()
@@ -55,6 +57,9 @@ class MySQLChatRepo:
                 q = f"%{query.strip().lower()}%"
                 where += " AND (LOWER(name) LIKE %s OR LOWER(last_message_text) LIKE %s)"
                 params.extend([q, q])
+            elif since is not None:
+                where += " AND last_message_time >= %s"
+                params.append(since)
             cursor.execute(
                 f"""
                 SELECT id, chat_id, name, last_message_text, last_message_time, unread, user_id, workspace_id
@@ -89,22 +94,32 @@ class MySQLChatRepo:
         chat_id: int,
         *,
         limit: int = 200,
+        after_id: int | None = None,
     ) -> list[ChatMessage]:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            where = "WHERE user_id = %s AND workspace_id = %s AND chat_id = %s"
+            params: list = [int(user_id), int(workspace_id), int(chat_id)]
+            after_value = int(after_id) if after_id is not None and int(after_id) > 0 else None
+            order_clause = "ORDER BY id DESC"
+            if after_value is not None:
+                where += " AND id > %s"
+                params.append(after_value)
+                order_clause = "ORDER BY id ASC"
             cursor.execute(
-                """
+                f"""
                 SELECT id, message_id, chat_id, author, text, sent_time, by_bot, message_type, user_id, workspace_id
                 FROM chat_messages
-                WHERE user_id = %s AND workspace_id = %s AND chat_id = %s
-                ORDER BY id DESC
+                {where}
+                {order_clause}
                 LIMIT %s
                 """,
-                (int(user_id), int(workspace_id), int(chat_id), int(max(1, min(limit, 500)))),
+                tuple(params + [int(max(1, min(limit, 500)))]),
             )
             rows = cursor.fetchall() or []
-            rows.reverse()
+            if after_value is None:
+                rows.reverse()
             return [
                 ChatMessage(
                     id=int(row["id"]),

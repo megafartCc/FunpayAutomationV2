@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
@@ -8,6 +8,99 @@ const formatTime = (value?: string | null) => {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleString();
+};
+
+const CHAT_CACHE_VERSION = "v1";
+const CHAT_LIST_CACHE_TTL_MS = 30_000;
+const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
+
+type CacheEnvelope<T> = {
+  ts: number;
+  items: T[];
+};
+
+const chatListCacheKey = (workspaceId: number) => `chat:list:${CHAT_CACHE_VERSION}:${workspaceId}`;
+const chatHistoryCacheKey = (workspaceId: number, chatId: number) =>
+  `chat:history:${CHAT_CACHE_VERSION}:${workspaceId}:${chatId}`;
+
+const readCache = <T,>(key: string, ttlMs: number): T[] | null => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const payload = JSON.parse(raw) as CacheEnvelope<T>;
+    if (!payload || typeof payload.ts !== "number" || !Array.isArray(payload.items)) return null;
+    if (Date.now() - payload.ts > ttlMs) return null;
+    return payload.items;
+  } catch {
+    return null;
+  }
+};
+
+const writeCache = <T,>(key: string, items: T[]) => {
+  try {
+    const payload: CacheEnvelope<T> = { ts: Date.now(), items };
+    window.localStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // ignore cache errors
+  }
+};
+
+const getLastServerMessageId = (items: ChatMessageItem[]) => {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item.message_type === "pending") continue;
+    if (typeof item.id === "number" && item.id > 0) return item.id;
+  }
+  return 0;
+};
+
+const stripPendingIfConfirmed = (items: ChatMessageItem[], incoming: ChatMessageItem[]) => {
+  if (!incoming.length) return items;
+  const incomingText = new Set(
+    incoming
+      .filter((msg) => msg.by_bot || msg.author === "You")
+      .map((msg) => (msg.text || "").trim())
+      .filter(Boolean),
+  );
+  if (!incomingText.size) return items;
+  return items.filter(
+    (msg) => msg.message_type !== "pending" || !incomingText.has((msg.text || "").trim()),
+  );
+};
+
+const dedupeMessages = (items: ChatMessageItem[]) => {
+  const seen = new Set<string>();
+  const result: ChatMessageItem[] = [];
+  for (const item of items) {
+    const key = item.message_id && item.message_id > 0 ? `m:${item.message_id}` : `id:${item.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+};
+
+const parseChatTime = (value?: string | null) => {
+  if (!value) return 0;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return 0;
+  return dt.getTime();
+};
+
+const getMaxChatTime = (items: ChatItem[]) =>
+  items.reduce((max, item) => Math.max(max, parseChatTime(item.last_message_time)), 0);
+
+const mergeChatUpdates = (prev: ChatItem[], incoming: ChatItem[]) => {
+  if (!incoming.length) return prev;
+  const updatedIds = new Set<number>();
+  for (const chat of incoming) {
+    updatedIds.add(chat.chat_id);
+  }
+  const updated = incoming
+    .slice()
+    .sort((a, b) => parseChatTime(b.last_message_time) - parseChatTime(a.last_message_time));
+  const remaining = prev.filter((chat) => !updatedIds.has(chat.chat_id));
+  return [...updated, ...remaining];
 };
 
 const ChatsPage: React.FC = () => {
@@ -22,52 +115,152 @@ const ChatsPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const messagesRef = useRef<ChatMessageItem[]>([]);
+  const listSinceRef = useRef<string | null>(null);
+  const hasLoadedChatsRef = useRef(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    listSinceRef.current = null;
+    hasLoadedChatsRef.current = false;
+  }, [workspaceId]);
+
+  const ensureSelection = useCallback((items: ChatItem[]) => {
+    setSelectedChatId((current) => {
+      if (!items.length) return null;
+      if (current && items.some((chat) => chat.chat_id === current)) return current;
+      return items[0]?.chat_id ?? null;
+    });
+  }, []);
 
   const loadChats = useCallback(
-    async (query?: string) => {
+    async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       if (!workspaceId) {
         setChats([]);
         setSelectedChatId(null);
         setMessages([]);
         setStatus("Select a workspace to view chats.");
+        listSinceRef.current = null;
+        hasLoadedChatsRef.current = false;
         return;
       }
-      setChatListLoading(true);
+      const trimmedQuery = query?.trim() || "";
+      const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
+      const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
+      if (cached && !hasLoadedChatsRef.current) {
+        setChats(cached);
+        setStatus(null);
+        ensureSelection(cached);
+        hasLoadedChatsRef.current = true;
+        const cachedMax = getMaxChatTime(cached);
+        if (cachedMax > 0) {
+          listSinceRef.current = new Date(cachedMax).toISOString();
+        }
+      }
+      const canIncremental = Boolean(options?.incremental && !trimmedQuery && listSinceRef.current);
+      const silent = options?.silent || Boolean(cached) || (options?.incremental && hasLoadedChatsRef.current);
+      if (!silent) {
+        setChatListLoading(true);
+      }
       try {
-        const res = await api.listChats(workspaceId, query?.trim() || undefined, 300);
+        const since = canIncremental ? listSinceRef.current || undefined : undefined;
+        const res = await api.listChats(workspaceId, trimmedQuery || undefined, 300, since);
         const items = res.items || [];
+        if (canIncremental) {
+          if (items.length) {
+            setChats((prev) => {
+              const merged = mergeChatUpdates(prev, items);
+              if (cacheKey) {
+                writeCache(cacheKey, merged);
+              }
+              ensureSelection(merged);
+              return merged;
+            });
+            const nextMax = getMaxChatTime(items);
+            if (nextMax > 0) {
+              const currentMax = listSinceRef.current ? Date.parse(listSinceRef.current) : 0;
+              const finalMax = Math.max(currentMax, nextMax);
+              listSinceRef.current = new Date(finalMax).toISOString();
+            }
+          }
+          return;
+        }
         setChats(items);
         setStatus(null);
-        if (!selectedChatId && items.length) {
-          setSelectedChatId(items[0].chat_id);
-        } else if (selectedChatId && !items.some((c) => c.chat_id === selectedChatId)) {
-          setSelectedChatId(items[0]?.chat_id ?? null);
+        ensureSelection(items);
+        hasLoadedChatsRef.current = true;
+        const maxTs = getMaxChatTime(items);
+        if (maxTs > 0) {
+          listSinceRef.current = new Date(maxTs).toISOString();
+        }
+        if (cacheKey) {
+          writeCache(cacheKey, items);
         }
       } catch (err) {
-        const message = (err as { message?: string })?.message || "Failed to load chats.";
-        setStatus(message);
+        if (!silent) {
+          const message = (err as { message?: string })?.message || "Failed to load chats.";
+          setStatus(message);
+        }
       } finally {
-        setChatListLoading(false);
+        if (!silent) {
+          setChatListLoading(false);
+        }
       }
     },
-    [workspaceId, selectedChatId],
+    [workspaceId, ensureSelection],
   );
 
   const loadHistory = useCallback(
-    async (chatId: number | null) => {
+    async (chatId: number | null, options?: { silent?: boolean; incremental?: boolean }) => {
       if (!workspaceId || !chatId) {
         setMessages([]);
         return;
       }
-      setChatLoading(true);
+      const cacheKey = chatHistoryCacheKey(workspaceId, chatId);
+      const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
+      if (cached) {
+        setMessages(cached);
+      }
+      const silent = options?.silent || Boolean(cached) || options?.incremental;
+      if (!silent) {
+        setChatLoading(true);
+      }
       try {
+        const baseItems = cached ?? messagesRef.current;
+        const lastServerId = getLastServerMessageId(baseItems);
+        if ((options?.incremental || cached) && lastServerId > 0) {
+          const res = await api.getChatHistory(chatId, workspaceId, 200, lastServerId);
+          const incoming = res.items || [];
+          if (incoming.length) {
+            const cleaned = stripPendingIfConfirmed(messagesRef.current, incoming);
+            const merged = dedupeMessages([...cleaned, ...incoming]);
+            setMessages(merged);
+            writeCache(cacheKey, merged.slice(-100));
+          }
+          setChats((prev) =>
+            prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
+          );
+          return;
+        }
         const res = await api.getChatHistory(chatId, workspaceId, 300);
-        setMessages(res.items || []);
+        const items = res.items || [];
+        setMessages(items);
+        writeCache(cacheKey, items.slice(-100));
+        setChats((prev) =>
+          prev.map((chat) => (chat.chat_id === chatId ? { ...chat, unread: 0 } : chat)),
+        );
       } catch (err) {
-        const message = (err as { message?: string })?.message || "Failed to load chat history.";
-        setStatus(message);
+        if (!silent) {
+          const message = (err as { message?: string })?.message || "Failed to load chat history.";
+          setStatus(message);
+        }
       } finally {
-        setChatLoading(false);
+        if (!silent) {
+          setChatLoading(false);
+        }
       }
     },
     [workspaceId],
@@ -85,8 +278,25 @@ const ChatsPage: React.FC = () => {
   }, [chatSearch, loadChats]);
 
   useEffect(() => {
+    if (!workspaceId) return undefined;
+    if (chatSearch.trim()) return undefined;
+    const handle = window.setInterval(() => {
+      void loadChats(chatSearch, { silent: true, incremental: true });
+    }, 12_000);
+    return () => window.clearInterval(handle);
+  }, [workspaceId, chatSearch, loadChats]);
+
+  useEffect(() => {
     void loadHistory(selectedChatId);
   }, [selectedChatId, loadHistory]);
+
+  useEffect(() => {
+    if (!workspaceId || !selectedChatId) return undefined;
+    const handle = window.setInterval(() => {
+      void loadHistory(selectedChatId, { silent: true, incremental: true });
+    }, 6_000);
+    return () => window.clearInterval(handle);
+  }, [workspaceId, selectedChatId, loadHistory]);
 
   const selectedChat = useMemo(
     () => chats.find((chat) => chat.chat_id === selectedChatId) || null,
@@ -105,30 +315,38 @@ const ChatsPage: React.FC = () => {
     if (!text) return;
     const optimistic: ChatMessageItem = {
       id: Date.now(),
-      message_id: Date.now(),
+      message_id: 0,
       chat_id: selectedChatId,
       author: "You",
       text,
       sent_time: new Date().toISOString(),
       by_bot: 1,
-      message_type: "manual",
+      message_type: "pending",
       workspace_id: workspaceId,
     };
-    setMessages((prev) => [...prev, optimistic]);
+    const historyKey = chatHistoryCacheKey(workspaceId, selectedChatId);
+    setMessages((prev) => {
+      const next = [...prev, optimistic];
+      writeCache(historyKey, next.slice(-100));
+      return next;
+    });
     setDraft("");
     try {
       await api.sendChatMessage(selectedChatId, text, workspaceId);
-      setChats((prev) =>
-        prev.map((chat) =>
+      setChats((prev) => {
+        const next = prev.map((chat) =>
           chat.chat_id === selectedChatId
             ? {
                 ...chat,
                 last_message_text: text,
                 last_message_time: new Date().toISOString(),
+                unread: 0,
               }
             : chat,
-        ),
-      );
+        );
+        writeCache(chatListCacheKey(workspaceId), next);
+        return next;
+      });
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to send message.";
       setStatus(message);
@@ -145,7 +363,7 @@ const ChatsPage: React.FC = () => {
           </div>
           <button
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
-            onClick={() => loadChats(chatSearch)}
+            onClick={() => loadChats(chatSearch, { silent: true, incremental: !chatSearch.trim() })}
           >
             Refresh
           </button>
@@ -268,6 +486,10 @@ const ChatsPage: React.FC = () => {
                     </div>
                   );
                 })
+              ) : selectedChatId ? (
+                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                  No stored messages yet. New messages will appear automatically.
+                </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
                   Select a chat to view messages.

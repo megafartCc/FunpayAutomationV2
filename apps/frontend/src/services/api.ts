@@ -335,19 +335,21 @@ export const api = {
     request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
   checkWorkspaceProxy: (workspaceId: number) =>
     request<WorkspaceProxyCheck>(`/workspaces/${workspaceId}/proxy-check`, { method: "POST" }),
-  listChats: (workspaceId?: number | null, query?: string, limit?: number) => {
+  listChats: (workspaceId?: number | null, query?: string, limit?: number, since?: string) => {
     const params = new URLSearchParams();
     if (query) params.set("query", query);
     if (limit) params.set("limit", String(limit));
+    if (since) params.set("since", since);
     const suffix = params.toString();
     return request<{ items: ChatItem[] }>(
       withWorkspace(`/chats${suffix ? `?${suffix}` : ""}`, workspaceId),
       { method: "GET" },
     );
   },
-  getChatHistory: (chatId: number, workspaceId?: number | null, limit?: number) => {
+  getChatHistory: (chatId: number, workspaceId?: number | null, limit?: number, afterId?: number | null) => {
     const params = new URLSearchParams();
     if (limit) params.set("limit", String(limit));
+    if (afterId) params.set("after_id", String(afterId));
     const suffix = params.toString();
     return request<{ items: ChatMessageItem[] }>(
       withWorkspace(`/chats/${chatId}/history${suffix ? `?${suffix}` : ""}`, workspaceId),
