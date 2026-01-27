@@ -239,6 +239,60 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chats (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                name VARCHAR(255) NULL,
+                last_message_text TEXT NULL,
+                last_message_time TIMESTAMP NULL,
+                unread TINYINT(1) NOT NULL DEFAULT 0,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_chat_user_ws (user_id, workspace_id, chat_id),
+                INDEX idx_chats_user_ws (user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                message_id BIGINT NOT NULL,
+                chat_id BIGINT NOT NULL,
+                author VARCHAR(255) NULL,
+                text TEXT NULL,
+                sent_time TIMESTAMP NULL,
+                by_bot TINYINT(1) NOT NULL DEFAULT 0,
+                message_type VARCHAR(32) NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_chat_message (user_id, workspace_id, chat_id, message_id),
+                INDEX idx_chat_messages_chat (chat_id, user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_outbox (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                text TEXT NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                attempts INT NOT NULL DEFAULT 0,
+                last_error TEXT NULL,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMP NULL,
+                INDEX idx_outbox_status (status, user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()

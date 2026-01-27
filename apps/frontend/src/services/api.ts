@@ -156,6 +156,28 @@ export type WorkspaceProxyCheck = {
   error?: string | null;
 };
 
+export type ChatItem = {
+  id: number;
+  chat_id: number;
+  name?: string | null;
+  last_message_text?: string | null;
+  last_message_time?: string | null;
+  unread?: number;
+  workspace_id?: number | null;
+};
+
+export type ChatMessageItem = {
+  id: number;
+  message_id: number;
+  chat_id: number;
+  author?: string | null;
+  text?: string | null;
+  sent_time?: string | null;
+  by_bot?: number;
+  message_type?: string | null;
+  workspace_id?: number | null;
+};
+
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
@@ -313,4 +335,28 @@ export const api = {
     request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
   checkWorkspaceProxy: (workspaceId: number) =>
     request<WorkspaceProxyCheck>(`/workspaces/${workspaceId}/proxy-check`, { method: "POST" }),
+  listChats: (workspaceId?: number | null, query?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (query) params.set("query", query);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: ChatItem[] }>(
+      withWorkspace(`/chats${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
+  getChatHistory: (chatId: number, workspaceId?: number | null, limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: ChatMessageItem[] }>(
+      withWorkspace(`/chats/${chatId}/history${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
+  sendChatMessage: (chatId: number, text: string, workspaceId?: number | null) =>
+    request<{ ok: boolean; queued_id?: number }>(withWorkspace(`/chats/${chatId}/send`, workspaceId), {
+      method: "POST",
+      body: { text },
+    }),
 };

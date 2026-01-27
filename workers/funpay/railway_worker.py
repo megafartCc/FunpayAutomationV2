@@ -723,6 +723,159 @@ def log_blacklist_event(
         conn.close()
 
 
+def upsert_chat_summary(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    name: str | None,
+    last_message_text: str | None,
+    unread: bool | None,
+    last_message_time: datetime | None = None,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "chats"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO chats (chat_id, name, last_message_text, last_message_time, unread, user_id, workspace_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                last_message_text = VALUES(last_message_text),
+                last_message_time = VALUES(last_message_time),
+                unread = VALUES(unread)
+            """,
+            (
+                int(chat_id),
+                name.strip() if isinstance(name, str) and name.strip() else None,
+                last_message_text.strip() if isinstance(last_message_text, str) and last_message_text.strip() else None,
+                last_message_time or datetime.utcnow(),
+                1 if unread else 0,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def insert_chat_message(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    message_id: int,
+    author: str | None,
+    text: str | None,
+    by_bot: bool,
+    message_type: str | None,
+    sent_time: datetime | None = None,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "chat_messages"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO chat_messages (
+                message_id, chat_id, author, text, sent_time, by_bot, message_type, user_id, workspace_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE id = id
+            """,
+            (
+                int(message_id),
+                int(chat_id),
+                author.strip() if isinstance(author, str) and author.strip() else None,
+                text if text is not None else None,
+                sent_time or datetime.utcnow(),
+                1 if by_bot else 0,
+                message_type,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fetch_chat_outbox(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    limit: int = 20,
+) -> list[dict]:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "chat_outbox"):
+            return []
+        cursor.execute(
+            """
+            SELECT id, chat_id, text, attempts
+            FROM chat_outbox
+            WHERE status = 'pending' AND user_id = %s AND workspace_id <=> %s
+            ORDER BY id ASC
+            LIMIT %s
+            """,
+            (int(user_id), int(workspace_id) if workspace_id is not None else None, int(max(1, min(limit, 200)))),
+        )
+        return list(cursor.fetchall() or [])
+    finally:
+        conn.close()
+
+
+def mark_outbox_sent(mysql_cfg: dict, outbox_id: int, workspace_id: int | None = None) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE chat_outbox SET status='sent', sent_at=NOW() WHERE id = %s",
+            (int(outbox_id),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_outbox_failed(
+    mysql_cfg: dict,
+    outbox_id: int,
+    error: str,
+    attempts: int,
+    max_attempts: int,
+    workspace_id: int | None = None,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        status = "failed" if attempts >= max_attempts else "pending"
+        cursor.execute(
+            """
+            UPDATE chat_outbox
+            SET status=%s, attempts=%s, last_error=%s
+            WHERE id = %s
+            """,
+            (status, int(attempts), error[:500], int(outbox_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def log_order_history(
     mysql_cfg: dict,
     *,
@@ -896,6 +1049,92 @@ def fetch_lot_mapping(
         return cursor.fetchone()
     finally:
         conn.close()
+
+
+def sync_chats_list(
+    mysql_cfg: dict,
+    account: Account,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+) -> None:
+    try:
+        chats_map = account.get_chats(update=True) or {}
+    except Exception:
+        return
+    for chat in chats_map.values():
+        try:
+            upsert_chat_summary(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=int(chat.id),
+                name=chat.name,
+                last_message_text=getattr(chat, "last_message_text", None),
+                unread=bool(getattr(chat, "unread", False)),
+                last_message_time=datetime.utcnow(),
+            )
+        except Exception:
+            continue
+
+
+def process_chat_outbox(
+    logger: logging.Logger,
+    mysql_cfg: dict,
+    account: Account,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+) -> None:
+    pending = fetch_chat_outbox(mysql_cfg, int(user_id), workspace_id, limit=20)
+    if not pending:
+        return
+    max_attempts = env_int("CHAT_OUTBOX_MAX_ATTEMPTS", 3)
+    for item in pending:
+        outbox_id = int(item.get("id") or 0)
+        chat_id = int(item.get("chat_id") or 0)
+        text = str(item.get("text") or "")
+        attempts = int(item.get("attempts") or 0) + 1
+        if not outbox_id or not chat_id or not text:
+            continue
+        try:
+            message = account.send_message(chat_id, text)
+            message_id = int(getattr(message, "id", 0) or 0)
+            if message_id <= 0:
+                message_id = -outbox_id
+            insert_chat_message(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                author=account.username or "you",
+                text=text,
+                by_bot=True,
+                message_type="manual",
+                sent_time=datetime.utcnow(),
+            )
+            upsert_chat_summary(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=chat_id,
+                name=None,
+                last_message_text=text,
+                unread=False,
+                last_message_time=datetime.utcnow(),
+            )
+            mark_outbox_sent(mysql_cfg, outbox_id, workspace_id=workspace_id)
+        except Exception as exc:
+            logger.warning("Chat send failed: %s", exc)
+            mark_outbox_failed(
+                mysql_cfg,
+                outbox_id,
+                str(exc),
+                attempts,
+                max_attempts,
+                workspace_id=workspace_id,
+            )
 
 
 def release_account_in_db(
@@ -2468,6 +2707,47 @@ def log_message(
         chat_url,
         message_text,
     )
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        mysql_cfg = None
+
+    if mysql_cfg and chat_id is not None:
+        user_id = site_user_id
+        if user_id is None and site_username:
+            try:
+                user_id = get_user_id_by_username(mysql_cfg, site_username)
+            except mysql.connector.Error:
+                user_id = None
+        if user_id is not None:
+            try:
+                msg_id = int(getattr(msg, "id", 0) or 0)
+                if msg_id <= 0:
+                    msg_id = int(time.time() * 1000)
+                insert_chat_message(
+                    mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=workspace_id,
+                    chat_id=int(chat_id),
+                    message_id=msg_id,
+                    author=sender_username,
+                    text=message_text,
+                    by_bot=bool(getattr(msg, "by_bot", False)),
+                    message_type=getattr(msg.type, "name", None),
+                    sent_time=datetime.utcnow(),
+                )
+                upsert_chat_summary(
+                    mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=workspace_id,
+                    chat_id=int(chat_id),
+                    name=chat_name,
+                    last_message_text=message_text,
+                    unread=not bool(getattr(msg, "by_bot", False)),
+                    last_message_time=datetime.utcnow(),
+                )
+            except Exception:
+                pass
     if command:
         logger.info(
             "user=%s workspace=%s chat=%s author=%s command=%s args=%s url=%s",
@@ -2532,6 +2812,8 @@ def run_single_user(logger: logging.Logger) -> None:
     runner = Runner(account, disable_message_requests=False)
     logger.info("Listening for new messages...")
     state = RentalMonitorState()
+    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
+    chat_sync_last = 0.0
     while True:
         updates = runner.get_updates()
         events = runner.parse_updates(updates)
@@ -2539,6 +2821,20 @@ def run_single_user(logger: logging.Logger) -> None:
             if isinstance(event, NewMessageEvent):
                 log_message(logger, account, account.username, None, None, event)
         process_rental_monitor(logger, account, account.username, None, None, state)
+        try:
+            mysql_cfg = get_mysql_config()
+        except RuntimeError:
+            mysql_cfg = None
+        if mysql_cfg:
+            if time.time() - chat_sync_last >= chat_sync_interval:
+                user_id = get_user_id_by_username(mysql_cfg, account.username) if account.username else None
+                if user_id is not None:
+                    sync_chats_list(mysql_cfg, account, user_id=user_id, workspace_id=None)
+                    chat_sync_last = time.time()
+            if account.username:
+                user_id = get_user_id_by_username(mysql_cfg, account.username)
+                if user_id is not None:
+                    process_chat_outbox(logger, mysql_cfg, account, user_id=user_id, workspace_id=None)
         time.sleep(poll_seconds)
 
 
@@ -2558,6 +2854,12 @@ def workspace_worker_loop(
     label = f"[{workspace_name}]"
 
     state = RentalMonitorState()
+    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
+    chat_sync_last = 0.0
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        mysql_cfg = None
     while not stop_event.is_set():
         try:
             if not golden_key:
@@ -2591,6 +2893,11 @@ def workspace_worker_loop(
                     if isinstance(event, NewMessageEvent):
                         log_message(logger, account, site_username, user_id, workspace_id, event)
                 process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
+                if mysql_cfg and user_id is not None:
+                    if time.time() - chat_sync_last >= chat_sync_interval:
+                        sync_chats_list(mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
+                        chat_sync_last = time.time()
+                    process_chat_outbox(logger, mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
                 time.sleep(poll_seconds)
         except Exception as exc:
             # Avoid logging full HTML bodies from failed FunPay requests.

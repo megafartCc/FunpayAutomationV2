@@ -1,161 +1,138 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-type ChatItem = {
-  id: number;
-  name: string;
-  lastMessage: string;
-  lastTime: string;
-  unread?: boolean;
-  adminCalls?: number;
-  avatarUrl?: string | null;
-};
+import { api, ChatItem, ChatMessageItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
-type ChatMessage = {
-  id: string;
-  author: string;
-  text: string;
-  sentAt: string;
-  byBot?: boolean;
-  type?: string;
-};
-
-const DEMO_CHATS: ChatItem[] = [
-  {
-    id: 101,
-    name: "Buyer Masha",
-    lastMessage: "Thanks, received the account.",
-    lastTime: "14:21",
-    unread: false,
-    adminCalls: 0,
-  },
-  {
-    id: 102,
-    name: "Buyer Alex",
-    lastMessage: "Need help with the code.",
-    lastTime: "13:05",
-    unread: true,
-    adminCalls: 2,
-  },
-  {
-    id: 103,
-    name: "Buyer Ivan",
-    lastMessage: "Payment done, waiting.",
-    lastTime: "Yesterday",
-    unread: true,
-    adminCalls: 0,
-  },
-  {
-    id: 104,
-    name: "Buyer Lina",
-    lastMessage: "Can I extend for 2 hours?",
-    lastTime: "Mon",
-    unread: false,
-    adminCalls: 1,
-  },
-];
-
-const DEMO_MESSAGES: Record<number, ChatMessage[]> = {
-  101: [
-    {
-      id: "m101-1",
-      author: "Buyer Masha",
-      text: "Hi, I paid for lot 1.",
-      sentAt: "13:55",
-    },
-    {
-      id: "m101-2",
-      author: "Bot",
-      text: "Your account details are ready.",
-      sentAt: "13:56",
-      byBot: true,
-      type: "auto",
-    },
-  ],
-  102: [
-    {
-      id: "m102-1",
-      author: "Buyer Alex",
-      text: "I need help with the code.",
-      sentAt: "13:01",
-    },
-    {
-      id: "m102-2",
-      author: "Bot",
-      text: "Use !code to receive the Steam Guard code.",
-      sentAt: "13:02",
-      byBot: true,
-      type: "auto",
-    },
-  ],
-  103: [
-    {
-      id: "m103-1",
-      author: "Buyer Ivan",
-      text: "Payment done, waiting.",
-      sentAt: "12:21",
-    },
-  ],
-  104: [
-    {
-      id: "m104-1",
-      author: "Buyer Lina",
-      text: "Can I extend for 2 hours?",
-      sentAt: "Mon 18:42",
-    },
-    {
-      id: "m104-2",
-      author: "Bot",
-      text: "Sure. Pay the extension lot and I will extend automatically.",
-      sentAt: "Mon 18:43",
-      byBot: true,
-      type: "auto",
-    },
-  ],
+const formatTime = (value?: string | null) => {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleString();
 };
 
 const ChatsPage: React.FC = () => {
-  const [chatSearch, setChatSearch] = useState("");
-  const [selectedChatId, setSelectedChatId] = useState<number | null>(DEMO_CHATS[0]?.id ?? null);
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    selectedChatId ? DEMO_MESSAGES[selectedChatId] || [] : [],
-  );
-  const [draft, setDraft] = useState("");
+  const { selectedId: selectedWorkspaceId } = useWorkspace();
+  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
 
-  const filteredChats = useMemo(() => {
-    const query = chatSearch.trim().toLowerCase();
-    if (!query) return DEMO_CHATS;
-    return DEMO_CHATS.filter((chat) => {
-      const name = chat.name.toLowerCase();
-      const last = chat.lastMessage.toLowerCase();
-      return name.includes(query) || last.includes(query);
-    });
-  }, [chatSearch]);
+  const [chatSearch, setChatSearch] = useState("");
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [chatListLoading, setChatListLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<ChatMessageItem[]>([]);
+  const [draft, setDraft] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+
+  const loadChats = useCallback(
+    async (query?: string) => {
+      if (!workspaceId) {
+        setChats([]);
+        setSelectedChatId(null);
+        setMessages([]);
+        setStatus("Select a workspace to view chats.");
+        return;
+      }
+      setChatListLoading(true);
+      try {
+        const res = await api.listChats(workspaceId, query?.trim() || undefined, 300);
+        const items = res.items || [];
+        setChats(items);
+        setStatus(null);
+        if (!selectedChatId && items.length) {
+          setSelectedChatId(items[0].chat_id);
+        } else if (selectedChatId && !items.some((c) => c.chat_id === selectedChatId)) {
+          setSelectedChatId(items[0]?.chat_id ?? null);
+        }
+      } catch (err) {
+        const message = (err as { message?: string })?.message || "Failed to load chats.";
+        setStatus(message);
+      } finally {
+        setChatListLoading(false);
+      }
+    },
+    [workspaceId, selectedChatId],
+  );
+
+  const loadHistory = useCallback(
+    async (chatId: number | null) => {
+      if (!workspaceId || !chatId) {
+        setMessages([]);
+        return;
+      }
+      setChatLoading(true);
+      try {
+        const res = await api.getChatHistory(chatId, workspaceId, 300);
+        setMessages(res.items || []);
+      } catch (err) {
+        const message = (err as { message?: string })?.message || "Failed to load chat history.";
+        setStatus(message);
+      } finally {
+        setChatLoading(false);
+      }
+    },
+    [workspaceId],
+  );
+
+  useEffect(() => {
+    void loadChats(chatSearch);
+  }, [loadChats, workspaceId]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadChats(chatSearch);
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [chatSearch, loadChats]);
+
+  useEffect(() => {
+    void loadHistory(selectedChatId);
+  }, [selectedChatId, loadHistory]);
 
   const selectedChat = useMemo(
-    () => DEMO_CHATS.find((chat) => chat.id === selectedChatId) || null,
-    [selectedChatId],
+    () => chats.find((chat) => chat.chat_id === selectedChatId) || null,
+    [chats, selectedChatId],
   );
 
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
-    setMessages(DEMO_MESSAGES[chatId] || []);
   };
 
-  const handleSend = (event: React.FormEvent) => {
+  const handleSend = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedChatId) return;
+    if (!workspaceId) return;
     const text = draft.trim();
     if (!text) return;
-    const next: ChatMessage = {
-      id: `local-${Date.now()}`,
+    const optimistic: ChatMessageItem = {
+      id: Date.now(),
+      message_id: Date.now(),
+      chat_id: selectedChatId,
       author: "You",
       text,
-      sentAt: "Now",
-      byBot: true,
-      type: "manual",
+      sent_time: new Date().toISOString(),
+      by_bot: 1,
+      message_type: "manual",
+      workspace_id: workspaceId,
     };
-    setMessages((prev) => [...prev, next]);
+    setMessages((prev) => [...prev, optimistic]);
     setDraft("");
+    try {
+      await api.sendChatMessage(selectedChatId, text, workspaceId);
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.chat_id === selectedChatId
+            ? {
+                ...chat,
+                last_message_text: text,
+                last_message_time: new Date().toISOString(),
+              }
+            : chat,
+        ),
+      );
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to send message.";
+      setStatus(message);
+    }
   };
 
   return (
@@ -164,12 +141,20 @@ const ChatsPage: React.FC = () => {
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
-            <p className="text-sm text-neutral-500">Design preview. API wiring comes next.</p>
+            <p className="text-sm text-neutral-500">Workspace scoped chat inbox.</p>
           </div>
-          <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+          <button
+            className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
+            onClick={() => loadChats(chatSearch)}
+          >
             Refresh
           </button>
         </div>
+        {status ? (
+          <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+            {status}
+          </div>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -183,19 +168,24 @@ const ChatsPage: React.FC = () => {
               <button
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
                 type="button"
+                onClick={() => loadChats(chatSearch)}
               >
                 Update
               </button>
             </div>
             <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto pr-1">
-              {filteredChats.length ? (
-                filteredChats.map((chat) => {
-                  const isActive = chat.id === selectedChatId;
+              {chatListLoading ? (
+                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                  Loading chats...
+                </div>
+              ) : chats.length ? (
+                chats.map((chat) => {
+                  const isActive = chat.chat_id === selectedChatId;
                   return (
                     <button
-                      key={chat.id}
+                      key={chat.chat_id}
                       type="button"
-                      onClick={() => handleSelectChat(chat.id)}
+                      onClick={() => handleSelectChat(chat.chat_id)}
                       className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                         isActive
                           ? "border-neutral-900 bg-neutral-900 text-white"
@@ -204,14 +194,14 @@ const ChatsPage: React.FC = () => {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="truncate text-sm font-semibold">
-                          {chat.name}
+                          {chat.name || "Buyer"}
                         </div>
                         <span className={`text-[11px] ${isActive ? "text-neutral-200" : "text-neutral-400"}`}>
-                          {chat.lastTime}
+                          {formatTime(chat.last_message_time)}
                         </span>
                       </div>
                       <p className={`mt-2 truncate text-xs ${isActive ? "text-neutral-300" : "text-neutral-500"}`}>
-                        {chat.lastMessage || "No messages yet."}
+                        {chat.last_message_text || "No messages yet."}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {chat.unread ? (
@@ -221,15 +211,6 @@ const ChatsPage: React.FC = () => {
                             }`}
                           >
                             New
-                          </span>
-                        ) : null}
-                        {chat.adminCalls ? (
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              isActive ? "bg-white/10 text-white" : "bg-rose-100 text-rose-700"
-                            }`}
-                          >
-                            Admin {chat.adminCalls}
                           </span>
                         ) : null}
                       </div>
@@ -257,18 +238,23 @@ const ChatsPage: React.FC = () => {
               <button
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
                 type="button"
+                onClick={() => loadHistory(selectedChatId)}
               >
                 Load history
               </button>
             </div>
 
             <div className="flex-1 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              {messages.length ? (
+              {chatLoading ? (
+                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                  Loading messages...
+                </div>
+              ) : messages.length ? (
                 messages.map((message) => {
-                  const isBot = Boolean(message.byBot);
+                  const isBot = Boolean(message.by_bot);
                   return (
                     <div
-                      key={message.id}
+                      key={`${message.id}-${message.message_id}`}
                       className={`max-w-[78%] rounded-xl border px-3 py-2 text-sm ${
                         isBot
                           ? "ml-auto border-neutral-900 bg-neutral-900 text-white"
@@ -276,9 +262,9 @@ const ChatsPage: React.FC = () => {
                       }`}
                     >
                       <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
-                        {[message.author, message.type, message.sentAt].filter(Boolean).join(" | ")}
+                        {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap">{message.text}</div>
+                      <div className="mt-2 whitespace-pre-wrap">{message.text || "(empty)"}</div>
                     </div>
                   );
                 })
