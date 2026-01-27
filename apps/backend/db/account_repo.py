@@ -660,9 +660,6 @@ class MySQLAccountRepo:
                 old_updates.append("low_priority = 1")
             old_params: list = [int(old_account_id), int(user_id)]
             old_where = "id = %s AND user_id = %s"
-            if owner:
-                old_where += " AND LOWER(owner) = %s"
-                old_params.append(owner.strip().lower())
             cursor.execute(
                 f"UPDATE accounts SET {', '.join(old_updates)} WHERE {old_where}",
                 tuple(old_params),
