@@ -250,6 +250,23 @@ const ChatsPage: React.FC = () => {
     [workspaceId, chatSearch],
   );
 
+  const markChatRead = useCallback(
+    (chatId: number) => {
+      setChats((prev) => {
+        const next = prev.map((chat) =>
+          chat.chat_id === chatId
+            ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+            : chat,
+        );
+        if (workspaceId && !chatSearch.trim()) {
+          writeCache(chatListCacheKey(workspaceId), next);
+        }
+        return next;
+      });
+    },
+    [workspaceId, chatSearch],
+  );
+
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       if (!workspaceId) {
@@ -363,13 +380,7 @@ const ChatsPage: React.FC = () => {
             updateChatPreview(chatId, merged);
             writeCache(cacheKey, merged.slice(-100));
           }
-          setChats((prev) =>
-            prev.map((chat) =>
-              chat.chat_id === chatId
-                ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
-                : chat,
-            ),
-          );
+          markChatRead(chatId);
           return;
         }
         const res = await api.getChatHistory(chatId, workspaceId, 300);
@@ -378,13 +389,7 @@ const ChatsPage: React.FC = () => {
         setMessages(items);
         updateChatPreview(chatId, items);
         writeCache(cacheKey, items.slice(-100));
-        setChats((prev) =>
-          prev.map((chat) =>
-            chat.chat_id === chatId
-              ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
-              : chat,
-          ),
-        );
+        markChatRead(chatId);
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
           const message = (err as { message?: string })?.message || "Failed to load chat history.";
@@ -396,7 +401,7 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId],
+    [workspaceId, markChatRead, updateChatPreview],
   );
 
   const loadRentals = useCallback(
