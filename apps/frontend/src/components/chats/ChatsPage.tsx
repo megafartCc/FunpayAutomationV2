@@ -223,8 +223,14 @@ const ChatsPage: React.FC = () => {
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
       if (!items.length) return null;
-      if (routeChatId && items.some((chat) => chat.chat_id === routeChatId)) return routeChatId;
+
+      // Keep the user's current pick even while routing/caching catches up.
       if (current && items.some((chat) => chat.chat_id === current)) return current;
+
+      // If router param matches the refreshed list, honor it next.
+      if (routeChatId && items.some((chat) => chat.chat_id === routeChatId)) return routeChatId;
+
+      // Fallback: first chat in list.
       return items[0]?.chat_id ?? null;
     });
   }, [routeChatId]);
