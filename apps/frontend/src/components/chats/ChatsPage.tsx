@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
-import { api, ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
+import { api } from "../../services/api";
+import type { ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 const formatTime = (value?: string | null) => {
@@ -124,8 +125,11 @@ const ChatsPage: React.FC = () => {
   const { selectedId: selectedWorkspaceId } = useWorkspace();
   const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
 
-  const [searchParams] = useSearchParams();
-  const queryFromUrl = searchParams.get("q") || "";
+  const location = useLocation();
+  const queryFromUrl = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("q") || "";
+  }, [location.search]);
   const [chatSearch, setChatSearch] = useState(queryFromUrl);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatListLoading, setChatListLoading] = useState(false);
@@ -492,17 +496,16 @@ const ChatsPage: React.FC = () => {
     }
   };
 
-  const handleToggleFreeze = async () => {
+  const handleSetFreeze = async (nextFrozen: boolean) => {
     if (!selectedRental) {
       setStatus("Select an active rental first.");
       return;
     }
     if (!workspaceId) return;
     if (rentalActionBusy) return;
-    const frozen = (selectedRental.status || "").toLowerCase().includes("frozen");
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedRental.id, !frozen, workspaceId);
+      await api.freezeRental(selectedRental.id, nextFrozen, workspaceId);
       await loadRentals(true);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Failed to update freeze state.";
@@ -541,7 +544,7 @@ const ChatsPage: React.FC = () => {
 
   return (
     <div className="flex h-full flex-col gap-6">
-      <div className="flex min-h-[calc(100vh-180px)] flex-1 flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+      <div className="flex h-[calc(100vh-150px)] flex-1 flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
@@ -794,20 +797,27 @@ const ChatsPage: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={handleToggleFreeze}
+                      onClick={() => handleSetFreeze(true)}
                       disabled={rentalActionBusy}
-                      className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {(selectedRental.status || "").toLowerCase().includes("frozen") ? "Unfreeze" : "Freeze"}
+                      Freeze
                     </button>
                     <button
-                      onClick={handleReleaseRental}
+                      onClick={() => handleSetFreeze(false)}
                       disabled={rentalActionBusy}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Release
+                      Unfreeze
                     </button>
                   </div>
+                  <button
+                    onClick={handleReleaseRental}
+                    disabled={rentalActionBusy}
+                    className="w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Release
+                  </button>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       value={extendHours}

@@ -517,7 +517,7 @@ class MySQLAccountRepo:
                 workspace_clause = " AND last_rented_workspace_id = %s"
                 params.append(workspace_id)
             cursor.execute(
-                """
+                f"""
                 UPDATE accounts
                 SET rental_duration = %s,
                     rental_duration_minutes = %s
