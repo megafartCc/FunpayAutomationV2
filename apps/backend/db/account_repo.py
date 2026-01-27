@@ -55,6 +55,7 @@ class ActiveRentalRecord:
     rental_duration_minutes: Optional[int]
     lot_number: Optional[int]
     mafile_json: Optional[str]
+    rental_frozen: int = 0
     workspace_id: int | None = None
     workspace_name: str | None = None
 
@@ -369,7 +370,7 @@ class MySQLAccountRepo:
             cursor.execute(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.owner, a.mafile_json,
-                       a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       a.rental_start, a.rental_duration, a.rental_duration_minutes, a.rental_frozen,
                        {workspace_expr} AS active_workspace_id,
                        lw.name AS active_workspace_name,
                        l.lot_number
@@ -393,6 +394,7 @@ class MySQLAccountRepo:
                     rental_duration_minutes=row.get("rental_duration_minutes"),
                     lot_number=row.get("lot_number"),
                     mafile_json=row.get("mafile_json"),
+                    rental_frozen=int(row.get("rental_frozen") or 0),
                     workspace_id=row.get("active_workspace_id"),
                     workspace_name=row.get("active_workspace_name"),
                 )

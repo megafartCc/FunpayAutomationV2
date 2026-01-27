@@ -53,8 +53,10 @@ class ChatSendRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
 
 
-def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
+def _ensure_workspace(workspace_id: int | None, user_id: int, allow_all: bool = False) -> None:
     if workspace_id is None:
+        if allow_all:
+            return
         raise HTTPException(status_code=400, detail="Select a workspace for chats.")
     workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
     if not workspace:
@@ -93,7 +95,7 @@ def list_chats(
     user=Depends(get_current_user),
 ) -> ChatListResponse:
     user_id = int(user.id)
-    _ensure_workspace(workspace_id, user_id)
+    _ensure_workspace(workspace_id, user_id, allow_all=True)
     since_dt = _parse_since(since)
     cached_items = None
     if since_dt is None:
@@ -103,7 +105,7 @@ def list_chats(
 
     items = chat_repo.list_chats(
         user_id,
-        int(workspace_id),
+        int(workspace_id) if workspace_id is not None else None,
         query=query or None,
         since=since_dt,
         limit=limit,
