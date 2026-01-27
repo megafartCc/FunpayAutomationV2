@@ -282,7 +282,7 @@ def freeze_rental(
 @router.post("/rentals/{account_id}/replace")
 def replace_rental(
     account_id: int,
-    payload: ReplaceRequest,
+    payload: ReplaceRequest | None = None,
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> dict:
@@ -299,10 +299,13 @@ def replace_rental(
         target_mmr = int(account.get("mmr"))
     except Exception:
         raise HTTPException(status_code=400, detail="Cannot replace: MMR missing")
-    max_delta = payload.mmr_range if payload.mmr_range is not None else 1000
+    max_delta = payload.mmr_range if payload and payload.mmr_range is not None else 1000
+    effective_workspace_id = account.get("last_rented_workspace_id") or account.get("workspace_id") or workspace_id
+    if effective_workspace_id is None:
+        raise HTTPException(status_code=400, detail="Workspace missing for replacement")
     replacement = accounts_repo.find_replacement_account(
         user_id=int(user.id),
-        workspace_id=int(workspace_id),
+        workspace_id=int(effective_workspace_id),
         target_mmr=target_mmr,
         exclude_id=int(account_id),
         max_delta=int(max_delta),
@@ -336,7 +339,7 @@ def replace_rental(
         new_account_id=int(replacement.get("id") or 0),
         user_id=int(user.id),
         owner=str(owner),
-        workspace_id=int(workspace_id),
+        workspace_id=int(effective_workspace_id),
         rental_start=rental_start_str,
         rental_duration=base_hours,
         rental_duration_minutes=base_minutes,
@@ -357,7 +360,7 @@ def replace_rental(
 
     notify_owner(
         user_id=int(user.id),
-        workspace_id=int(workspace_id),
+        workspace_id=int(effective_workspace_id),
         owner=owner,
         text=_build_admin_replace_message(replacement, base_minutes),
     )

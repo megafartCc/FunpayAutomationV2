@@ -663,9 +663,6 @@ class MySQLAccountRepo:
             if owner:
                 old_where += " AND LOWER(owner) = %s"
                 old_params.append(owner.strip().lower())
-            if workspace_id is not None and has_last_rented:
-                old_where += " AND last_rented_workspace_id = %s"
-                old_params.append(int(workspace_id))
             cursor.execute(
                 f"UPDATE accounts SET {', '.join(old_updates)} WHERE {old_where}",
                 tuple(old_params),
