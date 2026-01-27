@@ -673,7 +673,9 @@ const ChatsPage: React.FC = () => {
                         <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
                           {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
                         </div>
-                        <div className="mt-2 whitespace-pre-wrap break-words">{message.text || "(empty)"}</div>
+                        <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pr-1">
+                          {message.text || "(empty)"}
+                        </div>
                       </div>
                     );
                   })}
