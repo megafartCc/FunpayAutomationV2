@@ -546,8 +546,8 @@ const ChatsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6">
-      <div className="flex h-[calc(100vh-150px)] flex-1 flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
@@ -566,7 +566,7 @@ const ChatsPage: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)_320px]">
           <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
             <div className="flex items-center gap-2">
               <input
