@@ -566,7 +566,7 @@ const ChatsPage: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
           <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
             <div className="flex items-center gap-2">
               <input
@@ -633,156 +633,85 @@ const ChatsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-lg font-semibold text-neutral-900">
-                  {selectedChat ? selectedChat.name : "Select a chat"}
-                </div>
-                <div className="text-xs text-neutral-500">
-                  {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
-                </div>
-              </div>
-              <button
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
-                type="button"
-                onClick={() => loadHistory(selectedChatId)}
-              >
-                Load history
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              {chatLoading ? (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading messages...
-                </div>
-              ) : messages.length ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
-                  {messages.map((message) => {
-                    const isBot = Boolean(message.by_bot);
-                    return (
-                      <div
-                        key={`${message.id}-${message.message_id}`}
-                        className={`w-fit max-w-[72%] rounded-xl border px-3 py-2 text-sm break-words ${
-                          isBot
-                            ? "ml-auto self-end border-neutral-900 bg-neutral-900 text-white"
-                            : "self-start border-neutral-200 bg-white text-neutral-700"
-                        }`}
-                      >
-                        <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
-                          {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
-                        </div>
-                        <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pr-1">
-                          {message.text || "(empty)"}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : selectedChatId ? (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                  No stored messages yet. New messages will appear automatically.
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                  Select a chat to view messages.
-                </div>
-              )}
-            </div>
-
-            <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSend}>
-              <textarea
-                className="min-h-[88px] w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                placeholder={selectedChat ? "Type a message..." : "Select a chat first"}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                disabled={!selectedChat}
-              />
-              <button
-                className="h-[48px] rounded-xl bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
-                type="submit"
-                disabled={!selectedChat || !draft.trim()}
-              >
-                Send
-              </button>
-            </form>
-          </div>
-
-          <div className="flex min-h-0 flex-col gap-4">
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-neutral-900">Chat controls</div>
-                <span className="text-[11px] text-neutral-500">{selectedChat ? "Ready" : "Select a chat"}</span>
-              </div>
-              <div className="mt-3 space-y-1 text-xs text-neutral-600">
-                <div>Buyer: {selectedChat?.name || "-"}</div>
-                <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
-                <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
-              </div>
-            </div>
-
+          <div className="flex min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-neutral-900">Active rentals</div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold text-neutral-900">
+                    {selectedChat ? selectedChat.name : "Select a chat"}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
+                  </div>
+                </div>
                 <button
-                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+                  className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
                   type="button"
-                  onClick={() => loadRentals()}
-                  disabled={rentalsLoading}
+                  onClick={() => loadHistory(selectedChatId)}
                 >
-                  Refresh
+                  Load history
                 </button>
               </div>
-              <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-                {rentalsLoading ? (
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                    Loading rentals...
+
+              <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-4">
+                {chatLoading ? (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                    Loading messages...
                   </div>
-                ) : selectedChat ? (
-                  rentalsForBuyer.length ? (
-                    rentalsForBuyer.map((item) => {
-                      const pill = statusPill(item.status);
-                      const isSelected = item.id === selectedRentalId;
+                ) : messages.length ? (
+                  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+                    {messages.map((message) => {
+                      const isBot = Boolean(message.by_bot);
                       return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setSelectedRentalId(item.id)}
-                          className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
-                            isSelected
-                              ? "border-neutral-900 bg-neutral-900 text-white"
-                              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                        <div
+                          key={`${message.id}-${message.message_id}`}
+                          className={`w-fit max-w-[72%] rounded-xl border px-3 py-2 text-sm break-words ${
+                            isBot
+                              ? "ml-auto self-end border-neutral-900 bg-neutral-900 text-white"
+                              : "self-start border-neutral-200 bg-white text-neutral-700"
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="truncate text-sm font-semibold">{item.account || "Account"}</div>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.className}`}>
-                              {pill.label}
-                            </span>
+                          <div className={`text-[11px] ${isBot ? "text-neutral-200" : "text-neutral-400"}`}>
+                            {[message.author, message.message_type, formatTime(message.sent_time)].filter(Boolean).join(" | ")}
                           </div>
-                          <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
-                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>{item.time_left || "-"}</span>
-                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>
-                              {item.workspace_name || (item.workspace_id ? `WS ${item.workspace_id}` : "Workspace")}
-                            </span>
+                          <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pr-1">
+                            {message.text || "(empty)"}
                           </div>
-                        </button>
+                        </div>
                       );
-                    })
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                      No active rentals for this buyer.
-                    </div>
-                  )
+                    })}
+                  </div>
+                ) : selectedChatId ? (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                    No stored messages yet. New messages will appear automatically.
+                  </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                    Select a chat to view rentals.
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
+                    Select a chat to view messages.
                   </div>
                 )}
               </div>
-            </div>
 
+              <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleSend}>
+                <textarea
+                  className="min-h-[88px] w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+                  placeholder={selectedChat ? "Type a message..." : "Select a chat first"}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  disabled={!selectedChat}
+                />
+                <button
+                  className="h-[48px] rounded-xl bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                  type="submit"
+                  disabled={!selectedChat || !draft.trim()}
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div className="flex min-h-0 flex-col gap-4">
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-neutral-900">Rental actions</div>
@@ -864,6 +793,79 @@ const ChatsPage: React.FC = () => {
                   Select a rental to manage it.
                 </div>
               )}
+            </div>
+
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-900">Chat controls</div>
+                <span className="text-[11px] text-neutral-500">{selectedChat ? "Ready" : "Select a chat"}</span>
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-neutral-600">
+                <div>Buyer: {selectedChat?.name || "-"}</div>
+                <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
+                <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-900">Active rentals</div>
+                <button
+                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+                  type="button"
+                  onClick={() => loadRentals()}
+                  disabled={rentalsLoading}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+                {rentalsLoading ? (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                    Loading rentals...
+                  </div>
+                ) : selectedChat ? (
+                  rentalsForBuyer.length ? (
+                    rentalsForBuyer.map((item) => {
+                      const pill = statusPill(item.status);
+                      const isSelected = item.id === selectedRentalId;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setSelectedRentalId(item.id)}
+                          className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                            isSelected
+                              ? "border-neutral-900 bg-neutral-900 text-white"
+                              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="truncate text-sm font-semibold">{item.account || "Account"}</div>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.className}`}>
+                              {pill.label}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400">
+                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>{item.time_left || "-"}</span>
+                            <span className={`${isSelected ? "text-neutral-200" : ""}`}>
+                              {item.workspace_name || (item.workspace_id ? `WS ${item.workspace_id}` : "Workspace")}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                      No active rentals for this buyer.
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
+                    Select a chat to view rentals.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

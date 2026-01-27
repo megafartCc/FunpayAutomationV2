@@ -391,6 +391,189 @@ def _parse_datetime(value: object) -> datetime | None:
         return None
 
 
+_CHAT_TIME_CLASS_KEYS = (
+    "contact-item-time",
+    "contact-item-date",
+    "chat-msg-time",
+    "chat-msg-date",
+    "chat-msg-date-time",
+)
+_CHAT_TIME_ATTR_KEYS = (
+    "data-time",
+    "data-date",
+    "data-timestamp",
+    "data-last-message-time",
+    "data-last-msg-time",
+)
+_CHAT_TIME_RE_YMD = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+_CHAT_TIME_RE_DMY = re.compile(r"\b(\d{1,2})[./](\d{1,2})[./](\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+_CHAT_TIME_RE_DM = re.compile(r"\b(\d{1,2})[./](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+_CHAT_TIME_RE_TIME = re.compile(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+
+
+def _parse_funpay_datetime(text: str | None) -> datetime | None:
+    if not text:
+        return None
+    raw = " ".join(str(text).strip().split())
+    if not raw:
+        return None
+
+    if raw.isdigit():
+        try:
+            ts = int(raw)
+        except ValueError:
+            ts = 0
+        if ts > 0:
+            if ts > 10**12:
+                ts = ts / 1000.0
+            try:
+                return datetime.utcfromtimestamp(float(ts))
+            except Exception:
+                return None
+
+    match = _CHAT_TIME_RE_YMD.search(raw)
+    if match:
+        year, month, day, hour, minute, second = match.groups()
+        return datetime(
+            int(year),
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second or 0),
+        )
+
+    match = _CHAT_TIME_RE_DMY.search(raw)
+    if match:
+        day, month, year, hour, minute, second = match.groups()
+        year_val = int(year)
+        if year_val < 100:
+            year_val += 2000
+        return datetime(
+            int(year_val),
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second or 0),
+        )
+
+    match = _CHAT_TIME_RE_DM.search(raw)
+    if match:
+        day, month, hour, minute, second = match.groups()
+        now = datetime.utcnow()
+        return datetime(
+            now.year,
+            int(month),
+            int(day),
+            int(hour),
+            int(minute),
+            int(second or 0),
+        )
+
+    lowered = raw.lower()
+    yesterday_flag = "\u0432\u0447\u0435\u0440\u0430" in lowered or "yesterday" in lowered
+    match = _CHAT_TIME_RE_TIME.search(raw)
+    if match:
+        hour, minute, second = match.groups()
+        base = datetime.utcnow().date()
+        if yesterday_flag:
+            base = base - timedelta(days=1)
+        return datetime(
+            base.year,
+            base.month,
+            base.day,
+            int(hour),
+            int(minute),
+            int(second or 0),
+        )
+
+    return None
+
+
+def _extract_datetime_from_html(html: str | None) -> datetime | None:
+    if not html:
+        return None
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        return _parse_funpay_datetime(html)
+
+    candidates: list[str] = []
+    for attr in _CHAT_TIME_ATTR_KEYS:
+        for el in soup.find_all(attrs={attr: True}):
+            value = el.get(attr)
+            if value:
+                candidates.append(str(value))
+
+    for el in soup.find_all("time"):
+        text = el.get_text(" ", strip=True)
+        if text:
+            candidates.append(text)
+
+    for el in soup.find_all(class_=True):
+        classes = " ".join(el.get("class", []))
+        class_lower = classes.lower()
+        if any(key in classes for key in _CHAT_TIME_CLASS_KEYS) or (
+            ("time" in class_lower or "date" in class_lower)
+            and ("chat" in class_lower or "contact" in class_lower or "msg" in class_lower)
+        ):
+            text = el.get_text(" ", strip=True)
+            if text:
+                candidates.append(text)
+
+    for candidate in candidates:
+        dt = _parse_funpay_datetime(candidate)
+        if dt:
+            return dt
+
+    return None
+
+
+def _fetch_latest_chat_times(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_ids: list[int],
+) -> dict[int, datetime]:
+    if not chat_ids:
+        return {}
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        placeholders = ", ".join(["%s"] * len(chat_ids))
+        params: list = [int(user_id)]
+        workspace_clause = " AND workspace_id IS NULL"
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        params.extend([int(cid) for cid in chat_ids])
+        cursor.execute(
+            f"""
+            SELECT chat_id, MAX(sent_time) AS last_time
+            FROM chat_messages
+            WHERE user_id = %s{workspace_clause} AND chat_id IN ({placeholders})
+            GROUP BY chat_id
+            """,
+            tuple(params),
+        )
+        rows = cursor.fetchall() or []
+        result: dict[int, datetime] = {}
+        for row in rows:
+            chat_id = row.get("chat_id")
+            last_time = row.get("last_time")
+            if chat_id is None or last_time is None:
+                continue
+            try:
+                result[int(chat_id)] = last_time if isinstance(last_time, datetime) else datetime.fromisoformat(str(last_time))
+            except Exception:
+                continue
+        return result
+    finally:
+        conn.close()
+
+
 def _resolve_rental_minutes(account: dict) -> int:
     minutes = account.get("rental_duration_minutes")
     if minutes is None:
@@ -847,7 +1030,7 @@ def upsert_chat_summary(
                 int(chat_id),
                 name.strip() if isinstance(name, str) and name.strip() else None,
                 last_message_text.strip() if isinstance(last_message_text, str) and last_message_text.strip() else None,
-                last_message_time or datetime.utcnow(),
+                last_message_time,
                 1 if unread else 0,
                 int(user_id),
                 int(workspace_id) if workspace_id is not None else None,
@@ -890,7 +1073,7 @@ def insert_chat_message(
                 int(chat_id),
                 author.strip() if isinstance(author, str) and author.strip() else None,
                 text if text is not None else None,
-                sent_time or datetime.utcnow(),
+                sent_time,
                 1 if by_bot else 0,
                 message_type,
                 int(user_id),
@@ -1219,22 +1402,23 @@ def prefetch_chat_histories(
             if not messages:
                 continue
             trimmed = messages[-msg_limit:] if msg_limit > 0 else messages
-            for msg in trimmed:
-                try:
-                    insert_chat_message(
-                        mysql_cfg,
-                        user_id=int(user_id),
-                        workspace_id=workspace_id,
-                        chat_id=int(chat_id),
-                        message_id=int(getattr(msg, "id", 0) or 0),
-                        author=getattr(msg, "author", None) or getattr(msg, "chat_name", None),
-                        text=getattr(msg, "text", None),
-                        by_bot=bool(getattr(msg, "by_bot", False)),
-                        message_type=getattr(getattr(msg, "type", None), "name", None),
-                        sent_time=None,
-                    )
-                except Exception:
-                    continue
+              for msg in trimmed:
+                  try:
+                      sent_time = _extract_datetime_from_html(getattr(msg, "html", None))
+                      insert_chat_message(
+                          mysql_cfg,
+                          user_id=int(user_id),
+                          workspace_id=workspace_id,
+                          chat_id=int(chat_id),
+                          message_id=int(getattr(msg, "id", 0) or 0),
+                          author=getattr(msg, "author", None) or getattr(msg, "chat_name", None),
+                          text=getattr(msg, "text", None),
+                          by_bot=bool(getattr(msg, "by_bot", False)),
+                          message_type=getattr(getattr(msg, "type", None), "name", None),
+                          sent_time=sent_time,
+                      )
+                  except Exception:
+                      continue
 
 
 def sync_chats_list(
@@ -1248,20 +1432,24 @@ def sync_chats_list(
         chats_map = account.get_chats(update=True) or {}
     except Exception:
         return
+    chat_ids = [int(chat.id) for chat in chats_map.values() if getattr(chat, "id", None) is not None]
+    history_times = _fetch_latest_chat_times(mysql_cfg, int(user_id), workspace_id, chat_ids)
     chat_names: dict[int, str | None] = {}
     for chat in chats_map.values():
         try:
+            chat_id = int(chat.id)
+            chat_time = _extract_datetime_from_html(getattr(chat, "html", None)) or history_times.get(chat_id)
             upsert_chat_summary(
                 mysql_cfg,
                 user_id=int(user_id),
                 workspace_id=workspace_id,
-                chat_id=int(chat.id),
+                chat_id=chat_id,
                 name=chat.name,
                 last_message_text=getattr(chat, "last_message_text", None),
                 unread=bool(getattr(chat, "unread", False)),
-                last_message_time=datetime.utcnow(),
+                last_message_time=chat_time,
             )
-            chat_names[int(chat.id)] = getattr(chat, "name", None)
+            chat_names[chat_id] = getattr(chat, "name", None)
         except Exception:
             continue
     if chat_names:
@@ -3164,6 +3352,7 @@ def log_message(
                 msg_id = int(getattr(msg, "id", 0) or 0)
                 if msg_id <= 0:
                     msg_id = int(time.time() * 1000)
+                sent_time = _extract_datetime_from_html(getattr(msg, "html", None)) or datetime.utcnow()
                 insert_chat_message(
                     mysql_cfg,
                     user_id=int(user_id),
@@ -3174,7 +3363,7 @@ def log_message(
                     text=message_text,
                     by_bot=bool(getattr(msg, "by_bot", False)),
                     message_type=getattr(msg.type, "name", None),
-                    sent_time=datetime.utcnow(),
+                    sent_time=sent_time,
                 )
                 upsert_chat_summary(
                     mysql_cfg,
@@ -3184,7 +3373,7 @@ def log_message(
                     name=chat_name,
                     last_message_text=message_text,
                     unread=not bool(getattr(msg, "by_bot", False)),
-                    last_message_time=datetime.utcnow(),
+                    last_message_time=sent_time,
                 )
             except Exception:
                 pass
