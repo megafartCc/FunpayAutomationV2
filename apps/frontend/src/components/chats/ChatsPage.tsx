@@ -162,6 +162,7 @@ const ChatsPage: React.FC = () => {
     const parsed = Number(chatIdParam);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [chatIdParam]);
+  const routeChatIdRef = useRef<number | null>(routeChatId);
 
   const [chatSearch, setChatSearch] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -205,6 +206,7 @@ const ChatsPage: React.FC = () => {
   }, [messages]);
 
   useEffect(() => {
+    routeChatIdRef.current = routeChatId;
     if (!routeChatId) return;
     setSelectedChatId(routeChatId);
   }, [routeChatId]);
@@ -226,11 +228,12 @@ const ChatsPage: React.FC = () => {
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
       if (!items.length) return null;
-      if (routeChatId && items.some((chat) => chat.chat_id === routeChatId)) return routeChatId;
+      const preferredId = routeChatIdRef.current;
+      if (preferredId && items.some((chat) => chat.chat_id === preferredId)) return preferredId;
       if (current && items.some((chat) => chat.chat_id === current)) return current;
       return items[0]?.chat_id ?? null;
     });
-  }, [routeChatId]);
+  }, []);
 
   const getWorkspaceIdForChat = useCallback(
     (chatId: number | null) => {
@@ -361,6 +364,9 @@ const ChatsPage: React.FC = () => {
         return;
       }
       const chatWorkspaceId = getWorkspaceIdForChat(chatId);
+      if (workspaceId === null && chatWorkspaceId === null) {
+        return;
+      }
       const seq = historyRequestRef.current.seq + 1;
       historyRequestRef.current = { seq, chatId };
 
