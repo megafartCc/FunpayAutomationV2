@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
 
 import { api } from "../../services/api";
 import type { ActiveRentalItem, ChatItem, ChatMessageItem } from "../../services/api";
@@ -125,12 +124,11 @@ const ChatsPage: React.FC = () => {
   const { selectedId: selectedWorkspaceId } = useWorkspace();
   const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
 
-  const location = useLocation();
-  const queryFromUrl = useMemo(() => {
-    const params = new URLSearchParams(location.search);
+  const [chatSearch, setChatSearch] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search || "");
     return params.get("q") || "";
-  }, [location.search]);
-  const [chatSearch, setChatSearch] = useState(queryFromUrl);
+  });
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [chatListLoading, setChatListLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -159,8 +157,13 @@ const ChatsPage: React.FC = () => {
   }, [workspaceId]);
 
   useEffect(() => {
-    setChatSearch(queryFromUrl);
-  }, [queryFromUrl]);
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search || "");
+      setChatSearch(params.get("q") || "");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     void loadRentals();
