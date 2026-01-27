@@ -1402,23 +1402,23 @@ def prefetch_chat_histories(
             if not messages:
                 continue
             trimmed = messages[-msg_limit:] if msg_limit > 0 else messages
-              for msg in trimmed:
-                  try:
-                      sent_time = _extract_datetime_from_html(getattr(msg, "html", None))
-                      insert_chat_message(
-                          mysql_cfg,
-                          user_id=int(user_id),
-                          workspace_id=workspace_id,
-                          chat_id=int(chat_id),
-                          message_id=int(getattr(msg, "id", 0) or 0),
-                          author=getattr(msg, "author", None) or getattr(msg, "chat_name", None),
-                          text=getattr(msg, "text", None),
-                          by_bot=bool(getattr(msg, "by_bot", False)),
-                          message_type=getattr(getattr(msg, "type", None), "name", None),
-                          sent_time=sent_time,
-                      )
-                  except Exception:
-                      continue
+            for msg in trimmed:
+                try:
+                    sent_time = _extract_datetime_from_html(getattr(msg, "html", None))
+                    insert_chat_message(
+                        mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=workspace_id,
+                        chat_id=int(chat_id),
+                        message_id=int(getattr(msg, "id", 0) or 0),
+                        author=getattr(msg, "author", None) or getattr(msg, "chat_name", None),
+                        text=getattr(msg, "text", None),
+                        by_bot=bool(getattr(msg, "by_bot", False)),
+                        message_type=getattr(getattr(msg, "type", None), "name", None),
+                        sent_time=sent_time,
+                    )
+                except Exception:
+                    continue
 
 
 def sync_chats_list(
