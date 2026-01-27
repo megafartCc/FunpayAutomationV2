@@ -481,6 +481,16 @@ const ChatsPage: React.FC = () => {
     [chats, selectedChatId],
   );
 
+  const rentalsByBuyer = useMemo(() => {
+    const map = new Map<string, number>();
+    rentals.forEach((item) => {
+      const key = normalizeBuyer(item.buyer);
+      if (!key) return;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    });
+    return map;
+  }, [rentals]);
+
   const buyerKey = useMemo(() => normalizeBuyer(selectedChat?.name), [selectedChat]);
   const rentalsForBuyer = useMemo(() => {
     if (!buyerKey) return [];
@@ -697,6 +707,7 @@ const ChatsPage: React.FC = () => {
                   const adminCount = Number(chat.admin_unread_count || 0);
                   const hasAdmin = adminCount > 0 || Boolean(chat.admin_requested);
                   const unreadCount = Number(chat.unread || 0);
+                  const rentalCount = chat.name ? rentalsByBuyer.get(normalizeBuyer(chat.name)) ?? 0 : 0;
                   return (
                     <button
                       key={chat.chat_id}
@@ -720,6 +731,15 @@ const ChatsPage: React.FC = () => {
                         {chat.last_message_text || "No messages yet."}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {rentalCount > 0 ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isActive ? "bg-white/10 text-white" : "bg-emerald-100 text-emerald-700"
+                            }`}
+                          >
+                            Active rental
+                          </span>
+                        ) : null}
                         {adminCount > 0 ? (
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${

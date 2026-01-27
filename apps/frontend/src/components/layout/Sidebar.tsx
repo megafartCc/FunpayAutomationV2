@@ -210,13 +210,6 @@ const Sidebar: React.FC = () => {
   const [chatAdminCount, setChatAdminCount] = useState(0);
   const workspaceId = selectedId === "all" ? null : (selectedId as number);
 
-  const chatBadge = useMemo(() => {
-    if (!workspaceId) return null;
-    if (chatAdminCount > 0) return { label: String(chatAdminCount), tone: "admin" as const };
-    if (chatUnreadCount > 0) return { label: String(chatUnreadCount), tone: "unread" as const };
-    return null;
-  }, [workspaceId, chatAdminCount, chatUnreadCount]);
-
   useEffect(() => {
     let isMounted = true;
     const loadChatBadges = async () => {
@@ -259,7 +252,7 @@ const Sidebar: React.FC = () => {
             {NAV_ITEMS.filter((i) => !BOTTOM_NAV_IDS.has(i.id)).map((item) => {
               const isActive = activeNav === item.id;
               const showBlacklistBadge = item.id === "blacklist" && totalBlacklisted > 0;
-              const showChatBadge = item.id === "chats" && chatBadge;
+              const showChatBadges = item.id === "chats" && (chatAdminCount > 0 || chatUnreadCount > 0);
               return (
                 <motion.button
                   key={item.id}
@@ -294,17 +287,26 @@ const Sidebar: React.FC = () => {
                       {totalBlacklisted}
                     </span>
                   )}
-                  {showChatBadge && chatBadge ? (
-                    <span
-                      className={`relative z-10 ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        isActive
-                          ? "bg-white/20 text-white"
-                          : chatBadge.tone === "admin"
-                            ? "bg-rose-100 text-rose-700"
-                            : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {chatBadge.label}
+                  {showChatBadges ? (
+                    <span className="relative z-10 ml-auto flex items-center gap-2">
+                      {chatAdminCount > 0 ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            isActive ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700"
+                          }`}
+                        >
+                          {chatAdminCount}
+                        </span>
+                      ) : null}
+                      {chatUnreadCount > 0 ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            isActive ? "bg-white/20 text-white" : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {chatUnreadCount}
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
                 </motion.button>
