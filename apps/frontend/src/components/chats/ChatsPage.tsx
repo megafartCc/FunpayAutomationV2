@@ -279,7 +279,7 @@ const ChatsPage: React.FC = () => {
   const loadChats = useCallback(
     async (query?: string, options?: { silent?: boolean; incremental?: boolean }) => {
       const trimmedQuery = query?.trim() || "";
-      const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
+      const cacheKey = trimmedQuery || workspaceId === null ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
         setChats(cached);
@@ -684,11 +684,11 @@ const ChatsPage: React.FC = () => {
 
         <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
           <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="flex items-center gap-2">
-              <input
-                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                placeholder="Search chats"
-                value={chatSearch}
+          <div className="flex items-center gap-2">
+            <input
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+              placeholder="Search chats"
+              value={chatSearch}
                 onChange={(event) => setChatSearch(event.target.value)}
               />
               <button
