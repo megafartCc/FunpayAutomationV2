@@ -335,6 +335,7 @@ const ChatsPage: React.FC = () => {
       const cached = options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS);
       if (cached) {
         setMessages(cached);
+        updateChatPreview(chatId, cached);
       } else if (!options?.incremental) {
         setMessages([]);
       }
