@@ -373,20 +373,7 @@ def _calculate_resume_start(rental_start: object, frozen_at: object) -> datetime
 
 
 def get_unit_minutes(account: dict) -> int:
-    minutes = account.get("rental_duration_minutes")
-    if minutes is not None:
-        try:
-            val = int(minutes)
-            if val > 0:
-                return val
-        except Exception:
-            pass
-    hours = account.get("rental_duration")
-    try:
-        hours_val = int(hours or 0)
-    except Exception:
-        hours_val = 0
-    return max(hours_val * 60, 60)
+    return 60
 
 
 def _parse_datetime(value: object) -> datetime | None:
