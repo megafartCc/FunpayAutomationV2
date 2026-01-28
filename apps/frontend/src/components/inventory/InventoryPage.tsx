@@ -60,6 +60,12 @@ const formatDuration = (minutesTotal: number | null | undefined) => {
   return `${hours}h ${rem}m`;
 };
 
+const stratzUrl = (steamId?: string | null) => {
+  const trimmed = steamId?.trim();
+  if (!trimmed) return null;
+  return `https://stratz.com/search/${trimmed}`;
+};
+
 const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -356,7 +362,21 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>{stateLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Login: {selectedAccount.login || "-"}</span>
+                    <span>
+                      Login:{" "}
+                      {stratzUrl(selectedAccount.steamId) ? (
+                        <a
+                          href={stratzUrl(selectedAccount.steamId)!}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 underline"
+                        >
+                          {selectedAccount.login || selectedAccount.steamId || "-"}
+                        </a>
+                      ) : (
+                        selectedAccount.login || "-"
+                      )}
+                    </span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Owner: {ownerLabel}</span>
                     <span>Home workspace: {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}</span>
@@ -629,7 +649,19 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                         </div>
                       </div>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.login || ""}>
-                        {acc.login || ""}
+                        {stratzUrl(acc.steamId) ? (
+                          <a
+                            href={stratzUrl(acc.steamId)!}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {acc.login || acc.steamId || ""}
+                          </a>
+                        ) : (
+                          acc.login || ""
+                        )}
                       </span>
                       <span className="min-w-0 truncate text-neutral-700" title={acc.password || ""}>
                         {acc.password || ""}
