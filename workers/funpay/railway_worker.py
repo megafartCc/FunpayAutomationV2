@@ -696,7 +696,13 @@ def get_remaining_label(account: dict, now: datetime) -> tuple[str | None, str]:
 
 
 def build_display_name(account: dict) -> str:
-    name = (account.get("account_name") or account.get("login") or "").strip()
+    # Prefer per-workspace override from lots.display_name, then fallback to account_name/login.
+    name = (
+        account.get("display_name")
+        or account.get("account_name")
+        or account.get("login")
+        or ""
+    ).strip()
     lot_number = account.get("lot_number")
     if lot_number and not name.startswith("\u2116"):
         prefix = f"\u2116{lot_number} "
@@ -826,6 +832,17 @@ def _get_redis():
         _redis_client = None
     return _redis_client
 
+
+def _clear_lot_cache_on_start() -> None:
+    """Best-effort cache bust for lot mappings so fresh display names are used after deploy."""
+    cache = _get_redis()
+    if not cache:
+        return
+    patterns = ["lot:*", "lot_mapping:*", "lot:list:*", "lot:stock:*"]
+    for pattern in patterns:
+        keys = list(cache.scan_iter(match=pattern))
+        if keys:
+            cache.delete(*keys)
 
 def _presence_cache_key(steam_id: str) -> str:
     return f"presence:{steam_id}"
@@ -1475,6 +1492,7 @@ def fetch_lot_mapping(
             return None
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
+        has_display_name = column_exists(cursor, "lots", "display_name")
         params: list = [int(user_id), int(lot_number)]
         where_workspace = ""
         order_clause = " ORDER BY a.id"
@@ -1491,6 +1509,7 @@ def fetch_lot_mapping(
                    {', a.`low_priority` AS `low_priority`' if has_low_priority else ', 0 AS `low_priority`'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
+                   {', l.display_name' if has_display_name else ', NULL AS display_name'}
             FROM lots l
             JOIN accounts a ON a.id = l.account_id
             WHERE l.user_id = %s AND l.lot_number = %s
@@ -2049,6 +2068,7 @@ def fetch_available_lot_accounts(
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
         has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
 
         select_fields = [
             "a.ID AS id",
@@ -2068,11 +2088,16 @@ def fetch_available_lot_accounts(
             select_fields.append("0 AS `low_priority`")
         if has_lots:
             select_fields.extend(["l.lot_number AS lot_number", "l.lot_url AS lot_url"])
+            if has_display_name:
+                select_fields.append("l.display_name AS display_name")
+            else:
+                select_fields.append("NULL AS display_name")
         else:
             select_fields.append(
                 "a.lot_number AS lot_number" if has_account_lot_number else "NULL AS lot_number"
             )
             select_fields.append("a.lot_url AS lot_url" if has_account_lot_url else "NULL AS lot_url")
+            select_fields.append("NULL AS display_name")
 
         from_clause = "FROM accounts a"
         if has_lots:
@@ -2127,6 +2152,7 @@ def fetch_lot_account(
         cursor = conn.cursor(dictionary=True)
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
+        has_display_name = column_exists(cursor, "lots", "display_name")
         params: list = [user_id, lot_number]
         join_clause = "JOIN accounts a ON a.id = l.account_id"
         where_workspace = ""
@@ -2144,6 +2170,7 @@ def fetch_lot_account(
                    {', a.`low_priority` AS `low_priority`' if has_low_priority else ', 0 AS `low_priority`'}
                    {', a.mmr' if has_mmr else ', NULL AS mmr'},
                    l.lot_number, l.lot_url
+                   {', l.display_name' if has_display_name else ', NULL AS display_name'}
             FROM lots l
             {join_clause}
             WHERE l.user_id = %s AND l.lot_number = %s
@@ -3823,6 +3850,7 @@ def run_multi_user(logger: logging.Logger) -> None:
 
 def main() -> None:
     logger = configure_logging()
+    _clear_lot_cache_on_start()
     explicit_multi = os.getenv("FUNPAY_MULTI_USER")
     golden_key = os.getenv("FUNPAY_GOLDEN_KEY")
 
