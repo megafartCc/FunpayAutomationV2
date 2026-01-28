@@ -25,7 +25,7 @@ type AccountRow = {
 };
 
 const INVENTORY_GRID =
-  "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
+  "minmax(60px,0.5fr) minmax(150px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) minmax(150px,1.1fr) minmax(70px,0.6fr) minmax(90px,0.6fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const mapAccount = (item: AccountItem): AccountRow => ({
@@ -557,7 +557,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[1000px]">
+            <div className="min-w-0">
               <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
                 <span>ID</span>
                 <span>Name</span>

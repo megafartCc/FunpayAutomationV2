@@ -26,7 +26,7 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout, hideWorks
   }, [selectedId, visibleWorkspaces, workspaces]);
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-10 py-4">
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-8 py-4">
       <h1 className="text-xl font-semibold text-neutral-900">{title}</h1>
 
         <div className="flex items-center gap-4">

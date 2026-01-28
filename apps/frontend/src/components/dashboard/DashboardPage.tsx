@@ -143,9 +143,9 @@ type RentalRow = {
 };
 
 const INVENTORY_GRID =
-  "minmax(72px,0.6fr) minmax(180px,1.4fr) minmax(140px,1fr) minmax(140px,1fr) minmax(190px,1.1fr) minmax(80px,0.6fr) minmax(110px,0.6fr)";
+  "minmax(60px,0.5fr) minmax(150px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) minmax(150px,1.1fr) minmax(70px,0.6fr) minmax(90px,0.6fr)";
 const RENTALS_GRID =
-  "minmax(64px,0.5fr) minmax(240px,1.5fr) minmax(180px,1.1fr) minmax(150px,0.9fr) minmax(190px,1fr) minmax(170px,0.9fr) minmax(260px,1.4fr) minmax(140px,0.7fr)";
+  "minmax(52px,0.5fr) minmax(170px,1.3fr) minmax(130px,1fr) minmax(110px,0.9fr) minmax(130px,0.9fr) minmax(110px,0.8fr) minmax(140px,1fr) minmax(90px,0.6fr)";
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
@@ -1010,7 +1010,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             <h3 className="text-lg font-semibold text-neutral-900">Inventory</h3>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[1000px]">
+            <div className="min-w-0">
               <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
                 <span>ID</span>
                 <span>Name</span>
@@ -1144,7 +1144,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Status</button>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[1100px]">
+            <div className="min-w-0">
               <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
                 <span>ID</span>
                 <span>Account</span>
