@@ -2504,11 +2504,8 @@ def build_stock_messages(accounts: list[dict]) -> list[str]:
         return [STOCK_EMPTY]
     lines: list[str] = []
     for account in accounts:
-        lot_number = account.get("lot_number")
         lot_url = account.get("lot_url")
-        display_name = account.get("account_name") or account.get("login") or ""
-        if not display_name:
-            display_name = f"Аккаунт №{lot_number}" if lot_number else "Аккаунт"
+        display_name = build_display_name(account)
         line = f"{display_name} - {lot_url}" if lot_url else display_name
         lines.append(line)
 
