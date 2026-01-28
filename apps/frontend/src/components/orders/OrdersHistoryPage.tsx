@@ -56,12 +56,35 @@ const formatWorkspaceLabel = (
 };
 
 const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
-  const { selectedId: selectedWorkspaceId } = useWorkspace();
+  const { selectedId: selectedWorkspaceId, selectedPlatform, workspaces } = useWorkspace();
   const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number);
 
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const workspacePlatforms = useMemo(() => {
+    const map = new Map<number, "funpay" | "playerok">();
+    workspaces.forEach((item) => {
+      const key = (item.platform || "funpay").toLowerCase() === "playerok" ? "playerok" : "funpay";
+      map.set(item.id, key);
+    });
+    return map;
+  }, [workspaces]);
+
+  const scopedWorkspaceIds = useMemo(() => {
+    if (selectedPlatform === "all") return null;
+    return new Set(
+      workspaces
+        .filter((item) => (item.platform || "funpay") === selectedPlatform)
+        .map((item) => item.id),
+    );
+  }, [workspaces, selectedPlatform]);
+
+  const visibleOrders = useMemo(() => {
+    if (selectedPlatform === "all" || !scopedWorkspaceIds) return orders;
+    return orders.filter((order) => order.workspace_id && scopedWorkspaceIds.has(order.workspace_id));
+  }, [orders, selectedPlatform, scopedWorkspaceIds]);
 
   const loadOrders = useCallback(
     async (q?: string, silent = false) => {
@@ -86,7 +109,14 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
     return () => window.clearTimeout(handle);
   }, [query, loadOrders]);
 
-  const totalLabel = useMemo(() => `${orders.length} records`, [orders.length]);
+  const totalLabel = useMemo(() => `${visibleOrders.length} records`, [visibleOrders.length]);
+
+  const platformPill = useCallback((platform: "funpay" | "playerok") => {
+    if (platform === "playerok") {
+      return { label: "PlayerOk", className: "bg-sky-50 text-sky-700" };
+    }
+    return { label: "FunPay", className: "bg-amber-50 text-amber-700" };
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -131,7 +161,9 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
             />
           </label>
           <div className="text-xs text-neutral-500">
-            {selectedWorkspaceId === "all" ? "All workspaces combined." : "Workspace scoped."}
+            {selectedWorkspaceId === "all" && selectedPlatform === "all"
+              ? "All workspaces combined."
+              : "Workspace scoped."}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -157,7 +189,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                 </div>
               )}
               {!loading &&
-                orders.map((order, idx) => {
+                visibleOrders.map((order, idx) => {
                   const pill = orderActionPill(order.action);
                   const priceLabel =
                     order.price !== null && order.price !== undefined && !Number.isNaN(Number(order.price))
@@ -165,6 +197,8 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                       : "-";
                   const accountLabel = order.account_name || "-";
                   const subLabel = order.lot_number ? `Lot ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
+                  const platformKey = workspacePlatforms.get(order.workspace_id ?? -1) || "funpay";
+                  const platformBadge = platformPill(platformKey);
                   return (
                     <div
                       key={order.id ?? idx}
@@ -197,13 +231,22 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-xs text-neutral-500">
                         {formatMoscowDateTime(order.created_at)}
                       </span>
-                      <span className="min-w-0 truncate text-xs text-neutral-600">
-                        {formatWorkspaceLabel(order.workspace_id, order.workspace_name)}
-                      </span>
+                      <div className="flex min-w-0 items-center gap-2 text-xs text-neutral-600">
+                        <span className="min-w-0 truncate">
+                          {formatWorkspaceLabel(order.workspace_id, order.workspace_name)}
+                        </span>
+                        {selectedPlatform === "all" ? (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${platformBadge.className}`}
+                          >
+                            {platformBadge.label}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}
-              {!loading && orders.length === 0 && (
+              {!loading && visibleOrders.length === 0 && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                   No orders found.
                 </div>

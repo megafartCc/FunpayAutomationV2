@@ -86,10 +86,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     void refresh();
   }, [refresh]);
 
-  const setSelectedId = useCallback((value: number | "all") => {
-    setSelectedIdState(value);
-    window.localStorage.setItem(STORAGE_KEY, String(value));
-  }, []);
+  const setSelectedId = useCallback(
+    (value: number | "all") => {
+      const next = normalizeSelected(value, workspaces, false, selectedPlatform);
+      setSelectedIdState(next);
+      window.localStorage.setItem(STORAGE_KEY, String(next));
+    },
+    [workspaces, selectedPlatform],
+  );
 
   const setSelectedPlatform = useCallback(
     (value: PlatformFilter) => {

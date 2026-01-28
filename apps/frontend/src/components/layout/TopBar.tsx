@@ -53,7 +53,13 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
             <span className="hidden sm:inline text-[11px] uppercase tracking-wide text-neutral-500">Workspace</span>
             <select
               className="bg-transparent text-sm font-semibold text-neutral-700 outline-none"
-              value={selectedId === "all" ? "all" : String(selectedId)}
+              value={
+                selectedId === "all"
+                  ? selectedPlatform === "all"
+                    ? "all"
+                    : String(visibleWorkspaces[0]?.id ?? "all")
+                  : String(selectedId)
+              }
               onChange={(event) => {
                 const value = event.target.value;
                 if (value === "all") {
@@ -65,7 +71,7 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
               }}
               disabled={loading}
             >
-              <option value="all">All workspaces</option>
+              {selectedPlatform === "all" ? <option value="all">All workspaces</option> : null}
               {visibleWorkspaces.map((item) => (
                 <option key={item.id} value={String(item.id)}>
                   {item.is_default ? `${item.name} (Default)` : item.name}
