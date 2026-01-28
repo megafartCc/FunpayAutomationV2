@@ -86,10 +86,16 @@ def _select_funpay_workspace(user_id: int):
 
 
 def _extract_categories_from_html(html: str) -> dict[int, dict]:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, "lxml")
     items: dict[int, dict] = {}
+    games_table = soup.find_all("div", {"class": "promo-game-list"})
+    if games_table:
+        games_table = games_table[1] if len(games_table) > 1 else games_table[0]
+        blocks = games_table.find_all("div", {"class": "promo-game-item"})
+    else:
+        blocks = soup.select(".promo-game-item")
 
-    for block in soup.select(".promo-game-item"):
+    for block in blocks:
         game_el = block.select_one(".game-title a") or block.select_one(".game-title")
         game_name = (game_el.text or "").strip() if game_el else ""
         if not game_name:
@@ -101,7 +107,7 @@ def _extract_categories_from_html(html: str) -> dict[int, dict]:
             if data_id:
                 server_labels[data_id] = (btn.text or "").strip()
 
-        for ul in block.select("ul.list-inline[data-id]"):
+        for ul in block.select("ul.list-inline"):
             data_id = (ul.get("data-id") or "").strip()
             server = server_labels.get(data_id, "")
             game_label = f"{game_name} ({server})" if server else game_name
@@ -158,8 +164,6 @@ def _extract_categories_from_html(html: str) -> dict[int, dict]:
 
 def _fetch_funpay_categories_live(token: str, proxy: dict | None) -> list[dict]:
     urls = (
-        "https://funpay.com/en/lots/",
-        "https://funpay.com/lots/",
         "https://funpay.com/en/",
         "https://funpay.com/",
     )
