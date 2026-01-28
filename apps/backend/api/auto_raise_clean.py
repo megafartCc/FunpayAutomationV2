@@ -86,7 +86,10 @@ def _select_funpay_workspace(user_id: int):
 
 
 def _extract_categories_from_html(html: str) -> dict[int, dict]:
-    soup = BeautifulSoup(html, "lxml")
+    try:
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(html, "html.parser")
     items: dict[int, dict] = {}
     games_table = soup.find_all("div", {"class": "promo-game-list"})
     if games_table:
