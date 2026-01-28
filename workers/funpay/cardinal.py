@@ -20,11 +20,13 @@ import random
 import time
 import sys
 import os
+import re
 import FunPayAPI
 import handlers
 from locales.localizer import Localizer
 from FunPayAPI import utils as fp_utils
 from Utils import cardinal_tools
+from bs4 import BeautifulSoup
 
 from threading import Thread
 
@@ -264,6 +266,100 @@ class Cardinal(object):
             self.lots_ids = [i.id for i in profile.get_lots()]
             logger.info(_("crd_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
         return True
+
+    def __collect_lot_subcategory_ids(self) -> list[int]:
+        paths = [
+            ("lots/", None),
+            ("lots/", "en"),
+            ("lots/", "uk"),
+        ]
+        found: set[int] = set()
+        for path, locale in paths:
+            response = self.account.method(
+                "get",
+                path,
+                {"accept": "*/*"},
+                {},
+                raise_not_200=True,
+                locale=locale,
+            )
+            html = response.content.decode()
+            parser = BeautifulSoup(html, "lxml")
+            if not parser.find("div", {"class": "user-link-name"}):
+                raise FunPayAPI.exceptions.UnauthorizedError(response)
+            for link in parser.select("a[href*='/lots/']"):
+                href = link.get("href", "")
+                match = re.search(r"/lots/(\\d+)/", href)
+                if not match:
+                    continue
+                try:
+                    found.add(int(match.group(1)))
+                except ValueError:
+                    continue
+        return sorted(found)
+
+    def __update_profile_from_lots_page(self, attempts: int = 3) -> bool:
+        logger.info(_("crd_getting_profile_data"))
+        while attempts:
+            try:
+                if not self.account.is_initiated:
+                    self.account.get()
+                subcategory_ids = self.__collect_lot_subcategory_ids()
+                if not subcategory_ids:
+                    raise RuntimeError("No lot subcategories found.")
+                profile = types.UserProfile(
+                    self.account.id,
+                    self.account.username or "",
+                    "",
+                    False,
+                    False,
+                    "",
+                )
+                for subcategory_id in subcategory_ids:
+                    subcategory = self.account.get_subcategory(SubCategoryTypes.COMMON, subcategory_id)
+                    if not subcategory:
+                        continue
+                    lots = self.account.get_my_subcategory_lots(subcategory_id)
+                    for lot in lots:
+                        shortcut = types.LotShortcut(
+                            lot.id,
+                            lot.server,
+                            lot.description,
+                            lot.amount,
+                            lot.price,
+                            lot.currency,
+                            lot.subcategory,
+                            None,
+                            lot.auto,
+                            None,
+                            None,
+                            lot.html,
+                        )
+                        profile.add_lot(shortcut)
+
+                self.profile = profile
+                self.curr_profile = profile
+                self.lots_ids = [i.id for i in profile.get_lots()]
+                logger.info(_("crd_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
+                return True
+            except TimeoutError:
+                logger.error(_("crd_profile_get_timeout_err"))
+            except FunPayAPI.exceptions.RequestFailedError as exc:
+                logger.error(exc.short_str())
+                logger.debug(exc)
+            except FunPayAPI.exceptions.UnauthorizedError as exc:
+                logger.error(exc.short_str())
+                logger.debug(exc)
+            except Exception:
+                logger.error(_("crd_profile_get_unexpected_err"))
+                logger.debug("TRACEBACK", exc_info=True)
+            attempts -= 1
+            if attempts <= 0:
+                break
+            logger.warning(_("crd_try_again_in_n_secs", 2))
+            time.sleep(2)
+        logger.error(_("crd_profile_get_too_many_attempts_err", attempts))
+        return False
 
     def get_balance(self, attempts: int = 3) -> FunPayAPI.types.Balance:
         subcategories = self.account.get_sorted_subcategories()[FunPayAPI.enums.SubCategoryTypes.COMMON]
@@ -669,7 +765,7 @@ class Cardinal(object):
         """
         Парсит лоты (для ПУ TG).
         """
-        result = self.__update_profile(infinite_polling=False, attempts=3, update_main_profile=False)
+        result = self.__update_profile_from_lots_page(attempts=3)
         return result
 
     def switch_msg_get_mode(self):
@@ -924,4 +1020,3 @@ class Cardinal(object):
     @property
     def only_bot_msg_enabled(self) -> bool:
         return self.MAIN_CFG["NewMessageView"].getboolean("notifyOnlyBotMessages")
-
