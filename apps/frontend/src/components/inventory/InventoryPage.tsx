@@ -80,20 +80,6 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accountControlBusy, setAccountControlBusy] = useState(false);
   const { workspaces } = useWorkspace();
 
-  const workspacePlatforms = useMemo(() => {
-    const map = new Map<number, "funpay" | "playerok">();
-    workspaces.forEach((item) => {
-      const key = (item.platform || "funpay").toLowerCase() === "playerok" ? "playerok" : "funpay";
-      map.set(item.id, key);
-    });
-    return map;
-  }, [workspaces]);
-
-  const platformBadge = (platform: "funpay" | "playerok") =>
-    platform === "playerok"
-      ? { label: "PlayerOk", className: "bg-sky-50 text-sky-700" }
-      : { label: "FunPay", className: "bg-amber-50 text-amber-700" };
-
   const resolveWorkspaceName = (workspaceName?: string | null, workspaceId?: number | null) => {
     if (workspaceName) return workspaceName;
     if (workspaceId) {
@@ -555,9 +541,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
               <p className="text-xs text-neutral-500">Select an account to manage rentals.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
+              <div className="flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
                 <span className="uppercase tracking-wide text-neutral-500">Scope</span>
-                <span className="text-xs font-semibold text-neutral-700">All platforms + workspaces</span>
+                <span className="font-semibold text-neutral-700">All platforms + workspaces</span>
               </div>
               {selectedAccount ? (
                 <span className="text-xs rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">
@@ -596,9 +582,6 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                         : "bg-emerald-50 text-emerald-600";
                   const rowId = acc.id ?? idx;
                   const isSelected = selectedId !== null && String(selectedId) === String(rowId);
-                  const platformKey =
-                    workspacePlatforms.get(acc.workspaceId ?? acc.lastRentedWorkspaceId ?? -1) ?? "funpay";
-                  const platformPill = platformBadge(platformKey);
                   return (
                     <motion.div
                       key={rowId}
@@ -630,11 +613,6 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                           {acc.name || "Account"}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <span
-                            className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${platformPill.className}`}
-                          >
-                            {platformPill.label}
-                          </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
                             Home: {formatWorkspaceLabel(acc.workspaceName, acc.workspaceId)}
                           </span>
