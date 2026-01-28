@@ -193,7 +193,7 @@ const navIdToPath: Record<string, string> = {
 };
 
 const pathToNavId = (path: string): string => {
-  const clean = path.toLowerCase();
+  const clean = path.toLowerCase().replace(/\/+$/, "") || "/";
   const found = Object.entries(navIdToPath).find(([, p]) => p === clean);
   if (found) return found[0];
   if (clean.startsWith("/chats/")) return "chats";
