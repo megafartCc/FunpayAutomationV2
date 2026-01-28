@@ -33,13 +33,20 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     titles[location.pathname] ||
     (location.pathname.startsWith("/chats") ? "Chats" : "Dashboard");
   const initial = user.username?.[0]?.toUpperCase() || "U";
+  const hideWorkspaceControls =
+    location.pathname === "/inventory" || location.pathname === "/blacklist";
 
   return (
     <WorkspaceProvider>
       <div className="flex h-screen overflow-hidden bg-neutral-50">
         <Sidebar />
         <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden">
-          <TopBar title={title} userInitial={initial} onLogout={onLogout} />
+          <TopBar
+            title={title}
+            userInitial={initial}
+            onLogout={onLogout}
+            hideWorkspaceControls={hideWorkspaceControls}
+          />
           <main className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
             <Outlet />
           </main>

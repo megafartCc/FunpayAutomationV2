@@ -35,9 +35,9 @@ const formatWorkspaceLabel = (
 };
 
 const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
-  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
-  const isAllWorkspaces = selectedWorkspaceId === "all";
-  const workspaceId = isAllWorkspaces ? null : (selectedWorkspaceId as number);
+  const { workspaces } = useWorkspace();
+  const isAllWorkspaces = true;
+  const workspaceId: number | null = null;
 
   const [blacklistEntries, setBlacklistEntries] = useState<BlacklistEntry[]>([]);
   const [blacklistQuery, setBlacklistQuery] = useState("");
@@ -56,10 +56,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
 
   const resolveOrderOwner = useCallback(
     async (orderId: string) => {
-      if (!workspaceId && !isAllWorkspaces) {
-        onToast?.("Select a workspace to manage the blacklist.", true);
-        return null;
-      }
       const trimmed = orderId.trim();
       if (!trimmed) {
         onToast?.("Enter an order ID first.", true);
@@ -95,7 +91,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
         setBlacklistResolving(false);
       }
     },
-    [workspaceId, isAllWorkspaces, onToast, workspaces],
+    [workspaceId, onToast, workspaces],
   );
 
   const loadBlacklist = useCallback(async () => {
@@ -150,10 +146,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   };
 
   const handleAddBlacklist = async () => {
-    if (!workspaceId && !isAllWorkspaces) {
-      onToast?.("Select a workspace to manage the blacklist.", true);
-      return;
-    }
     let owner = blacklistOwner.trim();
     const orderId = blacklistOrderId.trim();
     if (!owner && !orderId) {
@@ -201,10 +193,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
 
   const handleSaveBlacklistEdit = async () => {
     if (blacklistEditingId === null || blacklistEditingId === undefined) return;
-    if (!workspaceId && !isAllWorkspaces) {
-      onToast?.("Select a workspace to manage the blacklist.", true);
-      return;
-    }
     const owner = blacklistEditOwner.trim();
     if (!owner) {
       onToast?.("Owner cannot be empty.", true);
@@ -231,10 +219,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       onToast?.("Select users to unblacklist.", true);
       return;
     }
-    if (!workspaceId && !isAllWorkspaces) {
-      onToast?.("Select a workspace to manage the blacklist.", true);
-      return;
-    }
     try {
       await api.removeBlacklist(blacklistSelected, workspaceId ?? undefined);
       onToast?.("Selected users removed from blacklist.");
@@ -250,10 +234,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   const handleClearBlacklist = async () => {
     if (!blacklistEntries.length) {
       onToast?.("Blacklist is already empty.", true);
-      return;
-    }
-    if (!workspaceId && !isAllWorkspaces) {
-      onToast?.("Select a workspace to manage the blacklist.", true);
       return;
     }
     if (!window.confirm("Remove everyone from the blacklist?")) return;
@@ -300,7 +280,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
             <div className="mb-2 text-sm font-semibold text-neutral-800">Add to blacklist</div>
             {isAllWorkspaces && (
               <div className="mb-3 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-                All workspaces selected - blacklist applies globally.
+                All workspaces + platforms selected - blacklist applies globally.
               </div>
             )}
             <div className="space-y-3">
