@@ -3,27 +3,42 @@ import { api, WorkspaceItem } from "../services/api";
 
 type WorkspaceContextValue = {
   workspaces: WorkspaceItem[];
+  visibleWorkspaces: WorkspaceItem[];
   loading: boolean;
   selectedId: number | "all";
   setSelectedId: (value: number | "all") => void;
+  selectedPlatform: "all" | "funpay" | "playerok";
+  setSelectedPlatform: (value: "all" | "funpay" | "playerok") => void;
   refresh: () => Promise<void>;
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "funpay.selectedWorkspace";
+const PLATFORM_KEY = "funpay.selectedPlatform";
+const PLATFORM_VALUES = ["all", "funpay", "playerok"] as const;
+type PlatformFilter = (typeof PLATFORM_VALUES)[number];
 
-const normalizeSelected = (value: number | "all", workspaces: WorkspaceItem[], preferDefault: boolean) => {
+const normalizeSelected = (
+  value: number | "all",
+  workspaces: WorkspaceItem[],
+  preferDefault: boolean,
+  platform: PlatformFilter,
+) => {
+  const scoped =
+    platform === "all"
+      ? workspaces
+      : workspaces.filter((item) => (item.platform || "funpay") === platform);
   if (value === "all") {
     if (preferDefault) {
-      const defaultWs = workspaces.find((item) => item.is_default);
+      const defaultWs = scoped.find((item) => item.is_default);
       return defaultWs ? defaultWs.id : "all";
     }
     return "all";
   }
-  const exists = workspaces.some((item) => item.id === value);
+  const exists = scoped.some((item) => item.id === value);
   if (exists) return value;
-  const defaultWs = workspaces.find((item) => item.is_default);
+  const defaultWs = scoped.find((item) => item.is_default);
   return defaultWs ? defaultWs.id : "all";
 };
 
@@ -31,6 +46,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedIdState] = useState<number | "all">("all");
+  const [selectedPlatform, setSelectedPlatformState] = useState<PlatformFilter>("all");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -40,13 +56,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const res = await api.listWorkspaces();
       const items = res.items || [];
       setWorkspaces(items);
-      setSelectedIdState((prev) => normalizeSelected(prev, items, preferDefault));
+      setSelectedIdState((prev) => normalizeSelected(prev, items, preferDefault, selectedPlatform));
     } catch {
       setWorkspaces([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedPlatform]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -56,6 +72,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSelectedIdState(id);
       }
     }
+    const storedPlatform = window.localStorage.getItem(PLATFORM_KEY);
+    if (storedPlatform && PLATFORM_VALUES.includes(storedPlatform as PlatformFilter)) {
+      setSelectedPlatformState(storedPlatform as PlatformFilter);
+    }
     void refresh();
   }, [refresh]);
 
@@ -64,15 +84,35 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     window.localStorage.setItem(STORAGE_KEY, String(value));
   }, []);
 
+  const setSelectedPlatform = useCallback(
+    (value: PlatformFilter) => {
+      setSelectedPlatformState(value);
+      window.localStorage.setItem(PLATFORM_KEY, value);
+      setSelectedIdState((prev) => normalizeSelected(prev, workspaces, true, value));
+    },
+    [workspaces],
+  );
+
+  const visibleWorkspaces = useMemo(
+    () =>
+      selectedPlatform === "all"
+        ? workspaces
+        : workspaces.filter((item) => (item.platform || "funpay") === selectedPlatform),
+    [workspaces, selectedPlatform],
+  );
+
   const value = useMemo(
     () => ({
       workspaces,
+      visibleWorkspaces,
       loading,
       selectedId,
       setSelectedId,
+      selectedPlatform,
+      setSelectedPlatform,
       refresh,
     }),
-    [workspaces, loading, selectedId, setSelectedId, refresh],
+    [workspaces, visibleWorkspaces, loading, selectedId, setSelectedId, selectedPlatform, setSelectedPlatform, refresh],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

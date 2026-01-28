@@ -11,23 +11,44 @@ type TopBarProps = {
 const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const { workspaces, loading, selectedId, setSelectedId } = useWorkspace();
+  const { workspaces, visibleWorkspaces, loading, selectedId, setSelectedId, selectedPlatform, setSelectedPlatform } =
+    useWorkspace();
 
   const selectedLabel = useMemo(() => {
     if (selectedId === "all") return "All workspaces";
-    const match = workspaces.find((item) => item.id === selectedId);
+    const match = visibleWorkspaces.find((item) => item.id === selectedId);
     if (!match) {
-      const fallback = workspaces.find((item) => item.is_default);
+      const fallback = visibleWorkspaces.find((item) => item.is_default) || workspaces.find((item) => item.is_default);
       return fallback ? `${fallback.name} (Default)` : "Workspace";
     }
     return match.is_default ? `${match.name} (Default)` : match.name;
-  }, [selectedId, workspaces]);
+  }, [selectedId, visibleWorkspaces, workspaces]);
 
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-10 py-4">
       <h1 className="text-xl font-semibold text-neutral-900">{title}</h1>
 
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-1 text-xs font-semibold text-neutral-600 shadow-sm shadow-neutral-200">
+            {[
+              { key: "all", label: "All" },
+              { key: "funpay", label: "FunPay" },
+              { key: "playerok", label: "PlayerOk" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
+                  selectedPlatform === item.key
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-600 hover:bg-neutral-100"
+                }`}
+                onClick={() => setSelectedPlatform(item.key as "all" | "funpay" | "playerok")}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-semibold text-neutral-600 shadow-sm shadow-neutral-200">
             <span className="hidden sm:inline text-[11px] uppercase tracking-wide text-neutral-500">Workspace</span>
             <select
@@ -45,7 +66,7 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout }) => {
               disabled={loading}
             >
               <option value="all">All workspaces</option>
-              {workspaces.map((item) => (
+              {visibleWorkspaces.map((item) => (
                 <option key={item.id} value={String(item.id)}>
                   {item.is_default ? `${item.name} (Default)` : item.name}
                 </option>

@@ -20,11 +20,11 @@ const AddAccountPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [mmr, setMmr] = useState("");
   const [mafileJson, setMafileJson] = useState("");
-  const { workspaces, selectedId } = useWorkspace();
+  const { visibleWorkspaces, selectedId } = useWorkspace();
   const defaultWorkspaceId = useMemo(() => {
-    const def = workspaces.find((item) => item.is_default);
-    return def?.id ?? (workspaces[0]?.id ?? null);
-  }, [workspaces]);
+    const def = visibleWorkspaces.find((item) => item.is_default);
+    return def?.id ?? (visibleWorkspaces[0]?.id ?? null);
+  }, [visibleWorkspaces]);
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -143,7 +143,7 @@ const AddAccountPage: React.FC = () => {
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               >
                 <option value="">Select workspace</option>
-                {workspaces.map((item) => (
+                {visibleWorkspaces.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.is_default ? `${item.name} (Default)` : item.name}
                   </option>

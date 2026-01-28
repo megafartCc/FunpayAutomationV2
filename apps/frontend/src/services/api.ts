@@ -160,6 +160,7 @@ export type ActiveRentalItem = {
 export type WorkspaceItem = {
   id: number;
   name: string;
+  platform: string;
   proxy_url: string;
   is_default: boolean;
   created_at?: string | null;
@@ -376,7 +377,7 @@ export const api = {
   clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
-  createWorkspace: (payload: { name: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
+  createWorkspace: (payload: { name: string; platform?: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
     request<WorkspaceItem>("/workspaces", { method: "POST", body: payload }),
   updateWorkspace: (workspaceId: number, payload: { name?: string; golden_key?: string; proxy_url?: string; is_default?: boolean }) =>
     request<WorkspaceItem>(`/workspaces/${workspaceId}`, { method: "PATCH", body: payload }),

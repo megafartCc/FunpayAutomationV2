@@ -48,6 +48,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const { workspaces, loading, refresh } = useWorkspace();
   const [keyActionBusy, setKeyActionBusy] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newPlatform, setNewPlatform] = useState<"funpay" | "playerok">("funpay");
   const [newKey, setNewKey] = useState("");
   const [newProxyUrl, setNewProxyUrl] = useState("");
   const [newProxyUsername, setNewProxyUsername] = useState("");
@@ -66,6 +67,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
 
   const resetCreateForm = () => {
     setNewName("");
+    setNewPlatform("funpay");
     setNewKey("");
     setNewProxyUrl("");
     setNewProxyUsername("");
@@ -107,6 +109,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     try {
       await api.createWorkspace({
         name: newName.trim(),
+        platform: newPlatform,
         golden_key: newKey.trim(),
         proxy_url: proxyUrl.trim(),
         is_default: newDefault,
@@ -211,7 +214,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-neutral-900">Workspaces</h3>
           <p className="text-xs text-neutral-500">
-            Connect multiple FunPay golden keys and switch between them without leaving the dashboard.
+            Connect multiple platform workspaces and switch between them without leaving the dashboard.
           </p>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -223,10 +226,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               placeholder="Workspace name (e.g. Seller A)"
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
+            <select
+              value={newPlatform}
+              onChange={(e) => setNewPlatform(e.target.value as "funpay" | "playerok")}
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+            >
+              <option value="funpay">FunPay</option>
+              <option value="playerok">PlayerOk</option>
+            </select>
             <input
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
-              placeholder="FunPay golden key"
+              placeholder="Platform key / token"
               type="password"
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
@@ -289,8 +300,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                 <div key={item.id} className="rounded-xl border border-neutral-200 bg-white p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-neutral-900">{item.name}</div>
-                      <div className="text-xs text-neutral-500">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                    <span>{item.name}</span>
+                    <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-neutral-600">
+                      {item.platform || "funpay"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-neutral-500">
                         {item.is_default ? "Default workspace" : "Workspace"}
                         {item.created_at ? ` · Added ${new Date(item.created_at).toLocaleDateString()}` : ""}
                         {item.key_hint ? ` · Key ${item.key_hint}` : ""}
@@ -354,7 +370,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         <input
                           value={editKey}
                           onChange={(e) => setEditKey(e.target.value)}
-                          placeholder="New golden key (optional)"
+                          placeholder="New platform key (optional)"
                           type="password"
                           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                         />
