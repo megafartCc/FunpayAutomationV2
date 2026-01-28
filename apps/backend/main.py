@@ -22,14 +22,14 @@ logger = logging.getLogger("uvicorn.error")
 
 
 def _sanitize_auto_raise() -> None:
-    path = Path(__file__).resolve().parent / "api" / "auto_raise.py"
+    path = Path(__file__).resolve().parent / "api" / "auto_raise_clean.py"
     try:
         data = path.read_bytes()
     except FileNotFoundError:
         return
     if b"\x00" in data:
         path.write_bytes(data.replace(b"\x00", b""))
-        logger.warning("auto_raise.py contained null bytes; sanitized at startup")
+        logger.warning("auto_raise_clean.py contained null bytes; sanitized at startup")
 
 
 @app.on_event("startup")
@@ -64,7 +64,7 @@ app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
 _sanitize_auto_raise()
 try:
-    from api.auto_raise import router as auto_raise_router
+    from api.auto_raise_clean import router as auto_raise_router
 except SyntaxError as exc:
     logger.error("Auto-raise module failed to load: %s", exc)
 else:
