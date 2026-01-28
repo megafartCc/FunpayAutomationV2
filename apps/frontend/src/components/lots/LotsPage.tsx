@@ -248,7 +248,7 @@ const LotsPage: React.FC = () => {
                   <tr key={lot.lot_number} className="bg-neutral-50">
                     <td className="rounded-l-xl px-3 py-3 font-semibold text-neutral-900">#{lot.lot_number}</td>
                     <td className="px-3 py-3 text-neutral-700">
-                      {(lot.display_name || lot.account_name) ?? "-"} (ID {lot.account_id})
+                      {lot.account_name ?? "-"} (ID {lot.account_id})
                     </td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.lot_url ? (
