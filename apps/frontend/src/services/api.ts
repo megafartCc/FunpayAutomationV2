@@ -144,6 +144,31 @@ export type NotificationItem = {
   created_at?: string | null;
 };
 
+export type AutoRaiseSettings = {
+  enabled: boolean;
+  categories: number[];
+  interval_hours: number;
+};
+
+export type AutoRaiseHistoryItem = {
+  id: number;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  status: string;
+  message?: string | null;
+  created_at?: string | null;
+};
+
+export type FunpayCategoryItem = {
+  id: number;
+  name: string;
+  game?: string | null;
+  category?: string | null;
+  server?: string | null;
+};
+
 export type ActiveRentalItem = {
   id: number;
   account: string;
@@ -368,6 +393,21 @@ export const api = {
       { method: "GET" },
     );
   },
+  getAutoRaiseSettings: () =>
+    request<AutoRaiseSettings>("/auto-raise/settings", { method: "GET" }),
+  updateAutoRaiseSettings: (payload: AutoRaiseSettings) =>
+    request<AutoRaiseSettings>("/auto-raise/settings", { method: "POST", body: payload }),
+  listAutoRaiseHistory: (limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: AutoRaiseHistoryItem[] }>(
+      `/auto-raise/history${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
+  listFunpayCategories: () =>
+    request<{ items: FunpayCategoryItem[] }>("/funpay/categories", { method: "GET" }),
   createBlacklist: (payload: BlacklistCreatePayload, workspaceId?: number | null) =>
     request<BlacklistEntry>(withWorkspace("/blacklist", workspaceId), { method: "POST", body: payload }),
   updateBlacklist: (entryId: number, payload: BlacklistUpdatePayload, workspaceId?: number | null) =>
