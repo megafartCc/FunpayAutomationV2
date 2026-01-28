@@ -63,6 +63,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const [editProxyPassword, setEditProxyPassword] = useState("");
   const [proxyChecks, setProxyChecks] = useState<Record<number, WorkspaceProxyCheck & { status: string }>>({});
 
+  const platformCopy = useMemo(
+    () => ({
+      funpay: {
+        keyLabel: "FunPay golden key",
+        keyPlaceholder: "Golden key",
+        keyHelper: "Required to authenticate with FunPay.",
+      },
+      playerok: {
+        keyLabel: "PlayerOk cookies JSON",
+        keyPlaceholder: "Paste cookies JSON array from your browser",
+        keyHelper: "Paste the JSON array of cookies exported from your logged-in PlayerOk session.",
+      },
+    }),
+    [],
+  );
+
   const isEditing = (id: number) => editingId === id;
 
   const resetCreateForm = () => {
@@ -234,13 +250,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               <option value="funpay">FunPay</option>
               <option value="playerok">PlayerOk</option>
             </select>
-            <input
-              value={newKey}
-              onChange={(e) => setNewKey(e.target.value)}
-              placeholder="Platform key / token"
-              type="password"
-              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-            />
+            <div className="grid gap-2 md:col-span-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                {platformCopy[newPlatform].keyLabel}
+              </label>
+              {newPlatform === "playerok" ? (
+                <textarea
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  placeholder={platformCopy[newPlatform].keyPlaceholder}
+                  rows={3}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+                />
+              ) : (
+                <input
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  placeholder={platformCopy[newPlatform].keyPlaceholder}
+                  type="password"
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+                />
+              )}
+              <p className="text-[11px] text-neutral-500">{platformCopy[newPlatform].keyHelper}</p>
+            </div>
           </div>
           <div className="grid gap-3">
             <input
@@ -308,8 +340,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                   </div>
                   <div className="text-xs text-neutral-500">
                         {item.is_default ? "Default workspace" : "Workspace"}
-                        {item.created_at ? ` · Added ${new Date(item.created_at).toLocaleDateString()}` : ""}
-                        {item.key_hint ? ` · Key ${item.key_hint}` : ""}
+                        {item.created_at ? ` Â· Added ${new Date(item.created_at).toLocaleDateString()}` : ""}
+                        {item.key_hint ? ` Â· Key ${item.key_hint}` : ""}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -353,8 +385,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                       <div className="font-semibold">
                         {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
                       </div>
-                      <div>Before: {proxyCheck.direct_ip || "—"}</div>
-                      <div>After: {proxyCheck.proxy_ip || "—"}</div>
+                      <div>Before: {proxyCheck.direct_ip || "â€”"}</div>
+                      <div>After: {proxyCheck.proxy_ip || "â€”"}</div>
                       {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
                     </div>
                   )}
@@ -367,13 +399,33 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                           placeholder="Workspace name"
                           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                         />
-                        <input
-                          value={editKey}
-                          onChange={(e) => setEditKey(e.target.value)}
-                          placeholder="New platform key (optional)"
-                          type="password"
-                          className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
-                        />
+                        <div className="grid gap-2">
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                            {platformCopy[(item.platform as "funpay" | "playerok") || "funpay"].keyLabel}
+                          </label>
+                          {item.platform === "playerok" ? (
+                            <textarea
+                              value={editKey}
+                              onChange={(e) => setEditKey(e.target.value)}
+                              placeholder="New PlayerOk cookies JSON (optional)"
+                              rows={3}
+                              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+                            />
+                          ) : (
+                            <input
+                              value={editKey}
+                              onChange={(e) => setEditKey(e.target.value)}
+                              placeholder="New golden key (optional)"
+                              type="password"
+                              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+                            />
+                          )}
+                          {item.platform === "playerok" ? (
+                            <p className="text-[11px] text-neutral-500">
+                              Paste the updated cookie JSON array to re-authenticate PlayerOk.
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="grid gap-3">
                         <input
@@ -433,8 +485,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                           <div className="font-semibold">
                             {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
                           </div>
-                          <div>Before: {proxyCheck.direct_ip || "—"}</div>
-                          <div>After: {proxyCheck.proxy_ip || "—"}</div>
+                          <div>Before: {proxyCheck.direct_ip || "â€”"}</div>
+                          <div>After: {proxyCheck.proxy_ip || "â€”"}</div>
                           {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
                         </div>
                       )}
