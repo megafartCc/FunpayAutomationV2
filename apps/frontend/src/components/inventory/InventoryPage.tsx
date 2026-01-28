@@ -78,7 +78,8 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accountEditMmr, setAccountEditMmr] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [accountControlBusy, setAccountControlBusy] = useState(false);
-  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
+  const { selectedId: selectedWorkspaceId, selectedPlatform, workspaces } = useWorkspace();
+  const effectiveWorkspaceId = selectedPlatform === "all" ? selectedWorkspaceId : "all";
 
   const resolveWorkspaceName = (workspaceName?: string | null, workspaceId?: number | null) => {
     if (workspaceName) return workspaceName;
@@ -105,13 +106,13 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const loadAccounts = async () => {
     setLoading(true);
     try {
-      if (selectedWorkspaceId === "all") {
+      if (effectiveWorkspaceId === "all") {
         const res = await api.listAccounts();
         setAccounts((res.items || []).map(mapAccount));
         setError(null);
         return;
       }
-      const workspaceId = selectedWorkspaceId as number;
+      const workspaceId = effectiveWorkspaceId as number;
       const res = await api.listAccounts(workspaceId);
       setAccounts((res.items || []).map(mapAccount));
       setError(null);
@@ -124,7 +125,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
   useEffect(() => {
     void loadAccounts();
-  }, [selectedWorkspaceId]);
+  }, [effectiveWorkspaceId]);
 
   useEffect(() => {
     if (selectedId && !accounts.some((acc) => acc.id === selectedId)) {
@@ -179,9 +180,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        effectiveWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (effectiveWorkspaceId as number);
       await api.assignAccount(selectedAccount.id, owner, workspaceId);
       onToast?.("Rental assigned.");
       setAssignOwner("");
@@ -226,9 +227,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        effectiveWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (effectiveWorkspaceId as number);
       await api.updateAccount(selectedAccount.id, payload, workspaceId);
       onToast?.("Account updated.");
       await loadAccounts();
@@ -249,9 +250,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setAccountControlBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        effectiveWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (effectiveWorkspaceId as number);
       await api.freezeAccount(selectedAccount.id, nextFrozen, workspaceId);
       onToast?.(nextFrozen ? "Account frozen." : "Account unfrozen.");
       await loadAccounts();
@@ -272,9 +273,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setAccountControlBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        effectiveWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (effectiveWorkspaceId as number);
       await api.setLowPriority(selectedAccount.id, nextLowPriority, workspaceId);
       onToast?.(nextLowPriority ? "Marked as low priority." : "Low priority removed.");
       await loadAccounts();
@@ -296,9 +297,9 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
     setAccountControlBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        effectiveWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (effectiveWorkspaceId as number);
       await api.deleteAccount(selectedAccount.id, workspaceId);
       onToast?.("Account deleted.");
       await loadAccounts();
@@ -561,11 +562,11 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
                   <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
                   <span className="text-xs font-semibold text-neutral-700">
-                    {selectedWorkspaceId === "all"
+                    {effectiveWorkspaceId === "all"
                       ? "All workspaces"
                       : resolveWorkspaceName(
-                          workspaces.find((item) => item.id === selectedWorkspaceId)?.name,
-                          typeof selectedWorkspaceId === "number" ? selectedWorkspaceId : null,
+                          workspaces.find((item) => item.id === effectiveWorkspaceId)?.name,
+                          typeof effectiveWorkspaceId === "number" ? effectiveWorkspaceId : null,
                         )}
                   </span>
                 </div>

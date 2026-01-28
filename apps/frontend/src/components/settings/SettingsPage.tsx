@@ -45,7 +45,7 @@ const splitProxyCredentials = (raw: string) => {
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
-  const { workspaces, loading, refresh } = useWorkspace();
+  const { visibleWorkspaces, loading, refresh } = useWorkspace();
   const [keyActionBusy, setKeyActionBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPlatform, setNewPlatform] = useState<"funpay" | "playerok">("funpay");
@@ -222,7 +222,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     }
   };
 
-  const workspaceList = useMemo(() => workspaces || [], [workspaces]);
+  const workspaceList = useMemo(() => visibleWorkspaces || [], [visibleWorkspaces]);
 
   return (
     <div className="grid gap-6">

@@ -288,7 +288,8 @@ const formatWorkspaceLabel = (
 };
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
-  const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
+  const { selectedId: selectedWorkspaceId, selectedPlatform, workspaces } = useWorkspace();
+  const accountWorkspaceId = selectedPlatform === "all" ? selectedWorkspaceId : "all";
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -306,15 +307,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
 
   const filteredAccounts = useMemo(() => {
-    if (selectedWorkspaceId === "all") {
+    if (accountWorkspaceId === "all") {
       return allAccounts;
     }
-    const workspaceId = selectedWorkspaceId as number;
+    const workspaceId = accountWorkspaceId as number;
     return allAccounts.filter((acc) => {
       const scopedId = acc.lastRentedWorkspaceId ?? acc.workspaceId ?? null;
       return scopedId === workspaceId;
     });
-  }, [allAccounts, selectedWorkspaceId]);
+  }, [allAccounts, accountWorkspaceId]);
 
   const filteredRentals = useMemo(() => {
     return rentals;
@@ -432,7 +433,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const emptyAccountMessage = loadingAccounts ? "Loading accounts..." : "No accounts loaded yet.";
   const emptyRentalMessage = loadingRentals ? "Loading rentals..." : "No active rentals yet.";
-  const inventoryAccounts = selectedWorkspaceId === "all" ? allAccounts : filteredAccounts;
+  const inventoryAccounts = accountWorkspaceId === "all" ? allAccounts : filteredAccounts;
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
@@ -460,9 +461,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.assignAccount(selectedAccount.id, owner, workspaceId);
       onToast?.("Rental assigned.");
       setAssignOwner("");
@@ -507,9 +508,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.updateAccount(selectedAccount.id, payload, workspaceId);
       onToast?.("Account updated.");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -540,9 +541,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setRentalActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.extendAccount(selectedAccount.id, hours, minutes, workspaceId);
       onToast?.("Rental extended.");
       setRentalExtendHours("");
@@ -565,9 +566,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setRentalActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.releaseAccount(selectedAccount.id, workspaceId);
       onToast?.("Rental released.");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -588,9 +589,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setRentalActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.freezeRental(selectedAccount.id, nextFrozen, workspaceId);
       onToast?.(nextFrozen ? "Rental frozen." : "Rental unfrozen.");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -611,9 +612,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.setLowPriority(selectedAccount.id, nextLowPriority, workspaceId);
       onToast?.(nextLowPriority ? "Marked as low priority." : "Low priority removed.");
       await Promise.all([loadAccounts(), loadRentals()]);
@@ -634,9 +635,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     setAccountActionBusy(true);
     try {
       const workspaceId =
-        selectedWorkspaceId === "all"
+        accountWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
-          : (selectedWorkspaceId as number);
+          : (accountWorkspaceId as number);
       await api.freezeAccount(selectedAccount.id, nextFrozen, workspaceId);
       onToast?.(nextFrozen ? "Account frozen." : "Account unfrozen.");
       await Promise.all([loadAccounts(), loadRentals()]);

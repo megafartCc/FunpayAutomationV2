@@ -29,7 +29,12 @@ const normalizeSelected = (
     platform === "all"
       ? workspaces
       : workspaces.filter((item) => (item.platform || "funpay") === platform);
+  const hasScoped = scoped.length > 0;
   if (value === "all") {
+    if (platform !== "all" && hasScoped) {
+      const defaultWs = scoped.find((item) => item.is_default);
+      return (defaultWs ?? scoped[0]).id;
+    }
     if (preferDefault) {
       const defaultWs = scoped.find((item) => item.is_default);
       return defaultWs ? defaultWs.id : "all";
@@ -39,7 +44,9 @@ const normalizeSelected = (
   const exists = scoped.some((item) => item.id === value);
   if (exists) return value;
   const defaultWs = scoped.find((item) => item.is_default);
-  return defaultWs ? defaultWs.id : "all";
+  if (defaultWs) return defaultWs.id;
+  if (platform !== "all" && hasScoped) return scoped[0].id;
+  return "all";
 };
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
