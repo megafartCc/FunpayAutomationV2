@@ -14,6 +14,7 @@ class WorkspaceRecord:
     id: int
     user_id: int
     name: str
+    platform: str
     golden_key: str
     proxy_url: str
     is_default: int
@@ -27,7 +28,7 @@ class MySQLWorkspaceRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at
+                SELECT id, user_id, name, platform, golden_key, proxy_url, is_default, created_at
                 FROM workspaces
                 WHERE user_id = %s
                 ORDER BY is_default DESC, id DESC
@@ -40,6 +41,7 @@ class MySQLWorkspaceRepo:
                     id=int(row["id"]),
                     user_id=int(row["user_id"]),
                     name=row["name"],
+                    platform=row.get("platform") or "funpay",
                     golden_key=row.get("golden_key") or "",
                     proxy_url=row.get("proxy_url") or "",
                     is_default=int(row.get("is_default") or 0),
@@ -56,7 +58,7 @@ class MySQLWorkspaceRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, user_id, name, golden_key, proxy_url, is_default, created_at
+                SELECT id, user_id, name, platform, golden_key, proxy_url, is_default, created_at
                 FROM workspaces
                 WHERE id = %s AND user_id = %s
                 LIMIT 1
@@ -70,6 +72,7 @@ class MySQLWorkspaceRepo:
                 id=int(row["id"]),
                 user_id=int(row["user_id"]),
                 name=row["name"],
+                platform=row.get("platform") or "funpay",
                 golden_key=row.get("golden_key") or "",
                 proxy_url=row.get("proxy_url") or "",
                 is_default=int(row.get("is_default") or 0),
@@ -83,6 +86,7 @@ class MySQLWorkspaceRepo:
         *,
         user_id: int,
         name: str,
+        platform: str,
         golden_key: str,
         proxy_url: str,
         is_default: bool = False,
@@ -93,16 +97,16 @@ class MySQLWorkspaceRepo:
             try:
                 cursor.execute(
                     """
-                    INSERT INTO workspaces (user_id, name, golden_key, proxy_url, is_default)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO workspaces (user_id, name, platform, golden_key, proxy_url, is_default)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (user_id, name, golden_key, proxy_url, 1 if is_default else 0),
+                    (user_id, name, platform, golden_key, proxy_url, 1 if is_default else 0),
                 )
                 workspace_id = cursor.lastrowid
                 if is_default:
                     cursor.execute(
-                        "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND id != %s",
-                        (user_id, workspace_id),
+                        "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND platform = %s AND id != %s",
+                        (user_id, platform, workspace_id),
                     )
                 conn.commit()
             except mysql.connector.Error as exc:
@@ -140,8 +144,14 @@ class MySQLWorkspaceRepo:
                 )
             if make_default:
                 cursor.execute(
-                    "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND id != %s",
-                    (user_id, workspace_id),
+                    "SELECT platform FROM workspaces WHERE id = %s AND user_id = %s",
+                    (workspace_id, user_id),
+                )
+                row = cursor.fetchone()
+                platform = row[0] if row else None
+                cursor.execute(
+                    "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND platform = %s AND id != %s",
+                    (user_id, platform, workspace_id),
                 )
                 cursor.execute(
                     "UPDATE workspaces SET is_default = 1 WHERE id = %s AND user_id = %s",
@@ -157,8 +167,14 @@ class MySQLWorkspaceRepo:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND id != %s",
-                (user_id, workspace_id),
+                "SELECT platform FROM workspaces WHERE id = %s AND user_id = %s",
+                (workspace_id, user_id),
+            )
+            row = cursor.fetchone()
+            platform = row[0] if row else None
+            cursor.execute(
+                "UPDATE workspaces SET is_default = 0 WHERE user_id = %s AND platform = %s AND id != %s",
+                (user_id, platform, workspace_id),
             )
             cursor.execute(
                 "UPDATE workspaces SET is_default = 1 WHERE id = %s AND user_id = %s",
@@ -174,13 +190,14 @@ class MySQLWorkspaceRepo:
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                "SELECT is_default FROM workspaces WHERE id = %s AND user_id = %s",
+                "SELECT is_default, platform FROM workspaces WHERE id = %s AND user_id = %s",
                 (workspace_id, user_id),
             )
             row = cursor.fetchone()
             if not row:
                 return False
             is_default = int(row.get("is_default") or 0)
+            platform = row.get("platform") or "funpay"
             cursor = conn.cursor()
             cursor.execute(
                 "DELETE FROM workspaces WHERE id = %s AND user_id = %s",
@@ -188,8 +205,8 @@ class MySQLWorkspaceRepo:
             )
             if is_default:
                 cursor.execute(
-                    "SELECT id FROM workspaces WHERE user_id = %s ORDER BY id DESC LIMIT 1",
-                    (user_id,),
+                    "SELECT id FROM workspaces WHERE user_id = %s AND platform = %s ORDER BY id DESC LIMIT 1",
+                    (user_id, platform),
                 )
                 next_row = cursor.fetchone()
                 if next_row:

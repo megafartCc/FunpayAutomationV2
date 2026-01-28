@@ -122,17 +122,61 @@ def ensure_schema() -> None:
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,
                 name VARCHAR(255) NOT NULL,
+                platform VARCHAR(32) NOT NULL DEFAULT 'funpay',
                 golden_key TEXT NOT NULL,
                 proxy_url TEXT NOT NULL,
                 is_default TINYINT(1) NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uniq_workspace_user_name (user_id, name),
+                UNIQUE KEY uniq_workspace_user_platform_name (user_id, platform, name),
                 INDEX idx_workspace_user (user_id),
+                INDEX idx_workspace_user_platform (user_id, platform),
                 CONSTRAINT fk_workspace_user FOREIGN KEY (user_id)
                     REFERENCES users(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'workspaces' AND column_name = 'platform'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE workspaces ADD COLUMN platform VARCHAR(32) NOT NULL DEFAULT 'funpay' AFTER name"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'workspaces' AND index_name = 'uniq_workspace_user_name'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is not None:
+            cursor.execute("ALTER TABLE workspaces DROP INDEX uniq_workspace_user_name")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'workspaces'
+              AND index_name = 'uniq_workspace_user_platform_name'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE workspaces ADD UNIQUE KEY uniq_workspace_user_platform_name (user_id, platform, name)"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'workspaces'
+              AND index_name = 'idx_workspace_user_platform'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE workspaces ADD INDEX idx_workspace_user_platform (user_id, platform)")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS accounts (

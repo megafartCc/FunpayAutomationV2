@@ -93,6 +93,7 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
     workspace_repo.create(
         user_id=user.id,
         name="Default",
+        platform="funpay",
         golden_key=payload.golden_key,
         proxy_url="",
         is_default=True,

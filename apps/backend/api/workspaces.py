@@ -11,6 +11,8 @@ from db.workspace_repo import MySQLWorkspaceRepo, WorkspaceRecord
 router = APIRouter()
 workspace_repo = MySQLWorkspaceRepo()
 
+_ALLOWED_PLATFORMS = {"funpay", "playerok"}
+
 
 def _mask_key(value: str) -> str:
     raw = (value or "").strip()
@@ -23,6 +25,7 @@ def _mask_key(value: str) -> str:
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    platform: str = Field("funpay", min_length=3, max_length=32)
     golden_key: str = Field(..., min_length=5)
     proxy_url: str = Field(..., min_length=3)
     is_default: bool = False
@@ -38,6 +41,7 @@ class WorkspaceUpdate(BaseModel):
 class WorkspaceItem(BaseModel):
     id: int
     name: str
+    platform: str
     proxy_url: str
     is_default: bool
     created_at: str | None = None
@@ -76,6 +80,7 @@ def _to_item(record: WorkspaceRecord) -> WorkspaceItem:
     return WorkspaceItem(
         id=record.id,
         name=record.name,
+        platform=record.platform,
         proxy_url=record.proxy_url,
         is_default=bool(record.is_default),
         created_at=record.created_at,
@@ -92,6 +97,9 @@ def list_workspaces(user=Depends(get_current_user)) -> WorkspaceListResponse:
 @router.post("/workspaces", response_model=WorkspaceItem, status_code=status.HTTP_201_CREATED)
 def create_workspace(payload: WorkspaceCreate, user=Depends(get_current_user)) -> WorkspaceItem:
     name = payload.name.strip()
+    platform = payload.platform.strip().lower()
+    if platform not in _ALLOWED_PLATFORMS:
+        raise HTTPException(status_code=400, detail="Unsupported platform.")
     golden_key = payload.golden_key.strip()
     proxy_url = payload.proxy_url.strip()
     if not proxy_url:
@@ -100,6 +108,7 @@ def create_workspace(payload: WorkspaceCreate, user=Depends(get_current_user)) -
     created = workspace_repo.create(
         user_id=int(user.id),
         name=name,
+        platform=platform,
         golden_key=golden_key,
         proxy_url=proxy_url,
         is_default=payload.is_default,
