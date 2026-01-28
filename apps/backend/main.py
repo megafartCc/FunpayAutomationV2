@@ -9,7 +9,6 @@ from api.lots import router as lots_router
 from api.orders import router as orders_router
 from api.rentals import router as rentals_router
 from api.notifications import router as notifications_router
-from api.auto_raise import router as auto_raise_router
 from api.workspaces import router as workspaces_router
 from db.mysql import ensure_schema
 from settings.config import settings
@@ -46,5 +45,6 @@ app.include_router(lots_router, prefix="/api", tags=["lots"])
 app.include_router(orders_router, prefix="/api", tags=["orders"])
 app.include_router(rentals_router, prefix="/api", tags=["rentals"])
 app.include_router(notifications_router, prefix="/api", tags=["notifications"])
-app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
+from api.auto_raise import router as auto_raise_router
+app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
