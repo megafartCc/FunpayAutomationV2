@@ -3365,8 +3365,8 @@ def handle_order_purchased(
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
         comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
-        if comp_threshold_minutes <= 0:
-            comp_threshold_minutes = max(env_int("BLACKLIST_COMP_HOURS", 5), 0) * 60
+        comp_hours = env_int("BLACKLIST_COMP_HOURS", 5)
+        comp_threshold_minutes = max(comp_threshold_minutes, comp_hours * 60, 5 * 60)
         unit_minutes_default = env_int("BLACKLIST_COMP_UNIT_MINUTES", 60)
         unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
         paid_minutes = max(0, int(unit_minutes) * int(amount))
