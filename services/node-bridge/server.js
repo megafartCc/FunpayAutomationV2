@@ -179,6 +179,21 @@ function isInDotaMatchRaw(raw) {
   return false;
 }
 
+function extractGameMode(rp, rpRaw, lobbyRaw) {
+  const direct =
+    getRichPresenceValue(rp, rpRaw, "game_mode") ??
+    getRichPresenceValue(rp, rpRaw, "gamemode") ??
+    getRichPresenceValue(rp, rpRaw, "mode");
+  if (direct !== null && direct !== undefined) {
+    const value = String(direct).trim();
+    if (value) return value;
+  }
+
+  const lobbyText = String(lobbyRaw || "");
+  const match = lobbyText.match(/game_mode:\s*([^\s]+)/i);
+  return match ? match[1] : "";
+}
+
 function toHeroDisplay(token) {
   if (!token) return "";
   const normalized = token.startsWith("#") ? token.slice(1) : token;
@@ -334,6 +349,11 @@ function derivePresence(data) {
   const lobbyLower = String(lobbyRaw || "").toLowerCase();
   const lobbyStateHit = /lobby_state:\s*(run|serversetup)/.test(lobbyLower);
 
+  const gameModeRaw = extractGameMode(rp, rpRaw, lobbyRaw);
+  const gameModeLower = String(gameModeRaw || "").toLowerCase();
+  const isCustomGame = gameModeLower.includes("custom");
+  const gameModeLabel = isCustomGame ? "Custom Game" : null;
+
   const statusLower = String(rp.status || "").toLowerCase();
   const displayLower = String(rp.steam_display || "").toLowerCase();
   const statusKeywords = ["private_lobby", "finding_match", "playing", "match", "ranked", "turbo"];
@@ -351,9 +371,18 @@ function derivePresence(data) {
   // NEW: If demo, force inMatch false (demo can look like match because RP says "playing as")
   const inMatch =
     !demo &&
+    !isCustomGame &&
     (inBotMatch || isInDotaMatch(rp) || isInDotaMatchRaw(rpRaw) || lobbyStateHit || statusHit);
 
-  const inGame = !!(data.in_game || data.appid || lobbyRaw || statusHit || demo || inBotMatch);
+  const inGame = !!(
+    data.in_game ||
+    data.appid ||
+    lobbyRaw ||
+    statusHit ||
+    demo ||
+    inBotMatch ||
+    isCustomGame
+  );
 
   const heroToken = extractHeroToken(rp, rpRaw);
   const heroKey = normalizeKey(heroToken);
@@ -399,6 +428,9 @@ function derivePresence(data) {
     inGame,
     demo,
     inBotMatch,
+    inCustomGame: isCustomGame,
+    gameModeRaw,
+    gameModeLabel,
     matchId,
     heroToken,
     heroName,
@@ -449,7 +481,10 @@ function buildDebugView(data) {
       in_match: derived.inMatch,
       in_demo: derived.demo,
       in_bot_match: derived.inBotMatch,
+      in_custom_game: derived.inCustomGame,
       lobby_info: derived.lobbyRaw || "",
+      game_mode: derived.gameModeRaw || null,
+      game_mode_label: derived.gameModeLabel || null,
       match_id: derived.matchId || null,
       hero_token: derived.heroToken || null,
       hero_name: derived.heroName || null,
@@ -497,7 +532,10 @@ app.get("/presence/:steamid", (req, res) => {
     in_match: derived.inMatch,
     in_demo: derived.demo,
     in_bot_match: derived.inBotMatch,
+    in_custom_game: derived.inCustomGame,
     lobby_info: derived.lobbyRaw || "",
+    game_mode: derived.gameModeRaw || null,
+    game_mode_label: derived.gameModeLabel || null,
     hero_token: derived.heroToken || null,
     hero_name: derived.heroName || null,
     hero_level: derived.heroLevel ?? null,
@@ -524,7 +562,10 @@ app.get("/presencefull/:steamid", (req, res) => {
       in_match: derived.inMatch,
       in_demo: derived.demo,
       in_bot_match: derived.inBotMatch,
+      in_custom_game: derived.inCustomGame,
       lobby_info: derived.lobbyRaw || "",
+      game_mode: derived.gameModeRaw || null,
+      game_mode_label: derived.gameModeLabel || null,
       match_id: derived.matchId ?? null,
       hero_token: derived.heroToken || null,
       hero_name: derived.heroName || null,
