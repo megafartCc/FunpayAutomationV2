@@ -12,6 +12,8 @@ const LotsPage: React.FC = () => {
   const [lotNumber, setLotNumber] = useState("");
   const [accountId, setAccountId] = useState("");
   const [lotUrl, setLotUrl] = useState("");
+  const [editingLot, setEditingLot] = useState<number | null>(null);
+  const [displayName, setDisplayName] = useState("");
 
   const accountOptions = useMemo(
     () =>
@@ -66,6 +68,36 @@ const LotsPage: React.FC = () => {
       mounted = false;
     };
   }, [selectedWorkspaceId]);
+
+  const startEdit = (lot: LotItem) => {
+    setEditingLot(lot.lot_number);
+    setDisplayName(lot.display_name || "");
+  };
+
+  const handleSaveDisplay = async () => {
+    if (selectedWorkspaceId === "all" || editingLot === null) {
+      setStatus({ message: "Select a workspace first.", isError: true });
+      return;
+    }
+    try {
+      const updated = await api.updateLot(
+        editingLot,
+        { display_name: displayName || null },
+        selectedWorkspaceId as number,
+      );
+      setLots((prev) =>
+        prev.map((item) => (item.lot_number === editingLot ? { ...item, ...updated } : item)),
+      );
+      setStatus({ message: "Lot name updated." });
+      setEditingLot(null);
+      setDisplayName("");
+    } catch (err) {
+      setStatus({
+        message: (err as { message?: string })?.message || "Failed to update lot.",
+        isError: true,
+      });
+    }
+  };
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -206,6 +238,7 @@ const LotsPage: React.FC = () => {
                 <th className="px-3 py-2 text-left">Lot</th>
                 <th className="px-3 py-2 text-left">Account</th>
                 <th className="px-3 py-2 text-left">Lot URL</th>
+                <th className="px-3 py-2 text-left">Display name</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -215,7 +248,7 @@ const LotsPage: React.FC = () => {
                   <tr key={lot.lot_number} className="bg-neutral-50">
                     <td className="rounded-l-xl px-3 py-3 font-semibold text-neutral-900">#{lot.lot_number}</td>
                     <td className="px-3 py-3 text-neutral-700">
-                      {lot.account_name} (ID {lot.account_id})
+                      {(lot.display_name || lot.account_name) ?? "-"} (ID {lot.account_id})
                     </td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.lot_url ? (
@@ -225,6 +258,28 @@ const LotsPage: React.FC = () => {
                       ) : (
                         "-"
                       )}
+                    </td>
+                    <td className="px-3 py-3 text-neutral-700">
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="w-48 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-800 outline-none placeholder:text-neutral-400"
+                          placeholder="Override name"
+                          value={editingLot === lot.lot_number ? displayName : lot.display_name || ""}
+                          onFocus={() => startEdit(lot)}
+                          onChange={(e) => {
+                            if (editingLot !== lot.lot_number) startEdit(lot);
+                            setDisplayName(e.target.value);
+                          }}
+                        />
+                        <button
+                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60"
+                          type="button"
+                          onClick={handleSaveDisplay}
+                          disabled={editingLot !== lot.lot_number}
+                        >
+                          Save
+                        </button>
+                      </div>
                     </td>
                     <td className="rounded-r-xl px-3 py-3 text-right">
                       <button

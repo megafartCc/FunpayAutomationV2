@@ -24,6 +24,7 @@ class LotItem(BaseModel):
     lot_number: int
     account_id: int
     account_name: str
+    display_name: str | None = None
     lot_url: str | None = None
     workspace_id: int
 
@@ -36,7 +37,8 @@ def _to_item(record: LotRecord) -> LotItem:
     return LotItem(
         lot_number=record.lot_number,
         account_id=record.account_id,
-        account_name=record.account_name,
+        account_name=record.display_name or record.account_name,
+        display_name=record.display_name,
         lot_url=record.lot_url,
         workspace_id=record.workspace_id,
     )
@@ -69,6 +71,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
             lot_number=payload.lot_number,
             account_id=payload.account_id,
             lot_url=payload.lot_url.strip(),
+            display_name=None,
         )
     except LotCreateError as exc:
         if exc.code == "account_not_found":
@@ -92,3 +95,28 @@ def delete_lot(lot_number: int, workspace_id: int | None = None, user=Depends(ge
     if not ok:
         raise HTTPException(status_code=404, detail="Lot not found")
     return {"ok": True}
+
+
+class LotUpdate(BaseModel):
+    display_name: str | None = Field(None, max_length=255)
+    lot_url: str | None = Field(None, min_length=5)
+
+
+@router.patch("/lots/{lot_number}", response_model=LotItem)
+def update_lot(
+    lot_number: int,
+    payload: LotUpdate,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> LotItem:
+    _ensure_workspace(workspace_id, int(user.id))
+    updated = lots_repo.update(
+        user_id=int(user.id),
+        workspace_id=int(workspace_id),
+        lot_number=int(lot_number),
+        display_name=payload.display_name if payload.display_name is not None else None,
+        lot_url=payload.lot_url if payload.lot_url is not None else None,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return _to_item(updated)

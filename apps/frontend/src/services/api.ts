@@ -58,6 +58,7 @@ export type LotItem = {
   lot_number: number;
   account_id: number;
   account_name: string;
+  display_name?: string | null;
   lot_url?: string | null;
   workspace_id?: number | null;
 };
@@ -314,6 +315,11 @@ export const api = {
       { method: "GET" },
     ),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
+  updateLot: (lotNumber: number, payload: Partial<LotCreatePayload> & { display_name?: string | null }, workspaceId?: number) =>
+    request<LotItem>(
+      workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
+      { method: "PATCH", body: payload },
+    ),
   deleteLot: (lotNumber: number, workspaceId?: number) =>
     request<{ ok: boolean }>(
       workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,

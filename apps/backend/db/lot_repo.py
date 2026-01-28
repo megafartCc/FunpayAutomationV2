@@ -16,6 +16,7 @@ class LotRecord:
     account_id: int
     account_name: str
     lot_url: Optional[str]
+    display_name: Optional[str] = None
     workspace_id: int | None = None
 
 
@@ -136,7 +137,7 @@ class MySQLLotRepo:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT l.lot_number, l.account_id, l.lot_url, a.account_name, l.workspace_id
+                SELECT l.lot_number, l.account_id, l.lot_url, l.display_name, a.account_name, l.workspace_id
                 FROM lots l
                 JOIN accounts a ON a.id = l.account_id
                 WHERE l.user_id = %s AND l.workspace_id = %s
@@ -151,6 +152,7 @@ class MySQLLotRepo:
                     account_id=int(row["account_id"]),
                     account_name=row["account_name"],
                     lot_url=row.get("lot_url"),
+                    display_name=row.get("display_name"),
                     workspace_id=row.get("workspace_id"),
                 )
                 for row in rows
@@ -166,6 +168,7 @@ class MySQLLotRepo:
         lot_number: int,
         account_id: int,
         lot_url: Optional[str],
+        display_name: Optional[str] = None,
     ) -> LotRecord:
         conn = self._get_conn()
         try:
@@ -196,10 +199,10 @@ class MySQLLotRepo:
             try:
                 cursor.execute(
                     """
-                    INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url, display_name)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (user_id, workspace_id, lot_number, account_id, lot_url),
+                    (user_id, workspace_id, lot_number, account_id, lot_url, display_name),
                 )
                 conn.commit()
             except mysql.connector.Error as exc:
@@ -224,10 +227,10 @@ class MySQLLotRepo:
                     try:
                         cursor.execute(
                             """
-                            INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url)
-                            VALUES (%s, %s, %s, %s, %s)
+                            INSERT INTO lots (user_id, workspace_id, lot_number, account_id, lot_url, display_name)
+                            VALUES (%s, %s, %s, %s, %s, %s)
                             """,
-                            (user_id, workspace_id, lot_number, account_id, lot_url),
+                            (user_id, workspace_id, lot_number, account_id, lot_url, display_name),
                         )
                         conn.commit()
                     except mysql.connector.Error as retry_exc:
@@ -253,7 +256,60 @@ class MySQLLotRepo:
                 account_id=int(account_id),
                 account_name=account["account_name"],
                 lot_url=lot_url,
+                display_name=display_name,
                 workspace_id=workspace_id,
+            )
+        finally:
+            conn.close()
+
+    def update(
+        self,
+        *,
+        user_id: int,
+        workspace_id: int,
+        lot_number: int,
+        display_name: Optional[str] = None,
+        lot_url: Optional[str] = None,
+    ) -> LotRecord | None:
+        conn = self._get_conn()
+        try:
+            cursor_dict = conn.cursor(dictionary=True)
+            cursor_dict.execute(
+                """
+                SELECT l.lot_number, l.account_id, l.lot_url, l.display_name, a.account_name, l.workspace_id
+                FROM lots l
+                JOIN accounts a ON a.id = l.account_id
+                WHERE l.user_id = %s AND l.workspace_id = %s AND l.lot_number = %s
+                LIMIT 1
+                """,
+                (user_id, workspace_id, lot_number),
+            )
+            row = cursor_dict.fetchone()
+            if not row:
+                return None
+            updates = []
+            params: list = []
+            if display_name is not None:
+                updates.append("display_name = %s")
+                params.append(display_name.strip() or None)
+            if lot_url is not None:
+                updates.append("lot_url = %s")
+                params.append(lot_url.strip() or None)
+            if updates:
+                params.extend([user_id, workspace_id, lot_number])
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"UPDATE lots SET {', '.join(updates)} WHERE user_id = %s AND workspace_id = %s AND lot_number = %s",
+                    tuple(params),
+                )
+                conn.commit()
+            return LotRecord(
+                lot_number=int(row["lot_number"]),
+                account_id=int(row["account_id"]),
+                account_name=row["account_name"],
+                lot_url=lot_url if lot_url is not None else row.get("lot_url"),
+                display_name=display_name if display_name is not None else row.get("display_name"),
+                workspace_id=row.get("workspace_id"),
             )
         finally:
             conn.close()
