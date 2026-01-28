@@ -237,8 +237,14 @@ def _build_funpay_categories(token: str, proxy: dict | None) -> list[dict]:
         and (v.get("category") or "").strip() != (v.get("name") or "").strip()
     ]
 
+    if not filtered and merged:
+        logger.warning("Category filter returned 0 items; falling back to unfiltered list")
+        items = list(pruned.values())
+    else:
+        items = filtered
+
     items = sorted(
-        filtered,
+        items,
         key=lambda x: (x.get("game") or "", x.get("category") or x.get("name") or "", x.get("id") or 0),
     )
     return items
