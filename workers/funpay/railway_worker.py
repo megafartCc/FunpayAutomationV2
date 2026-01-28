@@ -3540,7 +3540,8 @@ def fetch_workspaces(mysql_cfg: dict) -> list[dict]:
                    w.user_id, u.username
             FROM workspaces w
             JOIN users u ON u.id = w.user_id
-            WHERE w.golden_key IS NOT NULL AND w.golden_key != ''
+            WHERE w.platform = 'funpay'
+              AND w.golden_key IS NOT NULL AND w.golden_key != ''
             ORDER BY w.user_id, w.id
             """
         )
