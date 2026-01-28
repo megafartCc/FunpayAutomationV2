@@ -63,5 +63,9 @@ app.include_router(rentals_router, prefix="/api", tags=["rentals"])
 app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
 _sanitize_auto_raise()
-from api.auto_raise import router as auto_raise_router
-app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
+try:
+    from api.auto_raise import router as auto_raise_router
+except SyntaxError as exc:
+    logger.error("Auto-raise module failed to load: %s", exc)
+else:
+    app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
