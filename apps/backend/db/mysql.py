@@ -337,6 +337,35 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS auto_raise_settings (
+                user_id BIGINT PRIMARY KEY,
+                enabled TINYINT(1) NOT NULL DEFAULT 0,
+                categories TEXT NULL,
+                interval_hours INT NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_auto_raise_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_raise_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                category_id INT NULL,
+                category_name VARCHAR(255) NULL,
+                status VARCHAR(16) NOT NULL,
+                message TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_auto_raise_user (user_id, created_at),
+                INDEX idx_auto_raise_ws (workspace_id, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS chats (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 chat_id BIGINT NOT NULL,

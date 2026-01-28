@@ -7,3 +7,4 @@ redis==5.0.8
 bcrypt==3.2.2
 requests==2.31.0
 pysocks==1.7.1
+beautifulsoup4==4.12.3

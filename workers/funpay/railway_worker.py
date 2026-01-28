@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 import mysql.connector  # noqa: E402
 from FunPayAPI.account import Account  # noqa: E402
+from FunPayAPI.common import exceptions as fp_exceptions  # noqa: E402
 from FunPayAPI.common.enums import EventTypes, MessageTypes  # noqa: E402
 from FunPayAPI.common.utils import RegularExpressions  # noqa: E402
 from FunPayAPI.updater.events import NewMessageEvent  # noqa: E402
@@ -2021,6 +2022,283 @@ def get_user_id_by_username(mysql_cfg: dict, username: str) -> int | None:
         conn.close()
 
 
+def _parse_category_ids(raw: str | None) -> list[int]:
+    if not raw:
+        return []
+    values: list[int] = []
+    for token in str(raw).split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            values.append(int(token))
+        except ValueError:
+            continue
+    return values
+
+
+def fetch_auto_raise_settings(mysql_cfg: dict, user_id: int) -> dict:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "auto_raise_settings"):
+            return {"enabled": False, "categories": [], "interval_hours": 1}
+        cursor.execute(
+            """
+            SELECT enabled, categories, interval_hours
+            FROM auto_raise_settings
+            WHERE user_id = %s
+            LIMIT 1
+            """,
+            (int(user_id),),
+        )
+        row = cursor.fetchone() or {}
+        enabled = bool(row.get("enabled") or 0)
+        categories = _parse_category_ids(row.get("categories"))
+        interval_hours = int(row.get("interval_hours") or 1)
+        interval_hours = max(1, min(interval_hours, 6))
+        return {
+            "enabled": enabled,
+            "categories": categories,
+            "interval_hours": interval_hours,
+        }
+    finally:
+        conn.close()
+
+
+def log_auto_raise_history(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    category_id: int | None,
+    category_name: str | None,
+    status: str,
+    message: str | None = None,
+) -> None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "auto_raise_history"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO auto_raise_history (
+                user_id, workspace_id, category_id, category_name, status, message
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(category_id) if category_id is not None else None,
+                category_name.strip() if isinstance(category_name, str) and category_name.strip() else None,
+                status,
+                (message or None),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fetch_funpay_workspaces_by_user(mysql_cfg: dict, user_id: int) -> list[dict]:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id AS workspace_id, name AS workspace_name, golden_key, proxy_url
+            FROM workspaces
+            WHERE user_id = %s AND platform = 'funpay'
+              AND golden_key IS NOT NULL AND golden_key != ''
+            ORDER BY is_default DESC, id
+            """,
+            (int(user_id),),
+        )
+        rows = cursor.fetchall() or []
+        return list(rows)
+    finally:
+        conn.close()
+
+
+def _collect_account_categories(account: Account) -> list[tuple[int, str]]:
+    categories = []
+    try:
+        cats_attr = getattr(account, "categories", None)
+        raw = cats_attr() if callable(cats_attr) else cats_attr or []
+        if not raw and hasattr(account, "get_sorted_categories"):
+            raw = list(account.get_sorted_categories().values())
+        for cat in raw or []:
+            cid = getattr(cat, "id", None)
+            if not cid:
+                continue
+            name = getattr(cat, "name", None) or str(cid)
+            categories.append((int(cid), str(name)))
+    except Exception:
+        return []
+    return categories
+
+
+def _sleep_with_stop(stop_event: threading.Event, seconds: int, step: int = 5) -> None:
+    total = max(0, int(seconds))
+    if total <= 0:
+        return
+    chunk = max(1, int(step))
+    remaining = total
+    while remaining > 0 and not stop_event.is_set():
+        pause = min(chunk, remaining)
+        time.sleep(pause)
+        remaining -= pause
+
+
+def run_auto_raise_for_workspace(
+    logger: logging.Logger,
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace: dict,
+    user_agent: str | None,
+    allowed_categories: list[int],
+) -> None:
+    workspace_id = workspace.get("workspace_id")
+    workspace_name = workspace.get("workspace_name") or f"Workspace {workspace_id}"
+    golden_key = (workspace.get("golden_key") or "").strip()
+    proxy_url = normalize_proxy_url(workspace.get("proxy_url"))
+    label = f"[auto-raise:{workspace_name}]"
+
+    if not golden_key:
+        log_auto_raise_history(
+            mysql_cfg,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            category_id=None,
+            category_name=None,
+            status="failed",
+            message="Missing golden_key",
+        )
+        return
+
+    proxy_cfg = build_proxy_config(proxy_url)
+    if not proxy_cfg:
+        log_auto_raise_history(
+            mysql_cfg,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            category_id=None,
+            category_name=None,
+            status="failed",
+            message="Proxy not configured",
+        )
+        logger.warning("%s Proxy missing; auto-raise skipped.", label)
+        return
+
+    try:
+        account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
+        account.get()
+    except Exception as exc:
+        log_auto_raise_history(
+            mysql_cfg,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            category_id=None,
+            category_name=None,
+            status="failed",
+            message=f"Account init failed: {str(exc)[:200]}",
+        )
+        logger.warning("%s Account init failed: %s", label, str(exc)[:200])
+        return
+
+    categories = _collect_account_categories(account)
+    allowed_set = {int(cid) for cid in allowed_categories or []}
+    if allowed_set:
+        categories = [(cid, name) for cid, name in categories if cid in allowed_set]
+        if not categories:
+            categories = [(cid, str(cid)) for cid in allowed_set]
+
+    if not categories:
+        logger.info("%s No categories configured for auto-raise.", label)
+        return
+
+    for cid, name in categories:
+        try:
+            account.raise_lots(int(cid))
+            log_auto_raise_history(
+                mysql_cfg,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                category_id=int(cid),
+                category_name=name,
+                status="ok",
+                message="Raised successfully",
+            )
+            logger.info("%s Raised category %s", label, name)
+        except fp_exceptions.RaiseError as exc:
+            wait = getattr(exc, "wait_time", None)
+            msg = getattr(exc, "error_message", None) or ""
+            if wait:
+                msg = f"{msg} (wait {int(wait)}s)".strip()
+            cat_name = getattr(getattr(exc, "category", None), "name", None) or name
+            log_auto_raise_history(
+                mysql_cfg,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                category_id=int(cid),
+                category_name=cat_name,
+                status="failed",
+                message=msg or "Raise deferred",
+            )
+            logger.info("%s Raise deferred for %s", label, cat_name)
+        except Exception as exc:
+            log_auto_raise_history(
+                mysql_cfg,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                category_id=int(cid),
+                category_name=name,
+                status="failed",
+                message=str(exc)[:200],
+            )
+            logger.warning("%s Raise failed for %s: %s", label, name, str(exc)[:200])
+
+
+def auto_raise_user_loop(mysql_cfg: dict, user_id: int, stop_event: threading.Event, user_agent: str | None) -> None:
+    logger = logging.getLogger("funpay.auto_raise")
+    while not stop_event.is_set():
+        try:
+            settings = fetch_auto_raise_settings(mysql_cfg, int(user_id))
+        except Exception as exc:
+            logger.warning("[auto-raise] Settings load failed: %s", str(exc)[:200])
+            _sleep_with_stop(stop_event, 60)
+            continue
+
+        if not settings.get("enabled"):
+            _sleep_with_stop(stop_event, 60)
+            continue
+
+        interval_hours = int(settings.get("interval_hours") or 1)
+        interval_hours = max(1, min(interval_hours, 6))
+        interval_seconds = interval_hours * 3600
+        allowed_categories = settings.get("categories") or []
+        workspaces = fetch_funpay_workspaces_by_user(mysql_cfg, int(user_id))
+        if not workspaces:
+            _sleep_with_stop(stop_event, 300)
+            continue
+
+        for idx, workspace in enumerate(workspaces):
+            if stop_event.is_set():
+                break
+            run_auto_raise_for_workspace(
+                logger,
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace=workspace,
+                user_agent=user_agent,
+                allowed_categories=allowed_categories,
+            )
+            _sleep_with_stop(stop_event, interval_seconds)
+
+
 def table_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str) -> bool:
     cursor.execute(
         "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s LIMIT 1",
@@ -3940,6 +4218,7 @@ def run_multi_user(logger: logging.Logger) -> None:
     logger.info("Multi-user mode enabled. Sync interval: %ss.", sync_seconds)
 
     workers: dict[int, dict] = {}
+    auto_raise_workers: dict[int, dict] = {}
 
     while True:
         try:
@@ -3952,6 +4231,11 @@ def run_multi_user(logger: logging.Logger) -> None:
                 for w in workspaces
                 if w.get("golden_key") and str(w.get("golden_key")).strip()
             }
+            active_user_ids = {
+                int(w.get("user_id"))
+                for w in workspaces
+                if w.get("user_id") is not None
+            }
 
             # Stop removed workspaces.
             for workspace_id in list(workers.keys()):
@@ -3959,6 +4243,12 @@ def run_multi_user(logger: logging.Logger) -> None:
                     workers[workspace_id]["stop"].set()
                     workers[workspace_id]["thread"].join(timeout=5)
                     workers.pop(workspace_id, None)
+            # Stop removed auto-raise workers.
+            for user_id in list(auto_raise_workers.keys()):
+                if user_id not in active_user_ids:
+                    auto_raise_workers[user_id]["stop"].set()
+                    auto_raise_workers[user_id]["thread"].join(timeout=5)
+                    auto_raise_workers.pop(user_id, None)
 
             for workspace_id, workspace in desired.items():
                 golden_key = (workspace.get("golden_key") or "").strip()
@@ -3994,6 +4284,18 @@ def run_multi_user(logger: logging.Logger) -> None:
                     "thread": thread,
                     "stop": stop_event,
                 }
+                thread.start()
+
+            for user_id in sorted(active_user_ids):
+                if user_id in auto_raise_workers:
+                    continue
+                stop_event = threading.Event()
+                thread = threading.Thread(
+                    target=auto_raise_user_loop,
+                    args=(mysql_cfg, int(user_id), stop_event, user_agent),
+                    daemon=True,
+                )
+                auto_raise_workers[user_id] = {"thread": thread, "stop": stop_event}
                 thread.start()
             time.sleep(sync_seconds)
         except Exception as exc:

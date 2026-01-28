@@ -24,6 +24,7 @@ const titles: Record<string, string> = {
   "/add-account": "Add Account",
   "/automations": "Automations",
   "/notifications": "Notifications",
+  "/plugins": "Plugins",
   "/settings": "Settings",
 };
 
@@ -34,7 +35,9 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     (location.pathname.startsWith("/chats") ? "Chats" : "Dashboard");
   const initial = user.username?.[0]?.toUpperCase() || "U";
   const hideWorkspaceControls =
-    location.pathname === "/inventory" || location.pathname === "/blacklist";
+    location.pathname === "/inventory" ||
+    location.pathname === "/blacklist" ||
+    location.pathname === "/plugins";
 
   return (
     <WorkspaceProvider>
