@@ -27,6 +27,7 @@ ENTITY_RE = re.compile(r"\$photo=\d+|\$new|(\$sleep=(\d+\.\d+|\d+))")
 logger = logging.getLogger("FPC.cardinal_tools")
 localizer = Localizer()
 _ = localizer.translate
+IPIFY_URL = "https://api.ipify.org"
 
 
 def count_products(path: str) -> int:
@@ -94,6 +95,33 @@ def check_proxy(proxy: dict) -> bool:
         logger.debug("TRACEBACK", exc_info=True)
         return False
     logger.info(_("crd_proxy_success", response.content.decode()))
+    return True
+
+
+def _fetch_public_ip(proxies: dict | None) -> str | None:
+    try:
+        response = requests.get(IPIFY_URL, proxies=proxies, timeout=10)
+        response.raise_for_status()
+    except Exception:
+        return None
+    return (response.text or "").strip() or None
+
+
+def ensure_proxy_isolated(proxy: dict) -> bool:
+    logger.info(_("crd_checking_proxy"))
+    direct_ip = _fetch_public_ip({"http": None, "https": None})
+    if not direct_ip:
+        logger.error("Direct IP check failed. Bot will not start.")
+        return False
+    proxy_ip = _fetch_public_ip(proxy)
+    if not proxy_ip:
+        logger.error(_("crd_proxy_err"))
+        logger.debug("TRACEBACK", exc_info=True)
+        return False
+    if proxy_ip == direct_ip:
+        logger.error("Proxy IP matches direct IP. Bot will not start.")
+        return False
+    logger.info(_("crd_proxy_success", proxy_ip))
     return True
 
 

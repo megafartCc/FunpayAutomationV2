@@ -97,25 +97,30 @@ class Cardinal(object):
         # Прокси
         self.proxy = {}
         self.proxy_dict = cardinal_tools.load_proxy_dict()  # прокси {0: "login:password@ip:port", 1: "ip:port"...}
-        if self.MAIN_CFG["Proxy"].getboolean("enable"):
-            if self.MAIN_CFG["Proxy"]["ip"] and self.MAIN_CFG["Proxy"]["port"].isnumeric():
-                logger.info(_("crd_proxy_detected"))
+        if not self.MAIN_CFG["Proxy"].getboolean("enable"):
+            logger.error("Proxy must be enabled to start.")
+            sys.exit()
+        if not (self.MAIN_CFG["Proxy"]["ip"] and self.MAIN_CFG["Proxy"]["port"].isnumeric()):
+            logger.error("Proxy IP/port are required to start.")
+            sys.exit()
 
-                ip, port = self.MAIN_CFG["Proxy"]["ip"], self.MAIN_CFG["Proxy"]["port"]
-                login, password = self.MAIN_CFG["Proxy"]["login"], self.MAIN_CFG["Proxy"]["password"]
-                proxy_str = f"{f'{login}:{password}@' if login and password else ''}{ip}:{port}"
-                self.proxy = {
-                    "http": f"http://{proxy_str}",
-                    "https": f"http://{proxy_str}"
-                }
+        logger.info(_("crd_proxy_detected"))
 
-                if proxy_str not in self.proxy_dict.values():
-                    max_id = max(self.proxy_dict.keys(), default=-1)
-                    self.proxy_dict[max_id + 1] = proxy_str
-                    cardinal_tools.cache_proxy_dict(self.proxy_dict)
+        ip, port = self.MAIN_CFG["Proxy"]["ip"], self.MAIN_CFG["Proxy"]["port"]
+        login, password = self.MAIN_CFG["Proxy"]["login"], self.MAIN_CFG["Proxy"]["password"]
+        proxy_str = f"{f'{login}:{password}@' if login and password else ''}{ip}:{port}"
+        self.proxy = {
+            "http": f"http://{proxy_str}",
+            "https": f"http://{proxy_str}"
+        }
 
-                if self.MAIN_CFG["Proxy"].getboolean("check") and not cardinal_tools.check_proxy(self.proxy):
-                    sys.exit()
+        if proxy_str not in self.proxy_dict.values():
+            max_id = max(self.proxy_dict.keys(), default=-1)
+            self.proxy_dict[max_id + 1] = proxy_str
+            cardinal_tools.cache_proxy_dict(self.proxy_dict)
+
+        if not cardinal_tools.ensure_proxy_isolated(self.proxy):
+            sys.exit()
 
         self.account = FunPayAPI.Account(self.MAIN_CFG["FunPay"]["golden_key"],
                                          self.MAIN_CFG["FunPay"]["user_agent"],

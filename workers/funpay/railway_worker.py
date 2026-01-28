@@ -3460,6 +3460,76 @@ def build_proxy_config(raw: str | None) -> dict | None:
     return {"http": url, "https": url}
 
 
+IPIFY_URL = "https://api.ipify.org"
+
+
+def _fetch_public_ip(proxies: dict | None) -> str | None:
+    try:
+        resp = requests.get(IPIFY_URL, proxies=proxies, timeout=10)
+        resp.raise_for_status()
+    except Exception:
+        return None
+    text = (resp.text or "").strip()
+    if not text:
+        return None
+    if text.startswith("{"):
+        try:
+            data = resp.json()
+            text = str(data.get("ip") or "").strip()
+        except Exception:
+            return None
+    return text or None
+
+
+def ensure_proxy_isolated(
+    logger: logging.Logger,
+    proxy_url: str | None,
+    label: str,
+    *,
+    fatal: bool = False,
+) -> dict | None:
+    if not proxy_url:
+        msg = f"{label} Missing proxy_url, bot will not start."
+        if fatal:
+            logger.error(msg)
+        else:
+            logger.warning(msg)
+        return None
+    proxy_cfg = build_proxy_config(proxy_url)
+    if not proxy_cfg:
+        msg = f"{label} Invalid proxy_url, bot will not start."
+        if fatal:
+            logger.error(msg)
+        else:
+            logger.warning(msg)
+        return None
+    direct_ip = _fetch_public_ip({"http": None, "https": None})
+    if not direct_ip:
+        msg = f"{label} Direct IP check failed, bot will not start."
+        if fatal:
+            logger.error(msg)
+        else:
+            logger.warning(msg)
+        return None
+    proxy_ip = _fetch_public_ip(proxy_cfg)
+    if not proxy_ip:
+        msg = f"{label} Proxy IP check failed, bot will not start."
+        if fatal:
+            logger.error(msg)
+        else:
+            logger.warning(msg)
+        return None
+    if proxy_ip == direct_ip:
+        msg = f"{label} Proxy IP matches direct IP, bot will not start."
+        if fatal:
+            logger.error(msg)
+        else:
+            logger.warning(msg)
+        return None
+    logger.info("%s Proxy check passed (direct/proxy IP differ).", label)
+    return proxy_cfg
+
+
 def fetch_workspaces(mysql_cfg: dict) -> list[dict]:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
@@ -3662,12 +3732,15 @@ def run_single_user(logger: logging.Logger) -> None:
     if not proxy_url:
         logger.error("FUNPAY_PROXY_URL is required to start the bot.")
         sys.exit(1)
+    proxy_cfg = ensure_proxy_isolated(logger, proxy_url, "[single-user]", fatal=True)
+    if not proxy_cfg:
+        sys.exit(1)
 
     user_agent = os.getenv("FUNPAY_USER_AGENT")
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
 
     logger.info("Initializing FunPay account...")
-    account = Account(golden_key, user_agent=user_agent, proxy=build_proxy_config(proxy_url))
+    account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
     account.get()
     logger.info("Bot started for %s.", account.username or "unknown")
 
@@ -3729,12 +3802,8 @@ def workspace_worker_loop(
             if not golden_key:
                 logger.warning("%s Missing golden_key, skipping.", label)
                 return
-            if not proxy_url:
-                logger.warning("%s Missing proxy_url, bot will not start.", label)
-                return
-            proxy_cfg = build_proxy_config(proxy_url)
+            proxy_cfg = ensure_proxy_isolated(logger, proxy_url, label)
             if not proxy_cfg:
-                logger.warning("%s Invalid proxy_url, bot will not start.", label)
                 return
 
             account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
