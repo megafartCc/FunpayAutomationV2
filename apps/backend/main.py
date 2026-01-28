@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,6 +17,19 @@ from db.mysql import ensure_schema
 from settings.config import settings
 
 app = FastAPI(title="FunpayAutomationV2 API")
+
+logger = logging.getLogger("uvicorn.error")
+
+
+def _sanitize_auto_raise() -> None:
+    path = Path(__file__).resolve().parent / "api" / "auto_raise.py"
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return
+    if b"\x00" in data:
+        path.write_bytes(data.replace(b"\x00", b""))
+        logger.warning("auto_raise.py contained null bytes; sanitized at startup")
 
 
 @app.on_event("startup")
@@ -46,5 +62,6 @@ app.include_router(orders_router, prefix="/api", tags=["orders"])
 app.include_router(rentals_router, prefix="/api", tags=["rentals"])
 app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
+_sanitize_auto_raise()
 from api.auto_raise import router as auto_raise_router
 app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
