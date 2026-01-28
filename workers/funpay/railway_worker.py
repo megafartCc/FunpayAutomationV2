@@ -2180,6 +2180,32 @@ def fetch_lot_account(
         conn.close()
 
 
+def find_replacement_account_for_lot(
+    mysql_cfg: dict,
+    user_id: int,
+    lot_number: int,
+    workspace_id: int | None = None,
+) -> dict | None:
+    replacement = fetch_lot_account(mysql_cfg, user_id, lot_number, workspace_id)
+    if replacement:
+        return replacement
+    try:
+        available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
+    except mysql.connector.Error:
+        return None
+    if not available:
+        return None
+    same_lot = [
+        acc
+        for acc in available
+        if acc.get("lot_number") is not None
+        and int(acc.get("lot_number") or 0) == int(lot_number)
+    ]
+    if same_lot:
+        return same_lot[0]
+    return available[0]
+
+
 def assign_account_to_buyer(
     mysql_cfg: dict,
     *,
@@ -3167,7 +3193,9 @@ def handle_order_purchased(
         return
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen") or mapping.get("low_priority"):
-        replacement = fetch_lot_account(mysql_cfg, int(user_id), int(lot_number), workspace_id)
+        replacement = find_replacement_account_for_lot(
+            mysql_cfg, int(user_id), int(lot_number), workspace_id
+        )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
             total_minutes = unit_minutes * amount
@@ -3226,7 +3254,9 @@ def handle_order_purchased(
 
     owner = mapping.get("owner")
     if owner and normalize_username(owner) != normalize_username(buyer):
-        replacement = fetch_lot_account(mysql_cfg, int(user_id), int(lot_number), workspace_id)
+        replacement = find_replacement_account_for_lot(
+            mysql_cfg, int(user_id), int(lot_number), workspace_id
+        )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
             total_minutes = unit_minutes * amount
