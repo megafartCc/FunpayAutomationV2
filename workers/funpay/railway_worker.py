@@ -64,6 +64,10 @@ ORDER_LOT_UNMAPPED = (
 ORDER_ACCOUNT_BUSY = (
     "\u041b\u043e\u0442 \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442 \u0434\u0440\u0443\u0433\u0438\u043c \u043f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u0435\u043c. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d."
 )
+ORDER_ACCOUNT_REPLACEMENT_PREFIX = (
+    "\u041b\u043e\u0442 \u0443\u0436\u0435 \u0430\u0440\u0435\u043d\u0434\u043e\u0432\u0430\u043d \u0434\u0440\u0443\u0433\u0438\u043c \u043f\u043e\u043a\u0443\u043f\u0430\u0442\u0435\u043b\u0435\u043c. "
+    "\u041c\u044b \u0432\u044b\u0434\u0430\u043b\u0438 \u0432\u0430\u043c \u0437\u0430\u043c\u0435\u043d\u0443, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0438\u0439 \u043b\u043e\u0442 \u0431\u044b\u043b \u0437\u0430\u043d\u044f\u0442."
+)
 ACCOUNT_HEADER = "\u0412\u0430\u0448 \u0430\u043a\u043a\u0430\u0443\u043d\u0442:"
 ACCOUNT_TIMER_NOTE = (
     "\u23f1\ufe0f \u041e\u0442\u0441\u0447\u0435\u0442 \u0430\u0440\u0435\u043d\u0434\u044b \u043d\u0430\u0447\u043d\u0435\u0442\u0441\u044f \u043f\u043e\u0441\u043b\u0435 \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u043a\u043e\u0434\u0430 (!\u043a\u043e\u0434)."
@@ -373,20 +377,7 @@ def _calculate_resume_start(rental_start: object, frozen_at: object) -> datetime
 
 
 def get_unit_minutes(account: dict) -> int:
-    minutes = account.get("rental_duration_minutes")
-    if minutes is not None:
-        try:
-            val = int(minutes)
-            if val > 0:
-                return val
-        except Exception:
-            pass
-    hours = account.get("rental_duration")
-    try:
-        hours_val = int(hours or 0)
-    except Exception:
-        hours_val = 0
-    return max(hours_val * 60, 60)
+    return 60
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -2189,6 +2180,21 @@ def fetch_lot_account(
         conn.close()
 
 
+def find_replacement_account_for_lot(
+    mysql_cfg: dict,
+    user_id: int,
+    lot_number: int,
+    workspace_id: int | None = None,
+) -> dict | None:
+    try:
+        available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
+    except mysql.connector.Error:
+        return None
+    if not available:
+        return None
+    return available[0]
+
+
 def assign_account_to_buyer(
     mysql_cfg: dict,
     *,
@@ -3081,8 +3087,8 @@ def handle_order_purchased(
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
         comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
-        if comp_threshold_minutes <= 0:
-            comp_threshold_minutes = max(env_int("BLACKLIST_COMP_HOURS", 5), 0) * 60
+        comp_hours = env_int("BLACKLIST_COMP_HOURS", 5)
+        comp_threshold_minutes = max(comp_threshold_minutes, comp_hours * 60, 5 * 60)
         unit_minutes_default = env_int("BLACKLIST_COMP_UNIT_MINUTES", 60)
         unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
         paid_minutes = max(0, int(unit_minutes) * int(amount))
@@ -3176,6 +3182,47 @@ def handle_order_purchased(
         return
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen") or mapping.get("low_priority"):
+        replacement = find_replacement_account_for_lot(
+            mysql_cfg, int(user_id), int(lot_number), workspace_id
+        )
+        if replacement:
+            unit_minutes = get_unit_minutes(replacement)
+            total_minutes = unit_minutes * amount
+            assign_account_to_buyer(
+                mysql_cfg,
+                account_id=int(replacement["id"]),
+                user_id=user_id,
+                buyer=buyer,
+                units=amount,
+                total_minutes=total_minutes,
+                workspace_id=workspace_id,
+            )
+            log_order_history(
+                mysql_cfg,
+                order_id=order_id,
+                owner=buyer,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                account_id=replacement.get("id"),
+                account_name=replacement.get("account_name"),
+                steam_id=steam_id,
+                rental_minutes=total_minutes,
+                lot_number=lot_number,
+                amount=amount,
+                price=price_value,
+                action="replace_assign",
+            )
+            replacement_info = dict(replacement)
+            replacement_info["owner"] = buyer
+            replacement_info["rental_duration"] = amount
+            replacement_info["rental_duration_minutes"] = total_minutes
+            replacement_info["account_frozen"] = 0
+            replacement_info["rental_frozen"] = 0
+            message = f"{ORDER_ACCOUNT_REPLACEMENT_PREFIX}\n{build_account_message(replacement_info, total_minutes, True)}"
+            send_chat_message(logger, account, chat_id, message)
+            mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+            return
+
         log_order_history(
             mysql_cfg,
             order_id=order_id,
@@ -3196,6 +3243,47 @@ def handle_order_purchased(
 
     owner = mapping.get("owner")
     if owner and normalize_username(owner) != normalize_username(buyer):
+        replacement = find_replacement_account_for_lot(
+            mysql_cfg, int(user_id), int(lot_number), workspace_id
+        )
+        if replacement:
+            unit_minutes = get_unit_minutes(replacement)
+            total_minutes = unit_minutes * amount
+            assign_account_to_buyer(
+                mysql_cfg,
+                account_id=int(replacement["id"]),
+                user_id=user_id,
+                buyer=buyer,
+                units=amount,
+                total_minutes=total_minutes,
+                workspace_id=workspace_id,
+            )
+            log_order_history(
+                mysql_cfg,
+                order_id=order_id,
+                owner=buyer,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                account_id=replacement.get("id"),
+                account_name=replacement.get("account_name"),
+                steam_id=steam_id,
+                rental_minutes=total_minutes,
+                lot_number=lot_number,
+                amount=amount,
+                price=price_value,
+                action="replace_assign",
+            )
+            replacement_info = dict(replacement)
+            replacement_info["owner"] = buyer
+            replacement_info["rental_duration"] = amount
+            replacement_info["rental_duration_minutes"] = total_minutes
+            replacement_info["account_frozen"] = 0
+            replacement_info["rental_frozen"] = 0
+            message = f"{ORDER_ACCOUNT_REPLACEMENT_PREFIX}\n{build_account_message(replacement_info, total_minutes, True)}"
+            send_chat_message(logger, account, chat_id, message)
+            mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+            return
+
         log_order_history(
             mysql_cfg,
             order_id=order_id,
