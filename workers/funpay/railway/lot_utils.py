@@ -85,20 +85,17 @@ def fetch_available_lot_accounts(
             account_filters.append("a.rental_frozen = 0")
         if has_low_priority:
             account_filters.append("(a.low_priority = 0 OR a.low_priority IS NULL)")
-        if has_account_user_id and user_id is not None:
-            account_filters.append("a.user_id = %s")
-        if has_account_workspace and workspace_id is not None:
-            account_filters.append("a.workspace_id = %s")
-
         params: list = []
         if has_account_user_id and user_id is not None:
+            account_filters.append("a.user_id = %s")
             params.append(int(user_id))
-        if has_account_workspace and workspace_id is not None:
+        if has_account_workspace and workspace_id is not None and (not has_lots or not has_lot_workspace):
+            account_filters.append("a.workspace_id = %s")
             params.append(int(workspace_id))
 
         if has_lots:
             lot_filters: list[str] = []
-            if has_lot_user_id and user_id is not None:
+            if user_id is not None and not has_account_user_id and has_lot_user_id:
                 lot_filters.append("l.user_id = %s")
                 params.append(int(user_id))
             if has_lot_workspace and workspace_id is not None:
