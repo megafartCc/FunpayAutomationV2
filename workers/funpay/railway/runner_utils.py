@@ -26,8 +26,9 @@ from .chat_utils import (
     sync_chats_list,
     upsert_chat_summary,
 )
+from .account_utils import build_account_message, build_rental_choice_message, resolve_rental_minutes
 from .command_handlers import build_stock_messages, handle_command
-from .constants import COMMANDS_RU, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
+from .constants import COMMANDS_RU, RENTALS_EMPTY, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
@@ -119,6 +120,27 @@ def _is_rental_related(text: str) -> bool:
         "mmr",
         "логин",
         "парол",
+    )
+    return any(key in text for key in keywords)
+
+
+def _wants_account_info(text: str) -> bool:
+    if not text:
+        return False
+    keywords = (
+        "данные",
+        "логин",
+        "парол",
+        "акк",
+        "аккаунт",
+        "мой",
+        "мои",
+        "скок",
+        "сколько",
+        "остал",
+        "времени",
+        "срок",
+        "доступ",
     )
     return any(key in text for key in keywords)
 
@@ -330,6 +352,27 @@ def log_message(
             if wants_stock:
                 accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
                 _respond_free_lots(logger, account, int(chat_id), accounts)
+                return None
+            if _wants_account_info(lower_text):
+                accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
+                if not accounts:
+                    send_chat_message(logger, account, int(chat_id), RENTALS_EMPTY)
+                    return None
+                if len(accounts) > 1:
+                    send_chat_message(
+                        logger,
+                        account,
+                        int(chat_id),
+                        build_rental_choice_message(accounts, "!акк"),
+                    )
+                    return None
+                selected = accounts[0]
+                message = build_account_message(
+                    selected,
+                    resolve_rental_minutes(selected),
+                    include_timer_note=True,
+                )
+                send_chat_message(logger, account, int(chat_id), message)
                 return None
         if not _is_rental_related(lower_text):
             send_chat_message(
