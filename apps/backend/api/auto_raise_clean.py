@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
 from db.auto_raise_repo import MySQLAutoRaiseRepo
+from db.funpay_category_repo import MySQLFunpayCategoryCacheRepo
 from db.workspace_repo import MySQLWorkspaceRepo
 
 
@@ -21,6 +22,7 @@ logger = logging.getLogger("auto_raise")
 router = APIRouter()
 auto_raise_repo = MySQLAutoRaiseRepo()
 workspace_repo = MySQLWorkspaceRepo()
+category_cache_repo = MySQLFunpayCategoryCacheRepo()
 
 
 class AutoRaiseSettingsResponse(BaseModel):
@@ -60,6 +62,21 @@ class FunpayCategoryItem(BaseModel):
 
 class FunpayCategoriesResponse(BaseModel):
     items: list[FunpayCategoryItem]
+
+
+class FunpayCategoriesCachePayload(BaseModel):
+    items: list[FunpayCategoryItem]
+
+
+def _normalize_category_items(items: list[FunpayCategoryItem]) -> list[dict]:
+    unique: dict[int, dict] = {}
+    for item in items:
+        payload = item.model_dump()
+        cid = payload.get("id")
+        if not cid:
+            continue
+        unique[int(cid)] = payload
+    return list(unique.values())
 
 
 def _normalize_proxy_url(raw: str | None) -> str:
@@ -400,9 +417,27 @@ def funpay_categories(user=Depends(get_current_user)) -> FunpayCategoriesRespons
     workspace = _select_funpay_workspace(int(user.id))
     token = workspace.golden_key
     proxy = _build_proxy_config(workspace.proxy_url)
+    cached = category_cache_repo.get_cache(int(user.id))
     try:
         items = _build_funpay_categories(token, proxy)
     except Exception as exc:
         logger.warning("Category resolve failed: %s", exc)
-        raise HTTPException(status_code=503, detail="Failed to load categories from FunPay") from exc
+        items = []
+    if not items and cached:
+        logger.info("Using cached FunPay categories for user %s", user.id)
+        items = cached.payload
+    if not items:
+        raise HTTPException(status_code=503, detail="Failed to load categories from FunPay")
     return FunpayCategoriesResponse(items=[FunpayCategoryItem(**item) for item in items])
+
+
+@router.post("/funpay/categories/cache", response_model=FunpayCategoriesResponse)
+def cache_funpay_categories(
+    payload: FunpayCategoriesCachePayload,
+    user=Depends(get_current_user),
+) -> FunpayCategoriesResponse:
+    normalized = _normalize_category_items(payload.items)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="No categories provided")
+    category_cache_repo.upsert_cache(int(user.id), normalized)
+    return FunpayCategoriesResponse(items=[FunpayCategoryItem(**item) for item in normalized])

@@ -27,6 +27,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [categories, setCategories] = useState<FunpayCategoryItem[]>([]);
   const [categoryQuery, setCategoryQuery] = useState("");
   const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncInput, setSyncInput] = useState("");
+  const [syncSaving, setSyncSaving] = useState(false);
 
   const [history, setHistory] = useState<AutoRaiseHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -67,6 +70,128 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       setCategoriesLoading(false);
     }
   }, [onToast]);
+
+  const parseSyncPayload = (raw: string): FunpayCategoryItem[] => {
+    const parsed = JSON.parse(raw);
+    const items = Array.isArray(parsed) ? parsed : parsed?.items;
+    if (!Array.isArray(items)) {
+      throw new Error("Invalid JSON format.");
+    }
+    return items
+      .map((item) => ({
+        id: Number(item?.id),
+        name: String(item?.name || ""),
+        game: item?.game ?? null,
+        category: item?.category ?? null,
+        server: item?.server ?? null,
+      }))
+      .filter((item) => Number.isFinite(item.id) && item.name.trim().length > 0);
+  };
+
+  const handleSyncImport = async () => {
+    if (syncSaving) return;
+    setSyncSaving(true);
+    try {
+      const items = parseSyncPayload(syncInput);
+      const res = await api.cacheFunpayCategories(items);
+      setCategories(res.items || []);
+      setSyncInput("");
+      setSyncOpen(false);
+      onToast?.("FunPay categories synced.");
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Failed to sync categories.";
+      onToast?.(message, true);
+    } finally {
+      setSyncSaving(false);
+    }
+  };
+
+  const syncScript = useMemo(
+    () => `(async () => {
+  const urls = ["/en/lots/", "/lots/", "/en/", "/"];
+  const seen = new Map();
+
+  const parse = (html) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll(".promo-game-item").forEach((block) => {
+      const gameEl = block.querySelector(".game-title a, .game-title");
+      const gameName = (gameEl?.textContent || "Unknown game").trim();
+      const serverLabels = {};
+      block.querySelectorAll("button[data-id]").forEach((btn) => {
+        const id = btn.getAttribute("data-id")?.trim();
+        if (id) serverLabels[id] = (btn.textContent || "").trim();
+      });
+      block.querySelectorAll("ul.list-inline[data-id]").forEach((ul) => {
+        const dataId = ul.getAttribute("data-id")?.trim();
+        const server = dataId ? (serverLabels[dataId] || "") : "";
+        const gameLabel = server ? \`\${gameName} (\${server})\` : gameName;
+        ul.querySelectorAll("a[href*='/lots/']").forEach((a) => {
+          const href = a.getAttribute("href") || "";
+          const m = href.match(/\\/lots\\/(\\d+)/);
+          if (!m) return;
+          const id = Number(m[1]);
+          const category = ((a.textContent || "").trim() || \`Category \${id}\`);
+          if (!seen.has(id)) {
+            seen.set(id, { id, name: \`\${gameLabel} - \${category}\`, game: gameLabel, category, server: server || null });
+          }
+        });
+      });
+    });
+    doc.querySelectorAll("a[href*='/lots/']").forEach((a) => {
+      const href = a.getAttribute("href") || "";
+      const m = href.match(/\\/lots\\/(\\d+)/);
+      if (!m) return;
+      const id = Number(m[1]);
+      if (seen.has(id)) return;
+      const category = ((a.textContent || "").trim() || \`Category \${id}\`);
+      let gameLabel = "Unknown game";
+      const block = a.closest(".promo-game-item");
+      if (block) {
+        const gEl = block.querySelector(".game-title a, .game-title");
+        gameLabel = (gEl?.textContent || "").trim() || gameLabel;
+      }
+      seen.set(id, { id, name: \`\${gameLabel} - \${category}\`, game: gameLabel, category, server: null });
+    });
+  };
+
+  for (const path of urls) {
+    try {
+      const r = await fetch(path, { credentials: "include" });
+      const html = await r.text();
+      parse(html);
+    } catch (e) {
+      console.warn("Fetch failed", path, e?.message || e);
+    }
+  }
+
+  const gamesWithCats = new Set(
+    [...seen.values()].filter((v) => v.category && v.game).map((v) => v.game.trim())
+  );
+  for (const [id, v] of [...seen.entries()]) {
+    const g = (v.game || "").trim();
+    if (gamesWithCats.has(g) && (!v.category || v.category === v.name)) {
+      seen.delete(id);
+    }
+  }
+
+  const rows = [...seen.values()].sort((a, b) => {
+    const gA = (a.game || "");
+    const gB = (b.game || "");
+    const cA = (a.category || a.name || "");
+    const cB = (b.category || b.name || "");
+    return gA.localeCompare(gB) || cA.localeCompare(cB) || (a.id - b.id);
+  });
+
+  const payload = JSON.stringify(rows, null, 2);
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(payload);
+    console.log("Copied categories JSON to clipboard");
+  } else {
+    console.log(payload);
+  }
+})();`,
+    [],
+  );
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -200,14 +325,23 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                   Search and select the categories to auto raise. ({selectedCount} selected)
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={loadCategories}
-                disabled={categoriesLoading}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {categoriesLoading ? "Refreshing..." : "Refresh categories"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSyncOpen(true)}
+                  className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 transition hover:bg-neutral-100"
+                >
+                  Sync from FunPay
+                </button>
+                <button
+                  type="button"
+                  onClick={loadCategories}
+                  disabled={categoriesLoading}
+                  className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {categoriesLoading ? "Refreshing..." : "Refresh categories"}
+                </button>
+              </div>
             </div>
             <div className="mt-3">
               <input
@@ -277,6 +411,83 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
+
+      {syncOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-neutral-900/40 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-neutral-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-neutral-900">Sync FunPay categories</div>
+                <div className="text-xs text-neutral-500">
+                  Run the script on FunPay in your browser, then paste the JSON output below.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncOpen(false)}
+                className="rounded-full border border-neutral-200 px-2 py-1 text-xs text-neutral-500 hover:text-neutral-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
+              <div className="mb-2 font-semibold text-neutral-800">Run in FunPay console</div>
+              <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-3 text-[11px] text-neutral-700">
+                {syncScript}
+              </pre>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(syncScript);
+                      onToast?.("Script copied to clipboard.");
+                    } catch {
+                      onToast?.("Copy failed. Select and copy manually.", true);
+                    }
+                  }}
+                  className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                >
+                  Copy script
+                </button>
+                <span className="text-xs text-neutral-500">
+                  Open FunPay → DevTools Console → paste and run.
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-neutral-600">Paste categories JSON</label>
+              <textarea
+                value={syncInput}
+                onChange={(e) => setSyncInput(e.target.value)}
+                rows={6}
+                className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 outline-none"
+                placeholder='Paste JSON array from FunPay console...'
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSyncOpen(false)}
+                className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncImport}
+                disabled={syncSaving || !syncInput.trim()}
+                className="rounded-lg bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {syncSaving ? "Saving..." : "Save categories"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex items-center justify-between">

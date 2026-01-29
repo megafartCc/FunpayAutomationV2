@@ -241,6 +241,17 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS funpay_categories_cache (
+                user_id BIGINT NOT NULL PRIMARY KEY,
+                payload LONGTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_funpay_categories_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'lots' AND column_name = 'display_name'
             LIMIT 1

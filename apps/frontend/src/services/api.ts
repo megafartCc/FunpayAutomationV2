@@ -408,6 +408,11 @@ export const api = {
   },
   listFunpayCategories: () =>
     request<{ items: FunpayCategoryItem[] }>("/funpay/categories", { method: "GET" }),
+  cacheFunpayCategories: (items: FunpayCategoryItem[]) =>
+    request<{ items: FunpayCategoryItem[] }>("/funpay/categories/cache", {
+      method: "POST",
+      body: { items },
+    }),
   createBlacklist: (payload: BlacklistCreatePayload, workspaceId?: number | null) =>
     request<BlacklistEntry>(withWorkspace("/blacklist", workspaceId), { method: "POST", body: payload }),
   updateBlacklist: (entryId: number, payload: BlacklistUpdatePayload, workspaceId?: number | null) =>
