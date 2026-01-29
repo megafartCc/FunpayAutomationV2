@@ -7,7 +7,7 @@ from typing import Any
 import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.1-70b-versatile"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_PROMPT = (
     "Ты — продавец в магазине аренды аккаунтов FunPay и отвечаешь покупателям. "
     "Отвечай по-русски, кратко и по делу, дружелюбно и уверенно. "
