@@ -120,6 +120,9 @@ RENTAL_PAUSE_EXPIRED_MESSAGE = (
     "\u23f0 \u041f\u0430\u0443\u0437\u0430 \u0438\u0441\u0442\u0435\u043a\u043b\u0430 (\u043f\u0440\u043e\u0448\u043b\u043e 1 \u0447\u0430\u0441). \u0410\u0440\u0435\u043d\u0434\u0430 \u0432\u043e\u0437\u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
 )
 RENTAL_EXPIRED_MESSAGE = "\u0410\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c. \u0414\u043e\u0441\u0442\u0443\u043f \u0437\u0430\u043a\u0440\u044b\u0442."
+RENTAL_EXPIRED_CONFIRM_MESSAGE = (
+    "\u0417\u0430\u043a\u0430\u0437 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d. \u041f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430, \u0437\u0430\u0439\u0434\u0438\u0442\u0435 \u0432 \u0440\u0430\u0437\u0434\u0435\u043b \u00ab\u041f\u043e\u043a\u0443\u043f\u043a\u0438\u00bb, \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0435\u0433\u043e \u0432 \u0441\u043f\u0438\u0441\u043a\u0435 \u0438 \u043d\u0430\u0436\u043c\u0438\u0442\u0435 \u043a\u043d\u043e\u043f\u043a\u0443 \u00ab\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435 \u0437\u0430\u043a\u0430\u0437\u0430\u00bb."
+)
 RENTAL_EXPIRE_DELAY_MESSAGE = (
     "\u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0430\u0441\u044c, \u043d\u043e \u043c\u044b \u0432\u0438\u0434\u0438\u043c, \u0447\u0442\u043e \u0432\u044b \u0432 \u043c\u0430\u0442\u0447\u0435.\n"
     "\u0423 \u0432\u0430\u0441 \u0435\u0441\u0442\u044c \u0432\u0440\u0435\u043c\u044f, \u0447\u0442\u043e\u0431\u044b \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u044c \u043c\u0430\u0442\u0447. \u0427\u0435\u0440\u0435\u0437 1 \u043c\u0438\u043d\u0443\u0442\u0443 \u044f \u043f\u0440\u043e\u0432\u0435\u0440\u044e \u0441\u043d\u043e\u0432\u0430.\n"
@@ -1377,6 +1380,44 @@ def log_order_history(
         conn.close()
 
 
+def fetch_latest_order_id_for_account(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> str | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return None
+        workspace_clause = ""
+        params: list = [int(user_id), int(account_id), owner_key]
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT order_id
+            FROM order_history
+            WHERE user_id = %s AND account_id = %s AND owner = %s{workspace_clause}
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
 def log_notification_event(
     mysql_cfg: dict,
     *,
@@ -2012,6 +2053,21 @@ def process_rental_monitor(
         )
         if released:
             send_message_by_owner(logger, account, owner, RENTAL_EXPIRED_MESSAGE)
+            order_id = fetch_latest_order_id_for_account(
+                mysql_cfg,
+                account_id=account_id,
+                owner=owner,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+            if order_id:
+                confirm_message = (
+                    f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
+                    f"\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u0442\u0443\u0442 -> https://funpay.com/orders/{order_id}/"
+                )
+            else:
+                confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
+            send_message_by_owner(logger, account, owner, confirm_message)
         _clear_expire_delay_state(state, account_id)
 
 
