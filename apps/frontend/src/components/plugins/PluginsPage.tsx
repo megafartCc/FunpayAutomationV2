@@ -214,18 +214,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
 
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(draft), [settings, draft]);
 
-  const toggleCategory = (categoryId: number) => {
-    setDraft((prev) => {
-      const selected = new Set(prev.categories || []);
-      if (selected.has(categoryId)) {
-        selected.delete(categoryId);
-      } else {
-        selected.add(categoryId);
-      }
-      return normalizeDraft({ ...prev, categories: Array.from(selected) });
-    });
-  };
-
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
@@ -248,18 +236,44 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     setDraft(settings);
   };
 
-  const filteredCategories = useMemo(() => {
-    const query = categoryQuery.trim().toLowerCase();
-    if (!query) return categories;
-    return categories.filter((item) => {
-      const name = (item.name || "").toLowerCase();
-      const game = (item.game || "").toLowerCase();
-      const category = (item.category || "").toLowerCase();
-      return name.includes(query) || game.includes(query) || category.includes(query);
-    });
-  }, [categories, categoryQuery]);
+  const groupedGames = useMemo(() => {
+    const grouped = new Map<string, FunpayCategoryItem[]>();
+    for (const item of categories) {
+      const fallback = (item.name || "").split(" - ")[0].trim();
+      const gameLabel = (item.game || fallback || "Unknown game").trim();
+      if (!grouped.has(gameLabel)) grouped.set(gameLabel, []);
+      grouped.get(gameLabel)!.push(item);
+    }
+    return [...grouped.entries()]
+      .map(([game, items]) => ({ game, items }))
+      .sort((a, b) => a.game.localeCompare(b.game));
+  }, [categories]);
 
-  const selectedCount = draft.categories.length;
+  const filteredGames = useMemo(() => {
+    const query = categoryQuery.trim().toLowerCase();
+    if (!query) return groupedGames;
+    return groupedGames.filter((group) => group.game.toLowerCase().includes(query));
+  }, [groupedGames, categoryQuery]);
+
+  const selectedCategoryIds = useMemo(() => new Set(draft.categories), [draft.categories]);
+  const selectedGamesCount = useMemo(
+    () => groupedGames.filter((group) => group.items.every((item) => selectedCategoryIds.has(item.id))).length,
+    [groupedGames, selectedCategoryIds],
+  );
+
+  const toggleGame = (group: { game: string; items: FunpayCategoryItem[] }) => {
+    const ids = group.items.map((item) => item.id);
+    const isSelected = ids.every((id) => selectedCategoryIds.has(id));
+    setDraft((prev) => {
+      const next = new Set(prev.categories);
+      if (isSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return normalizeDraft({ ...prev, categories: Array.from(next) });
+    });
+  };
 
   const formatTimestamp = (value?: string | null) => {
     if (!value) return "-";
@@ -320,9 +334,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-neutral-900">FunPay categories</div>
+                <div className="text-sm font-semibold text-neutral-900">FunPay games</div>
                 <div className="text-xs text-neutral-500">
-                  Search and select the categories to auto raise. ({selectedCount} selected)
+                  Select the games to auto raise. ({selectedGamesCount} selected)
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -348,7 +362,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                 type="search"
                 value={categoryQuery}
                 onChange={(e) => setCategoryQuery(e.target.value)}
-                placeholder="Search categories or games..."
+                placeholder="Search games..."
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
             </div>
@@ -357,32 +371,46 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                 <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-6 text-center text-xs text-neutral-500">
                   Resolving categories from FunPay...
                 </div>
-              ) : filteredCategories.length ? (
-                filteredCategories.map((item) => {
-                  const checked = draft.categories.includes(item.id);
+              ) : filteredGames.length ? (
+                filteredGames.map((group) => {
+                  const ids = group.items.map((item) => item.id);
+                  const isSelected = ids.every((id) => selectedCategoryIds.has(id));
+                  const isPartial = !isSelected && ids.some((id) => selectedCategoryIds.has(id));
                   return (
-                    <label
-                      key={item.id}
-                      className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm transition ${
-                        checked ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white"
+                    <button
+                      key={group.game}
+                      type="button"
+                      onClick={() => toggleGame(group)}
+                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                        isSelected ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white"
                       }`}
                     >
                       <input
                         type="checkbox"
                         className="mt-1 h-4 w-4 rounded border-neutral-300 text-neutral-900"
-                        checked={checked}
-                        onChange={() => toggleCategory(item.id)}
+                        checked={isSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = isPartial;
+                        }}
+                        readOnly
                       />
-                      <div>
-                        <div className="text-sm font-semibold text-neutral-800">{item.name}</div>
-                        <div className="text-xs text-neutral-500">ID {item.id}</div>
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-neutral-800">{group.game}</span>
+                          {isPartial ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                              Partial
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-neutral-500">{group.items.length} categories</div>
                       </div>
-                    </label>
+                    </button>
                   );
                 })
               ) : (
                 <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-6 text-center text-xs text-neutral-500">
-                  No categories found. Try refreshing.
+                  No games found. Try refreshing.
                 </div>
               )}
             </div>
