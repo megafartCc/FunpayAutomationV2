@@ -1,3 +1,6 @@
 from __future__ import annotations
 
-from .railway.worker import *  # noqa: F401,F403
+if __package__:
+    from .railway.worker import *  # noqa: F401,F403
+else:
+    from railway.worker import *  # noqa: F401,F403
