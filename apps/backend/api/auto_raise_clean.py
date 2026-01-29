@@ -92,7 +92,8 @@ def _load_funpay_api():
         from FunPayAPI.account import Account as FPAccount  # type: ignore
         from FunPayAPI.common import enums as fp_enums  # type: ignore
         return FPAccount, fp_enums
-    except Exception:
+    except Exception as exc:
+        logger.warning("FunPayAPI import failed: %r", exc)
         try:
             root = Path(__file__).resolve().parents[3]
             funpay_path = root / "workers" / "funpay"
@@ -102,7 +103,7 @@ def _load_funpay_api():
             from FunPayAPI.common import enums as fp_enums  # type: ignore
             return FPAccount, fp_enums
         except Exception as exc:
-            logger.warning("FunPayAPI import failed: %s", exc)
+            logger.warning("FunPayAPI import failed: %r", exc)
             return None, None
 
 
@@ -274,6 +275,7 @@ def _fetch_funpay_categories_live(token: str, proxy: dict | None) -> list[dict]:
     def fetch_through(session_proxy: dict | None, label: str) -> None:
         with requests.Session() as session:
             session.cookies.set("golden_key", token, domain="funpay.com")
+            session.cookies.set("cookie_prefs", "1", domain="funpay.com")
             if session_proxy:
                 session.proxies.update(session_proxy)
             for url in urls:
@@ -286,6 +288,8 @@ def _fetch_funpay_categories_live(token: str, proxy: dict | None) -> list[dict]:
                     logger.warning("Category fetch failed (%s) for %s: %s", label, url, exc)
                     continue
                 extracted = _extract_categories_from_html(resp.text)
+                if not extracted:
+                    logger.debug("Category scrape returned 0 items for %s (%s)", url, label)
                 for cid, payload in extracted.items():
                     if cid not in merged:
                         merged[cid] = payload
