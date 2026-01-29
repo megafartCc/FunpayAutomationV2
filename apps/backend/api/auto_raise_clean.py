@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
+from pathlib import Path
 from typing import Optional
 
 import requests
@@ -83,6 +85,97 @@ def _select_funpay_workspace(user_id: int):
         raise HTTPException(status_code=404, detail="No FunPay workspace found.")
     default_ws = next((ws for ws in funpay if ws.is_default), None)
     return default_ws or funpay[0]
+
+
+def _load_funpay_api():
+    try:
+        from FunPayAPI.account import Account as FPAccount  # type: ignore
+        from FunPayAPI.common import enums as fp_enums  # type: ignore
+        return FPAccount, fp_enums
+    except Exception:
+        try:
+            root = Path(__file__).resolve().parents[3]
+            funpay_path = root / "workers" / "funpay"
+            if funpay_path.exists() and str(funpay_path) not in sys.path:
+                sys.path.insert(0, str(funpay_path))
+            from FunPayAPI.account import Account as FPAccount  # type: ignore
+            from FunPayAPI.common import enums as fp_enums  # type: ignore
+            return FPAccount, fp_enums
+        except Exception as exc:
+            logger.warning("FunPayAPI import failed: %s", exc)
+            return None, None
+
+
+def _fetch_funpay_categories_library(token: str, proxy: dict | None) -> list[dict]:
+    fp_account_cls, fp_enums = _load_funpay_api()
+    if fp_account_cls is None:
+        return []
+    try:
+        account = fp_account_cls(token, proxy=proxy).get()
+    except Exception as exc:
+        logger.warning("FunPayAPI session init failed: %s", exc)
+        return []
+
+    items: dict[int, dict] = {}
+
+    try:
+        if hasattr(account, "get_sorted_subcategories"):
+            sorted_subcats = account.get_sorted_subcategories() or {}
+            mappings = []
+            if fp_enums and hasattr(fp_enums, "SubCategoryTypes"):
+                common_key = fp_enums.SubCategoryTypes.COMMON
+                if common_key in sorted_subcats:
+                    mappings = [sorted_subcats.get(common_key) or {}]
+            if not mappings:
+                mappings = [mapping for mapping in sorted_subcats.values() if isinstance(mapping, dict)]
+
+            for mapping in mappings:
+                for subcat in (mapping or {}).values():
+                    subcat_type = getattr(subcat, "type", None)
+                    type_name = getattr(subcat_type, "name", "")
+                    if type_name and type_name != "COMMON":
+                        continue
+                    cid = getattr(subcat, "id", None)
+                    if not cid:
+                        continue
+                    cat_name = (getattr(subcat, "name", None) or f"Category {cid}").strip()
+                    category = getattr(subcat, "category", None)
+                    game_name = (getattr(category, "name", None) or "Unknown game").strip()
+                    label = f"{game_name} - {cat_name}" if game_name else cat_name
+                    if cid not in items:
+                        items[cid] = {
+                            "id": cid,
+                            "name": label,
+                            "game": game_name or None,
+                            "category": cat_name,
+                            "server": None,
+                        }
+    except Exception as exc:
+        logger.warning("FunPayAPI subcategory fallback failed: %s", exc)
+
+    if not items:
+        try:
+            cats_attr = getattr(account, "categories", None)
+            categories = cats_attr() if callable(cats_attr) else cats_attr or []
+            if not categories and hasattr(account, "get_sorted_categories"):
+                categories = list(account.get_sorted_categories().values())
+            for cat in categories or []:
+                cid = getattr(cat, "id", None)
+                if not cid:
+                    continue
+                name = getattr(cat, "name", None) or str(cid)
+                if cid not in items:
+                    items[cid] = {
+                        "id": cid,
+                        "name": name,
+                        "game": None,
+                        "category": name,
+                        "server": None,
+                    }
+        except Exception as exc:
+            logger.warning("FunPayAPI category fallback failed: %s", exc)
+
+    return list(items.values())
 
 
 def _extract_categories_from_html(html: str) -> dict[int, dict]:
@@ -206,7 +299,12 @@ def _fetch_funpay_categories_live(token: str, proxy: dict | None) -> list[dict]:
 
 def _build_funpay_categories(token: str, proxy: dict | None) -> list[dict]:
     live_items = _fetch_funpay_categories_live(token, proxy)
+    library_items = _fetch_funpay_categories_library(token, proxy)
     merged: dict[int, dict] = {item["id"]: item for item in live_items if item.get("id")}
+    for item in library_items:
+        cid = item.get("id")
+        if cid and cid not in merged:
+            merged[cid] = item
 
     games_with_categories = {
         (v.get("game") or "").strip()
