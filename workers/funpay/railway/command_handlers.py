@@ -64,16 +64,20 @@ from .user_utils import get_user_id_by_username
 def build_stock_messages(accounts: list[dict]) -> list[str]:
     lines: list[str] = []
     for acc in accounts:
-        display_name = acc.get("display_name") or acc.get("account_name") or acc.get("login") or "-"
+        display_name = acc.get("display_name")
         lot_number = acc.get("lot_number")
         lot_url = acc.get("lot_url")
-        name = display_name
-        if lot_number:
-            lot_number_str = str(lot_number)
-            for prefix in (f"№ {lot_number_str} ", f"№{lot_number_str} ", f"#{lot_number_str} "):
-                if name.startswith(prefix):
-                    name = name[len(prefix):]
-                    break
+        fallback_name = acc.get("account_name") or acc.get("login") or "-"
+
+        if display_name:
+            name = display_name
+        else:
+            name = fallback_name
+            if lot_number:
+                lot_number_str = str(lot_number)
+                if not name.startswith(("№", "#")):
+                    name = f"№ {lot_number_str} {name}"
+
         if lot_url:
             lines.append(f"{name} - {lot_url}")
         else:
