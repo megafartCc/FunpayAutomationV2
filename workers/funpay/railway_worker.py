@@ -3173,6 +3173,22 @@ def handle_order_purchased(
         return
 
     mapping = lot_mapping
+    if mapping:
+        try:
+            owner_accounts = fetch_owner_accounts(mysql_cfg, int(user_id), buyer, workspace_id)
+        except mysql.connector.Error:
+            owner_accounts = []
+        for account_row in owner_accounts:
+            account_lot = account_row.get("lot_number")
+            if account_lot is None:
+                continue
+            try:
+                account_lot_number = int(account_lot)
+            except Exception:
+                continue
+            if account_lot_number == int(lot_number):
+                mapping = account_row
+                break
     if not mapping:
         log_order_history(
             mysql_cfg,
@@ -4299,7 +4315,6 @@ def run_multi_user(logger: logging.Logger) -> None:
     logger.info("Multi-user mode enabled. Sync interval: %ss.", sync_seconds)
 
     workers: dict[int, dict] = {}
-    auto_raise_workers: dict[int, dict] = {}
 
     while True:
         try:
@@ -4313,25 +4328,7 @@ def run_multi_user(logger: logging.Logger) -> None:
                 if w.get("golden_key") and str(w.get("golden_key")).strip()
             }
 
-            user_ids = {int(w.get("user_id")) for w in workspaces if w.get("user_id") is not None}
-
-            for user_id in list(auto_raise_workers.keys()):
-                if user_id not in user_ids:
-                    auto_raise_workers[user_id]["stop"].set()
-                    auto_raise_workers[user_id]["thread"].join(timeout=5)
-                    auto_raise_workers.pop(user_id, None)
-
-            for user_id in user_ids:
-                if user_id in auto_raise_workers:
-                    continue
-                stop_event = threading.Event()
-                thread = threading.Thread(
-                    target=auto_raise_user_loop,
-                    args=(logger, mysql_cfg, int(user_id), user_agent, stop_event),
-                    daemon=True,
-                )
-                auto_raise_workers[user_id] = {"thread": thread, "stop": stop_event}
-                thread.start()
+            # Auto-raise loops removed.
 
             # Stop removed workspaces.
             for workspace_id in list(workers.keys()):
