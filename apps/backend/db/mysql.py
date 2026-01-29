@@ -137,6 +137,24 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS workspace_status (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                platform VARCHAR(32) NOT NULL DEFAULT 'funpay',
+                status VARCHAR(32) NOT NULL,
+                message TEXT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_workspace_status (user_id, workspace_id, platform),
+                INDEX idx_workspace_status_user (user_id),
+                INDEX idx_workspace_status_workspace (workspace_id),
+                CONSTRAINT fk_workspace_status_workspace FOREIGN KEY (workspace_id)
+                    REFERENCES workspaces(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'workspaces' AND column_name = 'platform'
             LIMIT 1

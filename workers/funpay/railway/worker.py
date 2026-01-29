@@ -957,6 +957,43 @@ def log_notification_event(
         conn.close()
 
 
+def upsert_workspace_status(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    platform: str,
+    status: str,
+    message: str | None = None,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "workspace_status"):
+            return
+        cursor.execute(
+            """
+            INSERT INTO workspace_status (user_id, workspace_id, platform, status, message)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                status = VALUES(status),
+                message = VALUES(message),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                platform,
+                status,
+                message,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_blacklist_compensation_total(
     mysql_cfg: dict,
     owner: str,
@@ -3079,7 +3116,7 @@ def fetch_workspaces(mysql_cfg: dict) -> list[dict]:
         cursor.execute(
             """
             SELECT w.id AS workspace_id, w.name AS workspace_name, w.golden_key, w.proxy_url,
-                   w.user_id, u.username
+                   w.user_id, w.platform, u.username
             FROM workspaces w
             JOIN users u ON u.id = w.user_id
             WHERE w.platform = 'funpay'
@@ -3331,18 +3368,48 @@ def workspace_worker_loop(
         mysql_cfg = get_mysql_config()
     except RuntimeError:
         mysql_cfg = None
+    last_status_ping = 0.0
+    status_platform = (workspace.get("platform") or "funpay").lower()
     while not stop_event.is_set():
         try:
             if not golden_key:
                 logger.warning("%s Missing golden_key, skipping.", label)
+                if mysql_cfg and user_id is not None:
+                    upsert_workspace_status(
+                        mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=int(workspace_id) if workspace_id is not None else None,
+                        platform=status_platform,
+                        status="unauthorized",
+                        message="Missing golden key.",
+                    )
                 return
             proxy_cfg = ensure_proxy_isolated(logger, proxy_url, label)
             if not proxy_cfg:
+                if mysql_cfg and user_id is not None:
+                    upsert_workspace_status(
+                        mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=int(workspace_id) if workspace_id is not None else None,
+                        platform=status_platform,
+                        status="error",
+                        message="Proxy connection failed.",
+                    )
                 return
 
             account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
             account.get()
             logger.info("Bot started for %s (%s).", site_username, workspace_name)
+            if mysql_cfg and user_id is not None:
+                upsert_workspace_status(
+                    mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=int(workspace_id) if workspace_id is not None else None,
+                    platform=status_platform,
+                    status="ok",
+                    message="Connected to FunPay.",
+                )
+                last_status_ping = time.time()
 
             threading.Thread(
                 target=refresh_session_loop,
@@ -3365,8 +3432,36 @@ def workspace_worker_loop(
                         sync_chats_list(mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
                         chat_sync_last = time.time()
                     process_chat_outbox(logger, mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
+                    if time.time() - last_status_ping >= 60:
+                        upsert_workspace_status(
+                            mysql_cfg,
+                            user_id=int(user_id),
+                            workspace_id=int(workspace_id) if workspace_id is not None else None,
+                            platform=status_platform,
+                            status="ok",
+                            message="Connected to FunPay.",
+                        )
+                        last_status_ping = time.time()
                 time.sleep(poll_seconds)
         except Exception as exc:
+            if mysql_cfg and user_id is not None:
+                status = "error"
+                message = None
+                if isinstance(exc, fp_exceptions.UnauthorizedError):
+                    status = "unauthorized"
+                    message = "Authorization required."
+                elif isinstance(exc, fp_exceptions.RequestFailedError):
+                    message = exc.short_str() if hasattr(exc, "short_str") else str(exc)
+                else:
+                    message = str(exc)[:200]
+                upsert_workspace_status(
+                    mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=int(workspace_id) if workspace_id is not None else None,
+                    platform=status_platform,
+                    status=status,
+                    message=message,
+                )
             # Avoid logging full HTML bodies from failed FunPay requests.
             short = exc.short_str() if hasattr(exc, "short_str") else str(exc)[:200]
             logger.error("%s Worker error: %s. Restarting in 30s.", label, short)

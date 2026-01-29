@@ -174,6 +174,14 @@ export type WorkspaceProxyCheck = {
   error?: string | null;
 };
 
+export type WorkspaceStatusItem = {
+  workspace_id?: number | null;
+  platform: string;
+  status: string;
+  message?: string | null;
+  updated_at?: string | null;
+};
+
 export type ChatItem = {
   id: number;
   chat_id: number;
@@ -377,6 +385,16 @@ export const api = {
   clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
+  listWorkspaceStatuses: (workspaceId?: number | null, platform?: string) => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    if (platform) params.set("platform", platform);
+    const suffix = params.toString();
+    return request<{ items: WorkspaceStatusItem[] }>(
+      `/workspaces/status${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
   createWorkspace: (payload: { name: string; platform?: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
     request<WorkspaceItem>("/workspaces", { method: "POST", body: payload }),
   updateWorkspace: (workspaceId: number, payload: { name?: string; golden_key?: string; proxy_url?: string; is_default?: boolean }) =>
