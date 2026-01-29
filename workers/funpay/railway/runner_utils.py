@@ -287,15 +287,6 @@ def log_message(
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
         lower_text = normalized_text.lower()
-        if not _is_rental_related(lower_text):
-            send_chat_message(
-                logger,
-                account,
-                int(chat_id),
-                "Я отвечаю только по аренде аккаунтов. Напишите вопрос по аренде или используйте команды:\n"
-                + COMMANDS_RU,
-            )
-            return None
         lot_url = _extract_lot_url(normalized_text)
         if lot_url:
             logger.info(
@@ -335,6 +326,15 @@ def log_message(
                 accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
                 _respond_free_lots(logger, account, int(chat_id), accounts)
                 return None
+        if not _is_rental_related(lower_text):
+            send_chat_message(
+                logger,
+                account,
+                int(chat_id),
+                "Я отвечаю только по аренде аккаунтов. Напишите вопрос по аренде или используйте команды:\n"
+                + COMMANDS_RU,
+            )
+            return None
     if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None
