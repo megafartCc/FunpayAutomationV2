@@ -1,13 +1,18 @@
 import os
 import sys
+from pathlib import Path
 
 # Default to the clean Railway worker to avoid Cardinal's noisy CLI startup.
 # Set FUNPAY_ALLOW_CARDINAL_MAIN=1 if you really want the original Cardinal CLI.
 if os.getenv("FUNPAY_ALLOW_CARDINAL_MAIN", "").strip().lower() not in {"1", "true", "yes", "y", "on"}:
     try:
+        root = Path(__file__).resolve().parent
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
         from railway_worker import main as worker_main
-    except Exception:
-        sys.exit(0)
+    except Exception as exc:
+        print(f"Failed to start railway worker: {exc}", file=sys.stderr)
+        sys.exit(1)
     worker_main()
     sys.exit(0)
 
