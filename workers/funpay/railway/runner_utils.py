@@ -99,6 +99,30 @@ def _respond_free_lots(
         send_chat_message(logger, account, chat_id, message)
 
 
+def _is_rental_related(text: str) -> bool:
+    if not text:
+        return False
+    keywords = (
+        "аренд",
+        "аккаунт",
+        "лот",
+        "сток",
+        "код",
+        "steam",
+        "доступ",
+        "заказ",
+        "покуп",
+        "оплат",
+        "продл",
+        "замен",
+        "ммр",
+        "mmr",
+        "логин",
+        "парол",
+    )
+    return any(key in text for key in keywords)
+
+
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
     sleep_time = interval_seconds
     while True:
@@ -263,6 +287,15 @@ def log_message(
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
         lower_text = normalized_text.lower()
+        if not _is_rental_related(lower_text):
+            send_chat_message(
+                logger,
+                account,
+                int(chat_id),
+                "Я отвечаю только по аренде аккаунтов. Напишите вопрос по аренде или используйте команды:\n"
+                + COMMANDS_RU,
+            )
+            return None
         lot_url = _extract_lot_url(normalized_text)
         if lot_url:
             logger.info(
