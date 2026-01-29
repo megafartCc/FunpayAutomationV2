@@ -136,7 +136,8 @@ def log_message(
     if not sender_username:
         sender_username = f"chat_{msg.chat_id}"
 
-    message_text = msg.text
+    message_text = msg.text or ""
+    normalized_text = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", message_text)
     command, command_args = parse_command(message_text)
     if not sender_username or sender_username == "-":
         return None
@@ -159,6 +160,7 @@ def log_message(
         chat_url,
         message_text,
     )
+    user_id = site_user_id
     try:
         mysql_cfg = get_mysql_config()
     except RuntimeError:
@@ -166,7 +168,6 @@ def log_message(
 
     first_time = False
     if mysql_cfg and chat_id is not None:
-        user_id = site_user_id
         if user_id is None and site_username:
             try:
                 user_id = get_user_id_by_username(mysql_cfg, site_username)
@@ -248,23 +249,31 @@ def log_message(
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
-        lower_text = (message_text or "").lower()
-        url_match = LOT_URL_RE.search(message_text or "")
-        if mysql_cfg and user_id is not None and url_match:
+        lower_text = normalized_text.lower()
+        url_match = LOT_URL_RE.search(normalized_text)
+        if url_match:
             lot_url = url_match.group(0)
-            row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
-            if row:
-                available = (
-                    not row.get("owner")
-                    and not row.get("account_frozen")
-                    and not row.get("rental_frozen")
-                    and not row.get("low_priority")
-                )
-                name = _lot_display_name(row)
-                status = "свободен" if available else "занят"
-                send_chat_message(logger, account, int(chat_id), f"{name}: {status}.")
+            if mysql_cfg and user_id is not None:
+                row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
+                if row:
+                    available = (
+                        not row.get("owner")
+                        and not row.get("account_frozen")
+                        and not row.get("rental_frozen")
+                        and not row.get("low_priority")
+                    )
+                    name = _lot_display_name(row)
+                    status = "свободен" if available else "занят"
+                    send_chat_message(logger, account, int(chat_id), f"{name}: {status}.")
+                else:
+                    send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
             else:
-                send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    "Не могу проверить лот сейчас. Используйте команду !сток.",
+                )
             return None
         if mysql_cfg and user_id is not None:
             wants_stock = ("лот" in lower_text and "свобод" in lower_text) or (
