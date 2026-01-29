@@ -38,7 +38,7 @@ from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
-from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url
+from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
 from .user_utils import get_user_id_by_username
 from .text_utils import parse_command
 
