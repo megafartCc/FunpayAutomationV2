@@ -83,228 +83,22 @@ from .logging_utils import configure_logging
 from .steam_utils import deauthorize_account_sessions
 from .env_utils import env_bool, env_int
 from .db_utils import column_exists, get_mysql_config, get_workspace_db_name, resolve_workspace_mysql_cfg, table_exists
-
-def detect_command(text: str | None) -> str | None:
-    if not text:
-        return None
-    cleaned = text.strip().lower()
-    if not cleaned.startswith("!"):
-        return None
-    for cmd in COMMAND_PREFIXES:
-        if cleaned.startswith(cmd):
-            return cmd
-    return None
-
-
-def parse_command(text: str | None) -> tuple[str | None, str]:
-    if not text:
-        return None, ""
-    cleaned = text.strip()
-    if not cleaned.startswith("!"):
-        return None, ""
-    parts = cleaned.split(maxsplit=1)
-    command = parts[0].lower()
-    if command not in COMMAND_PREFIXES:
-        return None, ""
-    args = parts[1].strip() if len(parts) > 1 else ""
-    return command, args
-
-
-def normalize_username(name: str | None) -> str:
-    return (name or "").strip().lower()
-
-
-def _orders_key(site_username: str | None, site_user_id: int | None, workspace_id: int | None) -> str:
-    if site_user_id is not None:
-        base = str(site_user_id)
-    else:
-        base = site_username or "single"
-    if workspace_id is not None:
-        return f"{base}:{workspace_id}"
-    return base
-
-
-def is_order_processed(
-    site_username: str | None,
-    site_user_id: int | None,
-    workspace_id: int | None,
-    order_id: str,
-) -> bool:
-    key = _orders_key(site_username, site_user_id, workspace_id)
-    with _processed_orders_lock:
-        return order_id in _processed_orders.get(key, set())
-
-
-def mark_order_processed(
-    site_username: str | None,
-    site_user_id: int | None,
-    workspace_id: int | None,
-    order_id: str,
-) -> None:
-    key = _orders_key(site_username, site_user_id, workspace_id)
-    with _processed_orders_lock:
-        bucket = _processed_orders.setdefault(key, set())
-        bucket.add(order_id)
-        if len(bucket) > 5000:
-            _processed_orders[key] = set(list(bucket)[-1000:])
-
-
-def format_duration_minutes(total_minutes: int | None) -> str:
-    minutes = int(total_minutes or 0)
-    if minutes <= 0:
-        return "0 \u043c\u0438\u043d"
-    hours = minutes // 60
-    mins = minutes % 60
-    if hours and mins:
-        return f"{hours} \u0447 {mins} \u043c\u0438\u043d"
-    if hours:
-        return f"{hours} \u0447"
-    return f"{mins} \u043c\u0438\u043d"
-
-
-def format_hours_label(hours: int) -> str:
-    value = int(hours)
-    if 11 <= (value % 100) <= 14:
-        return "\u0447\u0430\u0441\u043e\u0432"
-    last = value % 10
-    if last == 1:
-        return "\u0447\u0430\u0441"
-    if 2 <= last <= 4:
-        return "\u0447\u0430\u0441\u0430"
-    return "\u0447\u0430\u0441\u043e\u0432"
-
-
-def format_penalty_label(total_minutes: int | None) -> str:
-    minutes = int(total_minutes or 0)
-    if minutes > 0 and minutes % 60 == 0:
-        hours = minutes // 60
-        return f"{hours} {format_hours_label(hours)}"
-    return format_duration_minutes(minutes)
-
-
-def normalize_owner_name(owner: str | None) -> str:
-    return str(owner or "").strip().lower()
-
-
-def format_time_left(seconds_left: int) -> str:
-    total = max(0, int(seconds_left))
-    hours = total // 3600
-    minutes = (total % 3600) // 60
-    seconds = total % 60
-    if hours:
-        return f"{hours} \u0447 {minutes} \u043c\u0438\u043d {seconds} \u0441\u0435\u043a"
-    if minutes:
-        return f"{minutes} \u043c\u0438\u043d {seconds} \u0441\u0435\u043a"
-    return f"{seconds} \u0441\u0435\u043a"
-
-
-def build_expire_soon_message(account_row: dict, seconds_left: int) -> str:
-    account_id = account_row.get("id")
-    name = account_row.get("account_name") or account_row.get("login") or f"ID {account_id}"
-    label = f"{name} (ID {account_id})" if account_id is not None else name
-    time_left = format_time_left(seconds_left)
-    lot_number = account_row.get("lot_number")
-    lot_url = account_row.get("lot_url")
-    if lot_number and lot_url:
-        lot_label = f"\u041b\u043e\u0442 \u2116{lot_number}: {lot_url}"
-    elif lot_number:
-        lot_label = f"\u041b\u043e\u0442 \u2116{lot_number}"
-    elif lot_url:
-        lot_label = f"\u041b\u043e\u0442: {lot_url}"
-    else:
-        lot_label = "\u043b\u043e\u0442, \u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u043f\u0440\u0438\u0432\u044f\u0437\u0430\u043d \u043a \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0443"
-
-    return (
-        f"\u23f3 \u0412\u0430\u0448\u0430 \u0430\u0440\u0435\u043d\u0434\u0430 {label} \u0441\u043a\u043e\u0440\u043e \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u0441\u044f.\n"
-        f"\u041e\u0441\u0442\u0430\u043b\u043e\u0441\u044c: {time_left}.\n"
-        f"\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c \u2014 \u043f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430 \u043e\u043f\u043b\u0430\u0442\u0438\u0442\u0435 \u044d\u0442\u043e\u0442 {lot_label}."
-    )
-
-
-def parse_lot_number(text: str | None) -> int | None:
-    if not text:
-        return None
-    match = LOT_NUMBER_RE.search(text)
-    if not match:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
-
-
-def extract_order_id(text: str | None) -> str | None:
-    if not text:
-        return None
-    match = ORDER_ID_RE.search(text)
-    if not match:
-        return None
-    return match.group(0).lstrip("#")
-
-
-def extract_lot_number_from_order(order: object) -> int | None:
-    candidates = [
-        getattr(order, "full_description", None),
-        getattr(order, "short_description", None),
-        getattr(order, "title", None),
-        getattr(order, "html", None),
-    ]
-    for item in candidates:
-        lot_number = parse_lot_number(item if isinstance(item, str) else None)
-        if lot_number is not None:
-            return lot_number
-    return None
-
-
-def parse_account_id_arg(args: str) -> int | None:
-    if not args:
-        return None
-    token = args.strip().split(maxsplit=1)[0]
-    if not token.isdigit():
-        return None
-    try:
-        return int(token)
-    except ValueError:
-        return None
-
-
-def build_rental_choice_message(accounts: list[dict], command: str) -> str:
-    lines = [
-        "\u0423 \u0432\u0430\u0441 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0430\u0440\u0435\u043d\u0434.",
-        f"\u0423\u043a\u0430\u0436\u0438\u0442\u0435 ID \u0432 \u043a\u043e\u043c\u0430\u043d\u0434\u0435 {command} <ID>:",
-        "",
-    ]
-    for acc in accounts:
-        display = build_display_name(acc)
-        lines.append(f"ID {acc.get('id')}: {display}")
-    return "\n".join(lines)
-
-
-def _calculate_resume_start(rental_start: object, frozen_at: object) -> datetime | None:
-    start_dt = _parse_datetime(rental_start)
-    frozen_dt = _parse_datetime(frozen_at)
-    if not start_dt or not frozen_dt:
-        return None
-    delta = datetime.utcnow() - frozen_dt
-    if delta.total_seconds() < 0:
-        delta = timedelta(0)
-    return start_dt + delta
-
-
-def get_unit_minutes(account: dict) -> int:
-    return 60
-
-
-def _parse_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return None
-
+from .text_utils import (
+    _calculate_resume_start,
+    _parse_datetime,
+    build_expire_soon_message,
+    detect_command,
+    extract_lot_number_from_order,
+    extract_order_id,
+    format_duration_minutes,
+    format_penalty_label,
+    get_unit_minutes,
+    normalize_owner_name,
+    normalize_username,
+    parse_account_id_arg,
+    parse_command,
+    parse_lot_number,
+)
 
 _CHAT_TIME_CLASS_KEYS = (
     "contact-item-time",
@@ -614,6 +408,19 @@ def build_display_name(account: dict) -> str:
         prefix = f"\u2116{lot_number} "
         name = f"{prefix}{name}" if name else prefix.strip()
     return name or "\u0410\u043a\u043a\u0430\u0443\u043d\u0442"
+
+
+def build_rental_choice_message(accounts: list[dict], command: str) -> str:
+    lines = [
+        "У вас несколько аренд.",
+        f"Укажите ID в команде {command} <ID>",
+        "",
+    ]
+    for acc in accounts:
+        display = build_display_name(acc)
+        lines.append(f"ID {acc.get('id')}: {display}")
+    return "\n".join(lines)
+
 
 
 def build_account_message(account: dict, duration_minutes: int, include_timer_note: bool) -> str:
