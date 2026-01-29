@@ -13,9 +13,3 @@ class RentalMonitorState:
     expire_delay_notified: set[int] = field(default_factory=set)
     expire_soon_notified: dict[int, int] = field(default_factory=dict)
 
-
-@dataclass
-class AutoRaiseSettings:
-    enabled: bool = False
-    categories: list[int] = field(default_factory=list)
-    interval_hours: int = 1
