@@ -3173,6 +3173,22 @@ def handle_order_purchased(
         return
 
     mapping = lot_mapping
+    if mapping:
+        try:
+            owner_accounts = fetch_owner_accounts(mysql_cfg, int(user_id), buyer, workspace_id)
+        except mysql.connector.Error:
+            owner_accounts = []
+        for account_row in owner_accounts:
+            account_lot = account_row.get("lot_number")
+            if account_lot is None:
+                continue
+            try:
+                account_lot_number = int(account_lot)
+            except Exception:
+                continue
+            if account_lot_number == int(lot_number):
+                mapping = account_row
+                break
     if not mapping:
         log_order_history(
             mysql_cfg,
