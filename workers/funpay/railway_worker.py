@@ -4299,7 +4299,6 @@ def run_multi_user(logger: logging.Logger) -> None:
     logger.info("Multi-user mode enabled. Sync interval: %ss.", sync_seconds)
 
     workers: dict[int, dict] = {}
-    auto_raise_workers: dict[int, dict] = {}
 
     while True:
         try:
@@ -4313,25 +4312,7 @@ def run_multi_user(logger: logging.Logger) -> None:
                 if w.get("golden_key") and str(w.get("golden_key")).strip()
             }
 
-            user_ids = {int(w.get("user_id")) for w in workspaces if w.get("user_id") is not None}
-
-            for user_id in list(auto_raise_workers.keys()):
-                if user_id not in user_ids:
-                    auto_raise_workers[user_id]["stop"].set()
-                    auto_raise_workers[user_id]["thread"].join(timeout=5)
-                    auto_raise_workers.pop(user_id, None)
-
-            for user_id in user_ids:
-                if user_id in auto_raise_workers:
-                    continue
-                stop_event = threading.Event()
-                thread = threading.Thread(
-                    target=auto_raise_user_loop,
-                    args=(logger, mysql_cfg, int(user_id), user_agent, stop_event),
-                    daemon=True,
-                )
-                auto_raise_workers[user_id] = {"thread": thread, "stop": stop_event}
-                thread.start()
+            # Auto-raise loops removed.
 
             # Stop removed workspaces.
             for workspace_id in list(workers.keys()):
