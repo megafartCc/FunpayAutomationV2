@@ -128,11 +128,17 @@ def handle_stock_command(
         return True
 
     limit = env_int("STOCK_LIST_LIMIT", STOCK_LIST_LIMIT)
-    limited = lines[:limit] if limit > 0 else lines
-    message = "\n".join([STOCK_TITLE, *limited])
-    if limit > 0 and len(lines) > limit:
-        message += f"\n\nПоказано {limit} из {len(lines)}."
-    send_chat_message(logger, account, chat_id, message)
+    if limit <= 0:
+        send_chat_message(logger, account, chat_id, "\n".join([STOCK_TITLE, *lines]))
+        return True
+
+    for index in range(0, len(lines), limit):
+        chunk = lines[index : index + limit]
+        if index == 0:
+            message = "\n".join([STOCK_TITLE, *chunk])
+        else:
+            message = "\n".join(chunk)
+        send_chat_message(logger, account, chat_id, message)
     return True
 
 
