@@ -137,6 +137,24 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS workspace_status (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                platform VARCHAR(32) NOT NULL DEFAULT 'funpay',
+                status VARCHAR(32) NOT NULL,
+                message TEXT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_workspace_status (user_id, workspace_id, platform),
+                INDEX idx_workspace_status_user (user_id),
+                INDEX idx_workspace_status_workspace (workspace_id),
+                CONSTRAINT fk_workspace_status_workspace FOREIGN KEY (workspace_id)
+                    REFERENCES workspaces(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'workspaces' AND column_name = 'platform'
             LIMIT 1
@@ -241,17 +259,6 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS funpay_categories_cache (
-                user_id BIGINT NOT NULL PRIMARY KEY,
-                payload LONGTEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_funpay_categories_user FOREIGN KEY (user_id)
-                    REFERENCES users(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """
-        )
-        cursor.execute(
-            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'lots' AND column_name = 'display_name'
             LIMIT 1
@@ -343,35 +350,6 @@ def ensure_schema() -> None:
                 INDEX idx_notifications_event (event_type),
                 INDEX idx_notifications_owner (owner),
                 INDEX idx_notifications_account (account_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS auto_raise_settings (
-                user_id BIGINT PRIMARY KEY,
-                enabled TINYINT(1) NOT NULL DEFAULT 0,
-                categories TEXT NULL,
-                interval_hours INT NOT NULL DEFAULT 1,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_auto_raise_user FOREIGN KEY (user_id)
-                    REFERENCES users(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS auto_raise_history (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                workspace_id BIGINT NULL,
-                category_id INT NULL,
-                category_name VARCHAR(255) NULL,
-                status VARCHAR(16) NOT NULL,
-                message TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_auto_raise_user (user_id, created_at),
-                INDEX idx_auto_raise_ws (workspace_id, created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )

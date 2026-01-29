@@ -144,31 +144,6 @@ export type NotificationItem = {
   created_at?: string | null;
 };
 
-export type AutoRaiseSettings = {
-  enabled: boolean;
-  categories: number[];
-  interval_hours: number;
-};
-
-export type AutoRaiseHistoryItem = {
-  id: number;
-  workspace_id?: number | null;
-  workspace_name?: string | null;
-  category_id?: number | null;
-  category_name?: string | null;
-  status: string;
-  message?: string | null;
-  created_at?: string | null;
-};
-
-export type FunpayCategoryItem = {
-  id: number;
-  name: string;
-  game?: string | null;
-  category?: string | null;
-  server?: string | null;
-};
-
 export type ActiveRentalItem = {
   id: number;
   account: string;
@@ -197,6 +172,14 @@ export type WorkspaceProxyCheck = {
   direct_ip?: string | null;
   proxy_ip?: string | null;
   error?: string | null;
+};
+
+export type WorkspaceStatusItem = {
+  workspace_id?: number | null;
+  platform: string;
+  status: string;
+  message?: string | null;
+  updated_at?: string | null;
 };
 
 export type ChatItem = {
@@ -393,26 +376,6 @@ export const api = {
       { method: "GET" },
     );
   },
-  getAutoRaiseSettings: () =>
-    request<AutoRaiseSettings>("/auto-raise/settings", { method: "GET" }),
-  updateAutoRaiseSettings: (payload: AutoRaiseSettings) =>
-    request<AutoRaiseSettings>("/auto-raise/settings", { method: "POST", body: payload }),
-  listAutoRaiseHistory: (limit?: number) => {
-    const params = new URLSearchParams();
-    if (limit) params.set("limit", String(limit));
-    const suffix = params.toString();
-    return request<{ items: AutoRaiseHistoryItem[] }>(
-      `/auto-raise/history${suffix ? `?${suffix}` : ""}`,
-      { method: "GET" },
-    );
-  },
-  listFunpayCategories: () =>
-    request<{ items: FunpayCategoryItem[] }>("/funpay/categories", { method: "GET" }),
-  cacheFunpayCategories: (items: FunpayCategoryItem[]) =>
-    request<{ items: FunpayCategoryItem[] }>("/funpay/categories/cache", {
-      method: "POST",
-      body: { items },
-    }),
   createBlacklist: (payload: BlacklistCreatePayload, workspaceId?: number | null) =>
     request<BlacklistEntry>(withWorkspace("/blacklist", workspaceId), { method: "POST", body: payload }),
   updateBlacklist: (entryId: number, payload: BlacklistUpdatePayload, workspaceId?: number | null) =>
@@ -422,6 +385,16 @@ export const api = {
   clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
+  listWorkspaceStatuses: (workspaceId?: number | null, platform?: string) => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    if (platform) params.set("platform", platform);
+    const suffix = params.toString();
+    return request<{ items: WorkspaceStatusItem[] }>(
+      `/workspaces/status${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
   createWorkspace: (payload: { name: string; platform?: string; golden_key: string; proxy_url: string; is_default?: boolean }) =>
     request<WorkspaceItem>("/workspaces", { method: "POST", body: payload }),
   updateWorkspace: (workspaceId: number, payload: { name?: string; golden_key?: string; proxy_url?: string; is_default?: boolean }) =>
