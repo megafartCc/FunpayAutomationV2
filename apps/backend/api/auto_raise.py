@@ -198,7 +198,8 @@ def _fetch_funpay_categories_library(token: str, proxy: dict | None) -> list[dic
 
 def _extract_categories_from_html(html: str) -> dict[int, dict]:
     try:
-        soup = BeautifulSoup(html, "lxml")
+    # Use built-in parser to avoid lxml dependency in production.
+    soup = BeautifulSoup(html, "html.parser")
     except Exception:
         soup = BeautifulSoup(html, "html.parser")
     items: dict[int, dict] = {}
