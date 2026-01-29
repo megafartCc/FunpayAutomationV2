@@ -260,6 +260,8 @@ def _extract_categories_from_html(html: str) -> dict[int, dict]:
 
 def _fetch_funpay_categories_live(token: str, proxy: dict | None) -> list[dict]:
     urls = (
+        "https://funpay.com/en/lots/",
+        "https://funpay.com/lots/",
         "https://funpay.com/en/",
         "https://funpay.com/",
     )

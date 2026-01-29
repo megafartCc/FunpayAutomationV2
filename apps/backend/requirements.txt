@@ -8,3 +8,4 @@ bcrypt==3.2.2
 requests==2.31.0
 pysocks==1.7.1
 beautifulsoup4==4.12.3
+requests-toolbelt==1.0.0
