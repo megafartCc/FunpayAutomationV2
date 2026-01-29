@@ -79,6 +79,10 @@ from .constants import (
     _redis_client,
 )
 from .models import AutoRaiseSettings, RentalMonitorState
+from .logging_utils import configure_logging
+from .steam_utils import deauthorize_account_sessions
+from .env_utils import env_bool, env_int
+from .db_utils import column_exists, get_mysql_config, get_workspace_db_name, resolve_workspace_mysql_cfg, table_exists
 
 def detect_command(text: str | None) -> str | None:
     if not text:
@@ -1728,36 +1732,6 @@ def update_rental_freeze_state(
         conn.close()
 
 
-def deauthorize_account_sessions(
-    logger: logging.Logger,
-    account_row: dict,
-) -> bool:
-    base = os.getenv("STEAM_WORKER_URL", "").strip()
-    if not base:
-        return False
-    login = account_row.get("login") or account_row.get("account_name")
-    password = account_row.get("password") or ""
-    mafile_json = account_row.get("mafile_json")
-    if not login or not password or not mafile_json:
-        return False
-    url = f"{base.rstrip('/')}/api/steam/deauthorize"
-    timeout = env_int("STEAM_WORKER_TIMEOUT", 90)
-    payload = {
-        "steam_login": login,
-        "steam_password": password,
-        "mafile_json": mafile_json,
-    }
-    try:
-        resp = requests.post(url, json=payload, timeout=timeout)
-    except requests.RequestException as exc:
-        logger.warning("Steam worker request failed: %s", exc)
-        return False
-    if resp.ok:
-        return True
-    logger.warning("Steam worker error (status %s).", resp.status_code)
-    return False
-
-
 def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> None:
     state.expire_delay_since.pop(account_id, None)
     state.expire_delay_next_check.pop(account_id, None)
@@ -1983,23 +1957,6 @@ def get_user_id_by_username(mysql_cfg: dict, username: str) -> int | None:
         return int(row[0]) if row else None
     finally:
         conn.close()
-
-
-def table_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str) -> bool:
-    cursor.execute(
-        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s LIMIT 1",
-        (table,),
-    )
-    return cursor.fetchone() is not None
-
-
-def column_exists(cursor: mysql.connector.cursor.MySQLCursor, table: str, column: str) -> bool:
-    cursor.execute(
-        "SELECT 1 FROM information_schema.columns "
-        "WHERE table_schema = DATABASE() AND table_name = %s AND column_name = %s LIMIT 1",
-        (table, column),
-    )
-    return cursor.fetchone() is not None
 
 
 def fetch_available_lot_accounts(
@@ -3440,78 +3397,6 @@ def handle_command(
     )
 
 
-def env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
-def env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        return int(raw.strip())
-    except ValueError:
-        return default
-
-
-def get_mysql_config() -> dict:
-    url = os.getenv("MYSQL_URL", "").strip()
-    host = os.getenv("MYSQLHOST", "").strip()
-    port = os.getenv("MYSQLPORT", "").strip() or "3306"
-    user = os.getenv("MYSQLUSER", "").strip()
-    password = os.getenv("MYSQLPASSWORD", "").strip()
-    database = os.getenv("MYSQLDATABASE", "").strip() or os.getenv("MYSQL_DATABASE", "").strip()
-
-    if url:
-        parsed = urlparse(url)
-        host = parsed.hostname or host
-        if parsed.port:
-            port = str(parsed.port)
-        user = parsed.username or user
-        password = parsed.password or password
-        if parsed.path and parsed.path != "/":
-            database = parsed.path.lstrip("/")
-
-    if not database:
-        raise RuntimeError("MySQL database name missing. Set MYSQLDATABASE or MYSQL_DATABASE.")
-
-    return {
-        "host": host,
-        "port": int(port),
-        "user": user,
-        "password": password,
-        "database": database,
-    }
-
-
-_WORKSPACE_DB_CACHE: dict[int, str] = {}
-
-
-def get_workspace_db_name(mysql_cfg: dict, workspace_id: int) -> str | None:
-    cached = _WORKSPACE_DB_CACHE.get(workspace_id)
-    if cached:
-        return cached
-    conn = mysql.connector.connect(**mysql_cfg)
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT db_name FROM workspaces WHERE id = %s", (workspace_id,))
-        row = cursor.fetchone()
-        db_name = (row or {}).get("db_name") or ""
-        if db_name:
-            _WORKSPACE_DB_CACHE[workspace_id] = db_name
-            return db_name
-        return None
-    finally:
-        conn.close()
-
-
-def resolve_workspace_mysql_cfg(mysql_cfg: dict, workspace_id: int | None) -> dict:
-    return mysql_cfg
-
-
 def normalize_proxy_url(raw: str | None) -> str:
     value = (raw or "").strip()
     if not value:
@@ -3983,15 +3868,6 @@ def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: 
                 "%sSession refresh failed. Retrying in 60s.", f"{label} " if label else ""
             )
             sleep_time = 60
-
-
-def configure_logging() -> logging.Logger:
-    logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO"),
-        format=LOG_FORMAT,
-    )
-    logging.getLogger("FunPayAPI").setLevel(logging.WARNING)
-    return logging.getLogger("funpay.worker")
 
 
 def log_message(
