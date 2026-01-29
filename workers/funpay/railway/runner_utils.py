@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -25,8 +26,8 @@ from .chat_utils import (
     sync_chats_list,
     upsert_chat_summary,
 )
-from .command_handlers import handle_command
-from .constants import COMMANDS_RU
+from .command_handlers import build_stock_messages, handle_command
+from .constants import COMMANDS_RU, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
@@ -36,6 +37,7 @@ from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
+from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url
 from .user_utils import get_user_id_by_username
 from .text_utils import parse_command
 
@@ -47,6 +49,41 @@ WELCOME_MESSAGE = os.getenv(
     "\n\n"
     + COMMANDS_RU,
 )
+
+LOT_URL_RE = re.compile(r"https?://funpay\\.com/lots/offer\\?id=\\d+", re.IGNORECASE)
+
+
+def _lot_display_name(row: dict) -> str:
+    return (
+        row.get("display_name")
+        or row.get("account_name")
+        or row.get("login")
+        or row.get("lot_number")
+        or "Лот"
+    )
+
+
+def _respond_free_lots(
+    logger: logging.Logger,
+    account: Account,
+    chat_id: int,
+    accounts: list[dict],
+) -> None:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, STOCK_EMPTY)
+        return
+    lines = build_stock_messages(accounts)
+    if not lines:
+        send_chat_message(logger, account, chat_id, STOCK_EMPTY)
+        return
+    limit = env_int("STOCK_LIST_LIMIT", STOCK_LIST_LIMIT)
+    if limit <= 0:
+        send_chat_message(logger, account, chat_id, "\n".join([STOCK_TITLE, *lines]))
+        return
+    for index in range(0, len(lines), limit):
+        chunk = lines[index : index + limit]
+        message = "\n".join([STOCK_TITLE, *chunk]) if index == 0 else "\n".join(chunk)
+        send_chat_message(logger, account, chat_id, message)
 
 
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
@@ -206,6 +243,37 @@ def log_message(
             return None
         send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
         return None
+    if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
+        if getattr(msg, "author_id", None) == getattr(account, "id", None):
+            return None
+        if account.username and sender_username and sender_username.lower() == account.username.lower():
+            return None
+        lower_text = (message_text or "").lower()
+        url_match = LOT_URL_RE.search(message_text or "")
+        if mysql_cfg and user_id is not None and url_match:
+            lot_url = url_match.group(0)
+            row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
+            if row:
+                available = (
+                    not row.get("owner")
+                    and not row.get("account_frozen")
+                    and not row.get("rental_frozen")
+                    and not row.get("low_priority")
+                )
+                name = _lot_display_name(row)
+                status = "свободен" if available else "занят"
+                send_chat_message(logger, account, int(chat_id), f"{name}: {status}.")
+            else:
+                send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
+            return None
+        if mysql_cfg and user_id is not None:
+            wants_stock = ("лот" in lower_text and "свобод" in lower_text) or (
+                "free" in lower_text and "lot" in lower_text
+            )
+            if wants_stock:
+                accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
+                _respond_free_lots(logger, account, int(chat_id), accounts)
+                return None
     if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None

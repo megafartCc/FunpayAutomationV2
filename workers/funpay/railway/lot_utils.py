@@ -213,6 +213,60 @@ def fetch_owner_accounts(
         conn.close()
 
 
+def fetch_lot_by_url(
+    mysql_cfg: dict,
+    lot_url: str,
+    user_id: int | None = None,
+    workspace_id: int | None = None,
+) -> dict | None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "lots") or not table_exists(cursor, "accounts"):
+            return None
+        has_account_user_id = column_exists(cursor, "accounts", "user_id")
+        has_lot_user_id = column_exists(cursor, "lots", "user_id")
+        has_lot_workspace = column_exists(cursor, "lots", "workspace_id")
+        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_display_name = column_exists(cursor, "lots", "display_name")
+
+        params: list = [lot_url]
+        where_clauses = ["l.lot_url = %s"]
+        if workspace_id is not None and has_lot_workspace:
+            where_clauses.append("(l.workspace_id = %s OR l.workspace_id IS NULL)")
+            params.append(int(workspace_id))
+        if user_id is not None:
+            if has_account_user_id:
+                where_clauses.append("a.user_id = %s")
+                params.append(int(user_id))
+            elif has_lot_user_id:
+                where_clauses.append("l.user_id = %s")
+                params.append(int(user_id))
+
+        cursor.execute(
+            f"""
+            SELECT a.id, a.owner, a.account_name, a.login,
+                   {('a.account_frozen' if has_account_frozen else '0 AS account_frozen')},
+                   {('a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen')},
+                   {('a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority')},
+                   l.lot_number, l.lot_url
+                   {', l.display_name' if has_display_name else ', NULL AS display_name'}
+            FROM lots l
+            JOIN accounts a ON a.id = l.account_id
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY a.id ASC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
 def assign_account_to_buyer(
     mysql_cfg: dict,
     *,
