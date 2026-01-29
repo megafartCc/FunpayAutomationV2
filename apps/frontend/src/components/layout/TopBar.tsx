@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { api, WorkspaceStatusItem } from "../../services/api";
 
 type TopBarProps = {
   title: string;
@@ -11,6 +12,7 @@ type TopBarProps = {
 
 const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout, hideWorkspaceControls = false }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [funpayStatus, setFunpayStatus] = useState<WorkspaceStatusItem | null>(null);
   const navigate = useNavigate();
   const { workspaces, visibleWorkspaces, loading, selectedId, setSelectedId, selectedPlatform, setSelectedPlatform } =
     useWorkspace();
@@ -24,6 +26,61 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout, hideWorks
     }
     return match.is_default ? `${match.name} (Default)` : match.name;
   }, [selectedId, visibleWorkspaces, workspaces]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadStatus = async () => {
+      if (selectedPlatform === "playerok") {
+        if (isMounted) setFunpayStatus(null);
+        return;
+      }
+      try {
+        const workspaceId = selectedId === "all" ? null : (selectedId as number);
+        const res = await api.listWorkspaceStatuses(workspaceId, "funpay");
+        if (!isMounted) return;
+        const items = res.items || [];
+        if (!items.length) {
+          setFunpayStatus(null);
+          return;
+        }
+        const normalized = (value?: string | null) => (value || "").toLowerCase();
+        const errorItem =
+          items.find((item) =>
+            ["unauthorized", "error", "offline"].includes(normalized(item.status)),
+          ) || null;
+        if (errorItem) {
+          setFunpayStatus(errorItem);
+          return;
+        }
+        const warningItem =
+          items.find((item) => ["warning", "degraded"].includes(normalized(item.status))) || null;
+        setFunpayStatus(warningItem ?? items[0]);
+      } catch {
+        if (isMounted) {
+          setFunpayStatus({
+            workspace_id: selectedId === "all" ? null : (selectedId as number),
+            platform: "funpay",
+            status: "error",
+            message: "Failed to load FunPay status.",
+          });
+        }
+      }
+    };
+    void loadStatus();
+    const handle = window.setInterval(loadStatus, 20_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(handle);
+    };
+  }, [selectedId, selectedPlatform]);
+
+  const funpayIndicator = useMemo(() => {
+    if (!funpayStatus) return null;
+    const normalized = (funpayStatus.status || "").toLowerCase();
+    if (["unauthorized", "error", "offline"].includes(normalized)) return "bg-rose-500";
+    if (["warning", "degraded"].includes(normalized)) return "bg-amber-500";
+    return "bg-emerald-500";
+  }, [funpayStatus]);
 
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-8 py-4">
@@ -47,8 +104,18 @@ const TopBar: React.FC<TopBarProps> = ({ title, userInitial, onLogout, hideWorks
                         : "text-neutral-600 hover:bg-neutral-100"
                     }`}
                     onClick={() => setSelectedPlatform(item.key as "all" | "funpay" | "playerok")}
+                    title={
+                      item.key === "funpay" && funpayStatus
+                        ? funpayStatus.message || `FunPay status: ${funpayStatus.status}`
+                        : undefined
+                    }
                   >
-                    {item.label}
+                    <span className="flex items-center gap-2">
+                      {item.label}
+                      {item.key === "funpay" && funpayIndicator ? (
+                        <span className={`h-2 w-2 rounded-full ${funpayIndicator}`} />
+                      ) : null}
+                    </span>
                   </button>
                 ))}
               </div>
