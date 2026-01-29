@@ -35,7 +35,6 @@ mm_authorized_users = "👥 Authorized Users"
 mm_proxy = "🌐 Proxy"
 
 # Global switches
-gs_autoraise = "{} Auto-raise"
 gs_autoresponse = "{} Autoresponse"
 gs_autodelivery = "{} Auto-delivery"
 gs_nultidelivery = "{} Multi-delivery"
@@ -638,4 +637,3 @@ crd_uuid_already_registered = "UUID {} ({}) is already registered."
 crd_handlers_registered = "The handlers from $YELLOW{}.py$RESET are registered."
 crd_handler_err = "An error occurred in the handler's execution."
 crd_tg_au_err = "Failed to update the message with user information: {}. I will try without a link."
-
