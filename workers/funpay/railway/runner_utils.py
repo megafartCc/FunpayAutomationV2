@@ -16,6 +16,7 @@ from FunPayAPI.updater.runner import Runner
 from bs4 import BeautifulSoup
 
 from .chat_time_utils import _extract_datetime_from_html
+from .ai_utils import generate_ai_reply
 from .chat_utils import (
     insert_chat_message,
     is_first_time_chat,
@@ -204,6 +205,19 @@ def log_message(
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
         send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
+        return None
+    if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
+        if getattr(msg, "author_id", None) == getattr(account, "id", None):
+            return None
+        if account.username and sender_username and sender_username.lower() == account.username.lower():
+            return None
+        ai_text = generate_ai_reply(
+            message_text,
+            sender=sender_username,
+            chat_name=chat_name,
+        )
+        if ai_text:
+            send_chat_message(logger, account, int(chat_id), ai_text)
     if is_system:
         logger.info(
             "user=%s workspace=%s system_event type=%s chat=%s url=%s raw=%s",
