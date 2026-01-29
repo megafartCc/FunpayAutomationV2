@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -37,8 +38,11 @@ def generate_ai_reply(
     sender: str | None,
     chat_name: str | None,
 ) -> str | None:
+    logger = logging.getLogger("funpay.ai")
     api_key = os.getenv("GROQ_API_KEY", "").strip()
     if not api_key or not user_text:
+        if not api_key:
+            logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
         return None
     payload = _build_payload(user_text, sender=sender, chat_name=chat_name)
     try:
@@ -51,7 +55,9 @@ def generate_ai_reply(
             json=payload,
             timeout=20,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            logger.warning("Groq API error %s: %s", response.status_code, response.text[:200])
+            return None
         data = response.json()
         content = (
             data.get("choices", [{}])[0]
@@ -59,6 +65,9 @@ def generate_ai_reply(
             .get("content", "")
             .strip()
         )
+        if not content:
+            logger.warning("Groq API returned empty content.")
         return content or None
-    except Exception:
+    except Exception as exc:
+        logger.warning("Groq API request failed: %s", exc)
         return None
