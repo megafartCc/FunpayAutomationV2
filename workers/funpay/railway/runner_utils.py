@@ -306,8 +306,13 @@ def log_message(
                         and not row.get("low_priority")
                     )
                     name = _lot_display_name(row)
-                    status = "свободен" if available else "занят"
-                    send_chat_message(logger, account, int(chat_id), f"{name}: {status}.")
+                    if available:
+                        reply = (
+                            f"Да, аккаунт {name} сейчас свободен — вы можете его арендовать."
+                        )
+                    else:
+                        reply = f"Сейчас аккаунт {name} занят. Могу подсказать другие свободные лоты."
+                    send_chat_message(logger, account, int(chat_id), reply)
                 else:
                     send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
             else:
