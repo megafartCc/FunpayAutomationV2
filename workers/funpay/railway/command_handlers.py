@@ -64,9 +64,14 @@ from .user_utils import get_user_id_by_username
 def build_stock_messages(accounts: list[dict]) -> list[str]:
     lines: list[str] = []
     for acc in accounts:
-        login = acc.get("login") or "-"
         display_name = acc.get("display_name") or acc.get("account_name") or acc.get("login") or "-"
-        lines.append(f"{display_name} ({login})")
+        lot_number = acc.get("lot_number")
+        lot_url = acc.get("lot_url")
+        prefix = f"№ {lot_number} " if lot_number else ""
+        if lot_url:
+            lines.append(f"{prefix}{display_name} - {lot_url}")
+        else:
+            lines.append(f"{prefix}{display_name}")
     return lines
 
 

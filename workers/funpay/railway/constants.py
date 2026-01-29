@@ -18,7 +18,7 @@ COMMAND_PREFIXES = (
     "!пауза",
     "!продолжить",
 )
-STOCK_LIST_LIMIT = 8
+STOCK_LIST_LIMIT = 0
 STOCK_TITLE = "Свободные лоты:"
 STOCK_EMPTY = "Свободных лотов нет."
 STOCK_DB_MISSING = (
