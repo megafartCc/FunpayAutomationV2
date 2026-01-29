@@ -58,9 +58,9 @@ def fetch_active_rentals_for_monitor(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   {', a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
-                   {', a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
-                   {', a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
+                   {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                   {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                   {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
                    l.lot_number, l.lot_url
                    {', l.display_name' if has_display_name else ', NULL AS display_name'}
             FROM accounts a

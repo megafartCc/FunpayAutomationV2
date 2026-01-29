@@ -109,10 +109,10 @@ def fetch_available_lot_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       {', a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
-                       {', a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
-                       {', a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
-                       {', a.mmr' if has_mmr else 'NULL AS mmr'},
+                       {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                       {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
                        l.lot_number, l.lot_url
                        {', l.display_name' if has_display_name else ', NULL AS display_name'}
                 FROM accounts a
@@ -127,12 +127,12 @@ def fetch_available_lot_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       {', a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
-                       {', a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
-                       {', a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
-                       {', a.mmr' if has_mmr else 'NULL AS mmr'},
-                       {', a.lot_number' if has_account_lot_number else 'NULL AS lot_number'},
-                       {', a.lot_url' if has_account_lot_url else 'NULL AS lot_url'},
+                       {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                       {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
+                       {'a.lot_number' if has_account_lot_number else 'NULL AS lot_number'},
+                       {'a.lot_url' if has_account_lot_url else 'NULL AS lot_url'},
                        NULL AS display_name
                 FROM accounts a
                 WHERE {" AND ".join(account_filters)}
@@ -180,10 +180,10 @@ def fetch_owner_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       {', a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
-                       {', a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
-                       {', a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
-                       {', a.mmr' if has_mmr else 'NULL AS mmr'},
+                       {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
+                       {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
                        l.lot_number, l.lot_url
                        {', l.display_name' if has_display_name else ', NULL AS display_name'}
                 FROM accounts a
@@ -198,10 +198,10 @@ def fetch_owner_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                       {', a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
-                       {', a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
-                       {', a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
-                       {', a.mmr' if has_mmr else 'NULL AS mmr'},
+                       {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
+                       {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
                        NULL AS lot_number,
                        NULL AS lot_url,
                        NULL AS display_name
@@ -325,9 +325,9 @@ def find_replacement_account_for_lot(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   {', a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
-                   {', a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
-                   {', a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                   {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                   {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                   {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
                    l.lot_number, l.lot_url
             FROM lots l
             JOIN accounts a ON a.id = l.account_id
