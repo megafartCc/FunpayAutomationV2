@@ -62,7 +62,7 @@ def _parse_datetime(value: object) -> datetime | None:
 def _format_time_left(started_at: datetime | None, total_minutes: int) -> tuple[str, str]:
     if not started_at or total_minutes <= 0:
         return "-", "\u043e\u0436\u0438\u0434\u0430\u0435\u043c !\u043a\u043e\u0434"
-    now = datetime.utcnow()
+    now = datetime.now()
     expiry = started_at + timedelta(minutes=total_minutes)
     remaining = expiry - now
     if remaining.total_seconds() < 0:
