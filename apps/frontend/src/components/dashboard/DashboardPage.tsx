@@ -226,8 +226,13 @@ const parseUtcMs = (value?: string | null) => {
   if (!value) return null;
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
   const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized);
-  const ts = Date.parse(hasZone ? normalized : `${normalized}Z`);
-  return Number.isNaN(ts) ? null : ts;
+  const localTs = Date.parse(normalized);
+  if (!Number.isNaN(localTs)) return localTs;
+  if (!hasZone) {
+    const utcTs = Date.parse(`${normalized}Z`);
+    return Number.isNaN(utcTs) ? null : utcTs;
+  }
+  return null;
 };
 
 const getCountdownLabel = (

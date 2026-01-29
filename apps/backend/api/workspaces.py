@@ -6,10 +6,12 @@ import requests
 
 from api.deps import get_current_user
 from db.workspace_repo import MySQLWorkspaceRepo, WorkspaceRecord
+from db.workspace_status_repo import MySQLWorkspaceStatusRepo
 
 
 router = APIRouter()
 workspace_repo = MySQLWorkspaceRepo()
+workspace_status_repo = MySQLWorkspaceStatusRepo()
 
 _ALLOWED_PLATFORMS = {"funpay", "playerok"}
 
@@ -52,6 +54,18 @@ class WorkspaceListResponse(BaseModel):
     items: list[WorkspaceItem]
 
 
+class WorkspaceStatusItem(BaseModel):
+    workspace_id: int | None = None
+    platform: str
+    status: str
+    message: str | None = None
+    updated_at: str | None = None
+
+
+class WorkspaceStatusResponse(BaseModel):
+    items: list[WorkspaceStatusItem]
+
+
 class ProxyCheckResponse(BaseModel):
     ok: bool
     direct_ip: str | None = None
@@ -92,6 +106,32 @@ def _to_item(record: WorkspaceRecord) -> WorkspaceItem:
 def list_workspaces(user=Depends(get_current_user)) -> WorkspaceListResponse:
     items = workspace_repo.list_by_user(int(user.id))
     return WorkspaceListResponse(items=[_to_item(item) for item in items])
+
+
+@router.get("/workspaces/status", response_model=WorkspaceStatusResponse)
+def list_workspace_statuses(
+    workspace_id: int | None = None,
+    platform: str | None = None,
+    user=Depends(get_current_user),
+) -> WorkspaceStatusResponse:
+    user_id = int(user.id)
+    if workspace_id is not None:
+        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+        if not workspace:
+            raise HTTPException(status_code=400, detail="Select a workspace.")
+    items = workspace_status_repo.list_by_user(user_id, workspace_id=workspace_id, platform=platform)
+    return WorkspaceStatusResponse(
+        items=[
+            WorkspaceStatusItem(
+                workspace_id=item.workspace_id,
+                platform=item.platform,
+                status=item.status,
+                message=item.message,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ]
+    )
 
 
 @router.post("/workspaces", response_model=WorkspaceItem, status_code=status.HTTP_201_CREATED)
