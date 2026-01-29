@@ -67,11 +67,17 @@ def build_stock_messages(accounts: list[dict]) -> list[str]:
         display_name = acc.get("display_name") or acc.get("account_name") or acc.get("login") or "-"
         lot_number = acc.get("lot_number")
         lot_url = acc.get("lot_url")
-        prefix = f"№ {lot_number} " if lot_number else ""
+        name = display_name
+        if lot_number:
+            lot_number_str = str(lot_number)
+            for prefix in (f"№ {lot_number_str} ", f"№{lot_number_str} ", f"#{lot_number_str} "):
+                if name.startswith(prefix):
+                    name = name[len(prefix):]
+                    break
         if lot_url:
-            lines.append(f"{prefix}{display_name} - {lot_url}")
+            lines.append(f"{name} - {lot_url}")
         else:
-            lines.append(f"{prefix}{display_name}")
+            lines.append(f"{name}")
     return lines
 
 
