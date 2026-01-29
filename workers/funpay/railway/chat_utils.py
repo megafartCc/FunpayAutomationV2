@@ -54,8 +54,19 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
     try:
         chat = account.get_chat_by_name(owner, True)
     except Exception as exc:
+        chat = None
         logger.warning("Failed to resolve chat for %s: %s", owner, exc)
-        return False
+    if not chat:
+        try:
+            chats = account.get_chats(update=True) or {}
+            owner_key = owner.strip().lower()
+            for item in chats.values():
+                name = getattr(item, "name", None)
+                if name and name.strip().lower() == owner_key:
+                    chat = item
+                    break
+        except Exception as exc:
+            logger.warning("Failed to search chats for %s: %s", owner, exc)
     chat_id = getattr(chat, "id", None)
     if not chat_id:
         logger.warning("Chat not found for %s.", owner)
