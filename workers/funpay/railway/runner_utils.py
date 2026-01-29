@@ -50,7 +50,7 @@ WELCOME_MESSAGE = os.getenv(
     + COMMANDS_RU,
 )
 
-LOT_URL_RE = re.compile(r"https?://funpay\\.com/lots/offer\\?id=\\d+", re.IGNORECASE)
+LOT_URL_RE = re.compile(r"https?://funpay\.com/lots/offer\?id=\d+", re.IGNORECASE)
 
 
 def _extract_lot_url(text: str) -> str | None:
