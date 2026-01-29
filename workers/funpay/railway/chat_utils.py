@@ -13,6 +13,32 @@ from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
 
 
+def is_first_time_chat(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+) -> bool:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "chat_messages"):
+            return False
+        cursor.execute(
+            """
+            SELECT 1
+            FROM chat_messages
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            LIMIT 1
+            """,
+            (int(user_id), int(workspace_id) if workspace_id is not None else None, int(chat_id)),
+        )
+        return cursor.fetchone() is None
+    finally:
+        conn.close()
+
+
 def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, text: str) -> bool:
     try:
         account.send_message(chat_id, text)

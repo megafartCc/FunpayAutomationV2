@@ -16,9 +16,16 @@ from FunPayAPI.updater.runner import Runner
 from bs4 import BeautifulSoup
 
 from .chat_time_utils import _extract_datetime_from_html
-from .ai_utils import generate_ai_reply
-from .chat_utils import insert_chat_message, process_chat_outbox, send_chat_message, sync_chats_list, upsert_chat_summary
+from .chat_utils import (
+    insert_chat_message,
+    is_first_time_chat,
+    process_chat_outbox,
+    send_chat_message,
+    sync_chats_list,
+    upsert_chat_summary,
+)
 from .command_handlers import handle_command
+from .constants import COMMANDS_RU
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
@@ -30,6 +37,15 @@ from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
 from .user_utils import get_user_id_by_username
 from .text_utils import parse_command
+
+WELCOME_MESSAGE = os.getenv(
+    "FUNPAY_WELCOME_MESSAGE",
+    "\u041f\u0440\u0438\u0432\u0435\u0442, "
+    "\u0432\u044b\u0434\u0430\u0447\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432 "
+    "\u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f."
+    "\n\n"
+    + COMMANDS_RU,
+)
 
 
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
@@ -110,6 +126,7 @@ def log_message(
     except RuntimeError:
         mysql_cfg = None
 
+    first_time = False
     if mysql_cfg and chat_id is not None:
         user_id = site_user_id
         if user_id is None and site_username:
@@ -118,6 +135,15 @@ def log_message(
             except mysql.connector.Error:
                 user_id = None
         if user_id is not None:
+            try:
+                first_time = is_first_time_chat(
+                    mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=workspace_id,
+                    chat_id=int(chat_id),
+                )
+            except Exception:
+                first_time = False
             try:
                 msg_id = int(getattr(msg, "id", 0) or 0)
                 if msg_id <= 0:
@@ -172,18 +198,12 @@ def log_message(
                 command_args,
                 chat_url,
             )
-    if not is_system and chat_id is not None and not getattr(msg, "by_bot", False):
+    if first_time and not is_system and chat_id is not None and not getattr(msg, "by_bot", False):
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
-        ai_text = generate_ai_reply(
-            message_text,
-            sender=sender_username,
-            chat_name=chat_name,
-        )
-        if ai_text:
-            send_chat_message(logger, account, int(chat_id), ai_text)
+        send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
     if is_system:
         logger.info(
             "user=%s workspace=%s system_event type=%s chat=%s url=%s raw=%s",
