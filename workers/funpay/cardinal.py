@@ -942,9 +942,6 @@ class Cardinal(object):
 
     # Настройки
     @property
-    def autoraise_enabled(self) -> bool:
-        return self.MAIN_CFG["FunPay"].getboolean("autoRaise")
-
     @property
     def autoresponse_enabled(self) -> bool:
         return self.MAIN_CFG["FunPay"].getboolean("autoResponse")
