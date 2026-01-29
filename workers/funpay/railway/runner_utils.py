@@ -53,6 +53,19 @@ WELCOME_MESSAGE = os.getenv(
 LOT_URL_RE = re.compile(r"https?://funpay\\.com/lots/offer\\?id=\\d+", re.IGNORECASE)
 
 
+def _extract_lot_url(text: str) -> str | None:
+    if not text:
+        return None
+    url_match = LOT_URL_RE.search(text)
+    if url_match:
+        return url_match.group(0)
+    cleaned = re.sub(r"[^A-Za-z0-9:/?=._-]", "", text)
+    url_match = LOT_URL_RE.search(cleaned)
+    if url_match:
+        return url_match.group(0)
+    return None
+
+
 def _lot_display_name(row: dict) -> str:
     return (
         row.get("display_name")
@@ -250,9 +263,15 @@ def log_message(
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
         lower_text = normalized_text.lower()
-        url_match = LOT_URL_RE.search(normalized_text)
-        if url_match:
-            lot_url = url_match.group(0)
+        lot_url = _extract_lot_url(normalized_text)
+        if lot_url:
+            logger.info(
+                "user=%s workspace=%s chat=%s detected_lot_url=%s",
+                site_username or "-",
+                workspace_id if workspace_id is not None else "-",
+                chat_name,
+                lot_url,
+            )
             if mysql_cfg and user_id is not None:
                 row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
                 if row:
