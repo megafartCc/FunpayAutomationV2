@@ -120,6 +120,27 @@ def _is_rental_related(text: str) -> bool:
         "mmr",
         "логин",
         "парол",
+        "refund",
+        "возврат",
+        "верни",
+        "деньг",
+        "refund",
+        "moneyback",
+    )
+    return any(key in text for key in keywords)
+
+
+def _wants_refund(text: str) -> bool:
+    if not text:
+        return False
+    keywords = (
+        "возврат",
+        "верни",
+        "верните",
+        "деньги",
+        "деньги обратно",
+        "moneyback",
+        "refund",
     )
     return any(key in text for key in keywords)
 
@@ -374,6 +395,14 @@ def log_message(
                 )
                 send_chat_message(logger, account, int(chat_id), message)
                 return None
+        if _wants_refund(lower_text):
+            send_chat_message(
+                logger,
+                account,
+                int(chat_id),
+                "По вопросам возврата напишите !админ — я подключу продавца, он разберётся.",
+            )
+            return None
         if not _is_rental_related(lower_text):
             send_chat_message(
                 logger,
