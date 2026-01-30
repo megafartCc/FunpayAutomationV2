@@ -29,6 +29,7 @@ from .constants import (
     RENTAL_PAUSE_EXPIRED_MESSAGE,
     RENTAL_PAUSE_IN_MATCH_MESSAGE,
     RENTAL_RESUMED_MESSAGE,
+    RENTAL_STARTED_MESSAGE,
     RENTAL_UNFROZEN_MESSAGE,
     RENTALS_EMPTY,
     STOCK_DB_MISSING,
@@ -44,6 +45,7 @@ from .lot_utils import (
     fetch_owner_accounts,
     find_replacement_account_for_lot,
     replace_rental_account,
+    start_rental_for_owner,
 )
 from .rental_utils import update_rental_freeze_state
 from .steam_guard_utils import get_steam_guard_code, steam_id_from_mafile
@@ -280,9 +282,15 @@ def handle_code_command(
         send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
         return True
 
+    started_now = selected.get("rental_start") is None
+    if started_now:
+        start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id)
+
     ok, code = get_steam_guard_code(selected.get("mafile_json"))
     if ok:
         send_chat_message(logger, account, chat_id, code)
+        if started_now:
+            send_chat_message(logger, account, chat_id, RENTAL_STARTED_MESSAGE)
         return True
     send_chat_message(logger, account, chat_id, f"Ошибка получения кода: {code}")
     return True
