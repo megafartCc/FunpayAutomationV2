@@ -1,23 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
-import sys
 from datetime import datetime
+from urllib.parse import urlparse
 
+import mysql.connector
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if REPO_ROOT not in sys.path:
-    sys.path.append(REPO_ROOT)
-
-from apps.backend.db.mysql import get_base_connection  # noqa: E402
-from apps.backend.db.telegram_repo import MySQLTelegramRepo  # noqa: E402
-
 
 logger = logging.getLogger("telegram-bot")
-telegram_repo = MySQLTelegramRepo()
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -25,6 +19,76 @@ def _get_env(name: str, default: str | None = None) -> str | None:
     if value is None or value.strip() == "":
         return default
     return value.strip()
+
+
+def _load_mysql_settings() -> dict[str, str | int]:
+    url = _get_env("MYSQL_URL", "") or ""
+    host = _get_env("MYSQLHOST", "") or ""
+    port = _get_env("MYSQLPORT", "3306") or "3306"
+    user = _get_env("MYSQLUSER", "") or ""
+    password = _get_env("MYSQLPASSWORD", "") or ""
+    database = _get_env("MYSQLDATABASE", "") or _get_env("MYSQL_DATABASE", "") or ""
+
+    if url:
+        parsed = urlparse(url)
+        host = parsed.hostname or host
+        if parsed.port:
+            port = str(parsed.port)
+        user = parsed.username or user
+        password = parsed.password or password
+        if parsed.path and parsed.path != "/":
+            database = parsed.path.lstrip("/")
+
+    if not database:
+        raise RuntimeError("MySQL database name missing. Set MYSQLDATABASE or MYSQL_DATABASE.")
+
+    return {
+        "host": host,
+        "port": int(port),
+        "user": user,
+        "password": password,
+        "database": database,
+    }
+
+
+def get_base_connection() -> mysql.connector.MySQLConnection:
+    settings = _load_mysql_settings()
+    return mysql.connector.connect(**settings)
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def verify_token(token: str, chat_id: int) -> int | None:
+    token_hash = _hash_token(token)
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT user_id
+            FROM telegram_links
+            WHERE token_hash = %s
+            """,
+            (token_hash,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        user_id = int(row["user_id"])
+        cursor.execute(
+            """
+            UPDATE telegram_links
+            SET chat_id = %s, verified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = %s
+            """,
+            (int(chat_id), user_id),
+        )
+        conn.commit()
+        return user_id
+    finally:
+        conn.close()
 
 
 def ensure_telegram_outbox() -> None:
@@ -59,7 +123,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "Hi! Please open the verification link from the dashboard so I can link your account.",
         )
         return
-    user_id = telegram_repo.verify_token(token, int(update.effective_chat.id))
+    user_id = verify_token(token, int(update.effective_chat.id))
     if not user_id:
         await update.message.reply_text("That link has expired. Please generate a new one in Settings.")
         return
