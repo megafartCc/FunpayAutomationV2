@@ -6,14 +6,23 @@ import os
 from datetime import datetime
 from urllib.parse import urlparse
 
+import bcrypt
 import mysql.connector
-from passlib.context import CryptContext
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+)
 
 
 logger = logging.getLogger("telegram-bot")
-_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+LOGIN_USERNAME, LOGIN_PASSWORD = range(2)
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -112,7 +121,12 @@ def authenticate_user(username: str, password: str) -> int | None:
         row = cursor.fetchone()
         if not row:
             return None
-        if not _password_context.verify(password, row.get("password_hash") or ""):
+        stored_hash = row.get("password_hash") or ""
+        try:
+            hash_bytes = stored_hash.encode("utf-8")
+        except Exception:
+            return None
+        if not bcrypt.checkpw(password.encode("utf-8"), hash_bytes):
             return None
         return int(row["id"])
     finally:
@@ -207,8 +221,16 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if context.args:
         token = context.args[0].strip()
     if not token:
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("🔐 Login", callback_data="login")],
+                [InlineKeyboardButton("🗂️ Workspaces", callback_data="workspaces")],
+                [InlineKeyboardButton("ℹ️ Help", callback_data="help")],
+            ]
+        )
         await update.message.reply_text(
             "Hi! Please open the verification link from the dashboard so I can link your account.",
+            reply_markup=keyboard,
         )
         return
     user_id = verify_token(token, int(update.effective_chat.id))
@@ -220,43 +242,93 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
-async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.callback_query:
+        await update.callback_query.answer()
+        message = update.callback_query.message
+        if message:
+            await message.reply_text("Enter your username:", reply_markup=ReplyKeyboardRemove())
+        return LOGIN_USERNAME
     if not update.effective_chat or not update.message:
-        return
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text("Usage: /login <username> <password>")
-        return
-    username = context.args[0]
-    password = " ".join(context.args[1:])
+        return ConversationHandler.END
+    await update.message.reply_text("Enter your username:", reply_markup=ReplyKeyboardRemove())
+    return LOGIN_USERNAME
+
+
+async def login_username_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not update.message:
+        return ConversationHandler.END
+    context.user_data["login_username"] = update.message.text.strip()
+    await update.message.reply_text("Enter your password:")
+    return LOGIN_PASSWORD
+
+
+async def login_password_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not update.effective_chat or not update.message:
+        return ConversationHandler.END
+    username = context.user_data.get("login_username", "")
+    password = update.message.text or ""
     user_id = authenticate_user(username, password)
+    context.user_data.pop("login_username", None)
     if not user_id:
         await update.message.reply_text("Login failed. Check your credentials.")
-        return
+        return ConversationHandler.END
     link_chat_to_user(user_id, int(update.effective_chat.id))
     await update.message.reply_text("✅ Logged in. Telegram linked to your account.")
+    return ConversationHandler.END
+
+
+async def login_cancel_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message:
+        await update.message.reply_text("Login cancelled.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
 
 async def workspaces_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_chat or not update.message:
+    message = update.message
+    chat = update.effective_chat
+    if update.callback_query:
+        await update.callback_query.answer()
+        message = update.callback_query.message
+        chat = update.callback_query.message.chat if update.callback_query.message else update.effective_chat
+    if not chat or not message:
         return
-    user_id = get_user_id_by_chat(int(update.effective_chat.id))
+    user_id = get_user_id_by_chat(int(chat.id))
     if not user_id:
-        await update.message.reply_text("Please /login first to see your workspaces.")
+        await message.reply_text("Please /login first to see your workspaces.")
         return
     rows = list_workspaces(user_id)
     if not rows:
-        await update.message.reply_text("No workspaces found for your account.")
+        await message.reply_text("No workspaces found for your account.")
         return
     lines = ["Your workspaces:"]
     for workspace_id, name in rows:
         lines.append(f"- {name} (ID {workspace_id})")
-    await update.message.reply_text("\n".join(lines))
+    await message.reply_text("\n".join(lines))
+
+
+async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.callback_query:
+        return
+    await update.callback_query.answer()
+    action = update.callback_query.data
+    if action == "login":
+        return
+    if action == "workspaces":
+        await workspaces_handler(update, context)
+        return
+    if action == "help":
+        await help_handler(update, context)
 
 
 async def help_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
+    message = update.message
+    if update.callback_query:
+        await update.callback_query.answer()
+        message = update.callback_query.message
+    if not message:
         return
-    await update.message.reply_text(
+    await message.reply_text(
         "Open the verification link from Settings to connect your account. "
         "Once connected, I will alert you when a buyer requests admin help.",
     )
@@ -344,7 +416,19 @@ def main() -> None:
     ensure_telegram_outbox()
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CommandHandler("login", login_handler))
+    login_flow = ConversationHandler(
+        entry_points=[
+            CommandHandler("login", login_handler),
+            CallbackQueryHandler(login_handler, pattern="^login$"),
+        ],
+        states={
+            LOGIN_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, login_username_handler)],
+            LOGIN_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, login_password_handler)],
+        },
+        fallbacks=[CommandHandler("cancel", login_cancel_handler)],
+    )
+    app.add_handler(login_flow)
+    app.add_handler(CallbackQueryHandler(menu_handler))
     app.add_handler(CommandHandler("workspaces", workspaces_handler))
     app.add_handler(CommandHandler("help", help_handler))
     app.job_queue.run_repeating(poll_notifications, interval=10, first=5)
