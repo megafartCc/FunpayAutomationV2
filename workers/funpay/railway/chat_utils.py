@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -9,6 +10,7 @@ from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
 from .db_utils import resolve_workspace_mysql_cfg, table_exists
+from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
 
@@ -54,24 +56,20 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
     try:
         chat = account.get_chat_by_name(owner, True)
     except Exception as exc:
-        chat = None
         logger.warning("Failed to resolve chat for %s: %s", owner, exc)
-    if not chat:
-        try:
-            chats = account.get_chats(update=True) or {}
-            owner_key = owner.strip().lower()
-            for item in chats.values():
-                name = getattr(item, "name", None)
-                if name and name.strip().lower() == owner_key:
-                    chat = item
-                    break
-        except Exception as exc:
-            logger.warning("Failed to search chats for %s: %s", owner, exc)
+        return False
     chat_id = getattr(chat, "id", None)
     if not chat_id:
         logger.warning("Chat not found for %s.", owner)
         return False
     return send_chat_message(logger, account, int(chat_id), text)
+
+
+def _build_panel_chat_url(chat_id: int) -> str:
+    base = os.getenv("PANEL_BASE_URL", "").strip() or os.getenv("PANEL_URL", "").strip()
+    if base:
+        return f"{base.rstrip('/')}/chats/{chat_id}"
+    return f"https://funpay.com/chat/?node={chat_id}"
 
 
 def _fetch_latest_chat_times(
@@ -230,6 +228,17 @@ def insert_chat_message(
                     int(workspace_id) if workspace_id is not None else None,
                     int(chat_id),
                 ),
+            )
+            chat_url = _build_panel_chat_url(int(chat_id))
+            log_notification_event(
+                mysql_cfg,
+                event_type="admin_call",
+                status="new",
+                title="Admin request received",
+                message=f"Buyer requested admin assistance. Open chat in panel: {chat_url}",
+                owner=author,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
             )
         conn.commit()
     finally:
