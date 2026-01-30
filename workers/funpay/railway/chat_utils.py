@@ -9,6 +9,7 @@ from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
 from .db_utils import resolve_workspace_mysql_cfg, table_exists
+from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
 
@@ -230,6 +231,17 @@ def insert_chat_message(
                     int(workspace_id) if workspace_id is not None else None,
                     int(chat_id),
                 ),
+            )
+            chat_url = f"https://funpay.com/chat/?node={int(chat_id)}"
+            log_notification_event(
+                mysql_cfg,
+                event_type="admin_call",
+                status="new",
+                title="Admin request received",
+                message=f"Buyer requested admin assistance. Open chat: {chat_url}",
+                owner=author,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
             )
         conn.commit()
     finally:
