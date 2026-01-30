@@ -161,13 +161,13 @@ def fetch_owner_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
-        has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         params: list = [owner_key, int(user_id)]
         workspace_clause = ""
         lot_workspace_clause = ""
-        if workspace_id is not None and has_account_workspace:
-            workspace_clause = " AND a.workspace_id = %s"
+        if workspace_id is not None and has_last_rented_workspace:
+            workspace_clause = " AND a.last_rented_workspace_id = %s"
             params.append(int(workspace_id))
         if workspace_id is not None and has_lot_workspace:
             lot_workspace_clause = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
@@ -282,19 +282,60 @@ def assign_account_to_buyer(
     try:
         cursor = conn.cursor()
         owner_key = normalize_owner_name(buyer)
+        has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        updates = [
+            "owner = %s",
+            "rental_duration = %s",
+            "rental_duration_minutes = %s",
+            "rental_start = NULL",
+        ]
+        params: list = [owner_key, int(units), int(total_minutes)]
+        if workspace_id is not None and has_last_rented_workspace:
+            updates.append("last_rented_workspace_id = %s")
+            params.append(int(workspace_id))
+        params.extend([int(account_id), int(user_id)])
         cursor.execute(
-            """
+            f"""
             UPDATE accounts
-            SET owner = %s,
-                rental_duration = %s,
-                rental_duration_minutes = %s,
-                rental_start = NOW()
+            SET {', '.join(updates)}
             WHERE id = %s AND user_id = %s AND (owner IS NULL OR owner = '')
             """,
-            (owner_key, int(units), int(total_minutes), int(account_id), int(user_id)),
+            tuple(params),
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def start_rental_for_owner(
+    mysql_cfg: dict,
+    user_id: int,
+    owner: str,
+    workspace_id: int | None = None,
+) -> int:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return 0
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        workspace_clause = ""
+        params: list = [int(user_id), owner_key]
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND last_rented_workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            UPDATE accounts
+            SET rental_start = NOW()
+            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}
+            """,
+            tuple(params),
+        )
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
 
