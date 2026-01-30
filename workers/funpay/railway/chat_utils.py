@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -9,6 +10,7 @@ from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
 from .db_utils import resolve_workspace_mysql_cfg, table_exists
+from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
 
@@ -54,24 +56,20 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
     try:
         chat = account.get_chat_by_name(owner, True)
     except Exception as exc:
-        chat = None
         logger.warning("Failed to resolve chat for %s: %s", owner, exc)
-    if not chat:
-        try:
-            chats = account.get_chats(update=True) or {}
-            owner_key = owner.strip().lower()
-            for item in chats.values():
-                name = getattr(item, "name", None)
-                if name and name.strip().lower() == owner_key:
-                    chat = item
-                    break
-        except Exception as exc:
-            logger.warning("Failed to search chats for %s: %s", owner, exc)
+        return False
     chat_id = getattr(chat, "id", None)
     if not chat_id:
         logger.warning("Chat not found for %s.", owner)
         return False
     return send_chat_message(logger, account, int(chat_id), text)
+
+
+def _build_panel_chat_url(chat_id: int) -> str:
+    base = os.getenv("PANEL_BASE_URL", "").strip() or os.getenv("PANEL_URL", "").strip()
+    if base:
+        return f"{base.rstrip('/')}/chats/{chat_id}"
+    return f"https://funpay.com/chat/?node={chat_id}"
 
 
 def _fetch_latest_chat_times(
@@ -116,6 +114,41 @@ def _fetch_latest_chat_times(
             except Exception:
                 continue
         return result
+    finally:
+        conn.close()
+
+
+def _fetch_recent_chat_messages(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    limit: int = 10,
+) -> list[dict]:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "chat_messages"):
+            return []
+        cursor.execute(
+            """
+            SELECT author, text, sent_time, by_bot
+            FROM chat_messages
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            ORDER BY sent_time DESC, id DESC
+            LIMIT %s
+            """,
+            (
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+                int(max(1, min(limit, 50))),
+            ),
+        )
+        rows = list(cursor.fetchall() or [])
+        rows.reverse()
+        return rows
     finally:
         conn.close()
 
@@ -230,6 +263,45 @@ def insert_chat_message(
                     int(workspace_id) if workspace_id is not None else None,
                     int(chat_id),
                 ),
+            )
+            chat_url = _build_panel_chat_url(int(chat_id))
+            recent_messages = _fetch_recent_chat_messages(
+                mysql_cfg,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+                limit=10,
+            )
+            summary_lines: list[str] = []
+            for row in recent_messages:
+                sent_time = row.get("sent_time")
+                timestamp = ""
+                if isinstance(sent_time, datetime):
+                    timestamp = sent_time.strftime("%Y-%m-%d %H:%M:%S")
+                elif sent_time:
+                    timestamp = str(sent_time)
+                author = row.get("author") or ("Bot" if row.get("by_bot") else "Unknown")
+                text_value = row.get("text")
+                text_value = text_value.replace("\n", " ").strip() if isinstance(text_value, str) else "<no text>"
+                prefix = f"{timestamp} | " if timestamp else ""
+                summary_lines.append(f"{prefix}{author}: {text_value}".strip())
+            message_lines = [
+                "Buyer requested admin assistance.",
+                f"Open chat in panel: {chat_url}",
+            ]
+            if summary_lines:
+                message_lines.append("")
+                message_lines.append("Last 10 messages:")
+                message_lines.extend(summary_lines)
+            log_notification_event(
+                mysql_cfg,
+                event_type="admin_call",
+                status="new",
+                title="Admin request received",
+                message="\n".join(message_lines),
+                owner=author,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
             )
         conn.commit()
     finally:
