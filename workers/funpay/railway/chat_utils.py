@@ -12,6 +12,7 @@ from .db_utils import resolve_workspace_mysql_cfg, table_exists
 from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
+from .text_utils import normalize_owner_name
 
 
 def is_first_time_chat(
@@ -51,6 +52,9 @@ def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, te
 
 def send_message_by_owner(logger: logging.Logger, account: Account, owner: str | None, text: str) -> bool:
     if not owner:
+        return False
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
         return False
     try:
         chat = account.get_chat_by_name(owner, True)
