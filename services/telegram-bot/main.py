@@ -7,11 +7,13 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import mysql.connector
+from passlib.context import CryptContext
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 
 logger = logging.getLogger("telegram-bot")
+_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -91,6 +93,92 @@ def verify_token(token: str, chat_id: int) -> int | None:
         conn.close()
 
 
+def authenticate_user(username: str, password: str) -> int | None:
+    login = (username or "").strip().lower()
+    if not login or not password:
+        return None
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, password_hash
+            FROM users
+            WHERE username = %s
+            LIMIT 1
+            """,
+            (login,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if not _password_context.verify(password, row.get("password_hash") or ""):
+            return None
+        return int(row["id"])
+    finally:
+        conn.close()
+
+
+def link_chat_to_user(user_id: int, chat_id: int) -> None:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO telegram_links (user_id, chat_id, verified_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON DUPLICATE KEY UPDATE
+                chat_id = VALUES(chat_id),
+                verified_at = VALUES(verified_at),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (int(user_id), int(chat_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user_id_by_chat(chat_id: int) -> int | None:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT user_id
+            FROM telegram_links
+            WHERE chat_id = %s AND verified_at IS NOT NULL
+            LIMIT 1
+            """,
+            (int(chat_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return int(row["user_id"])
+    finally:
+        conn.close()
+
+
+def list_workspaces(user_id: int) -> list[tuple[int, str]]:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM workspaces
+            WHERE user_id = %s
+            ORDER BY id ASC
+            """,
+            (int(user_id),),
+        )
+        rows = cursor.fetchall() or []
+        return [(int(row["id"]), row.get("name") or "-") for row in rows]
+    finally:
+        conn.close()
+
+
 def ensure_telegram_outbox() -> None:
     conn = get_base_connection()
     try:
@@ -130,6 +218,39 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         "✅ Telegram linked! You will now receive admin-call alerts with direct chat links.",
     )
+
+
+async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_chat or not update.message:
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("Usage: /login <username> <password>")
+        return
+    username = context.args[0]
+    password = " ".join(context.args[1:])
+    user_id = authenticate_user(username, password)
+    if not user_id:
+        await update.message.reply_text("Login failed. Check your credentials.")
+        return
+    link_chat_to_user(user_id, int(update.effective_chat.id))
+    await update.message.reply_text("✅ Logged in. Telegram linked to your account.")
+
+
+async def workspaces_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_chat or not update.message:
+        return
+    user_id = get_user_id_by_chat(int(update.effective_chat.id))
+    if not user_id:
+        await update.message.reply_text("Please /login first to see your workspaces.")
+        return
+    rows = list_workspaces(user_id)
+    if not rows:
+        await update.message.reply_text("No workspaces found for your account.")
+        return
+    lines = ["Your workspaces:"]
+    for workspace_id, name in rows:
+        lines.append(f"- {name} (ID {workspace_id})")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def help_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
@@ -223,6 +344,8 @@ def main() -> None:
     ensure_telegram_outbox()
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("login", login_handler))
+    app.add_handler(CommandHandler("workspaces", workspaces_handler))
     app.add_handler(CommandHandler("help", help_handler))
     app.job_queue.run_repeating(poll_notifications, interval=10, first=5)
     logger.info("Telegram bot started.")
