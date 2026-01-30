@@ -6,7 +6,12 @@ from datetime import datetime, timedelta
 import mysql.connector
 from FunPayAPI.account import Account
 
-from .account_utils import build_account_message, build_rental_choice_message, resolve_rental_minutes
+from .account_utils import (
+    build_account_message,
+    build_display_name,
+    build_rental_choice_message,
+    resolve_rental_minutes,
+)
 from .blacklist_utils import is_blacklisted, log_blacklist_event
 from .chat_utils import send_chat_message, send_message_by_owner
 from .constants import (
@@ -43,7 +48,6 @@ from .lot_utils import (
     fetch_available_lot_accounts,
     fetch_lot_mapping,
     fetch_owner_accounts,
-    find_replacement_account_for_lot,
     replace_rental_account,
     start_rental_for_owner,
 )
@@ -51,6 +55,7 @@ from .rental_utils import update_rental_freeze_state
 from .steam_guard_utils import get_steam_guard_code, steam_id_from_mafile
 from .text_utils import (
     _calculate_resume_start,
+    _parse_datetime,
     detect_command,
     format_duration_minutes,
     format_penalty_label,
@@ -164,30 +169,31 @@ def _select_account_for_command(
 
 
 def _select_replacement_account(
-    logger: logging.Logger,
-    account: Account,
-    chat_id: int,
-    accounts: list[dict],
-    command: str,
-    args: str,
+    available: list[dict],
+    *,
+    target_mmr: int,
+    exclude_id: int,
+    max_delta: int = LP_REPLACE_MMR_RANGE,
 ) -> dict | None:
-    if not accounts:
-        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
-        return None
-    if len(accounts) == 1:
-        return accounts[0]
-    account_id = parse_account_id_arg(args)
-    if account_id is None:
-        send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
-        return None
-    for acc in accounts:
+    candidates: list[tuple[int, int, dict]] = []
+    for acc in available:
+        if int(acc.get("id") or 0) == exclude_id:
+            continue
+        raw_mmr = acc.get("mmr")
+        if raw_mmr is None:
+            continue
         try:
-            if int(acc.get("id")) == int(account_id):
-                return acc
+            mmr = int(raw_mmr)
         except Exception:
             continue
-    send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
-    return None
+        diff = abs(mmr - target_mmr)
+        if diff > max_delta:
+            continue
+        candidates.append((diff, mmr, acc))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1], int(item[2].get("id") or 0)))
+    return candidates[0][2]
 
 
 def handle_account_command(
@@ -227,13 +233,16 @@ def handle_account_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
-    if not selected:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    duration_minutes = resolve_rental_minutes(selected)
-    message = build_account_message(selected, duration_minutes, include_timer_note=True)
-    send_chat_message(logger, account, chat_id, message)
+    for acc in accounts:
+        total_minutes = acc.get("rental_duration_minutes")
+        if total_minutes is None:
+            total_minutes = get_unit_minutes(acc)
+        message = build_account_message(acc, int(total_minutes or 0), include_timer_note=True)
+        send_chat_message(logger, account, chat_id, message)
     return True
 
 
@@ -274,25 +283,33 @@ def handle_code_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
-    if not selected:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    if selected.get("rental_frozen"):
+    active_accounts = [acc for acc in accounts if not acc.get("rental_frozen")]
+    if not active_accounts:
         send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
         return True
 
-    started_now = selected.get("rental_start") is None
+    lines = ["Коды Steam Guard:"]
+    started_now = False
+    for acc in active_accounts:
+        display_name = build_display_name(acc)
+        ok, code = get_steam_guard_code(acc.get("mafile_json"))
+        login = acc.get("login") or "-"
+        if ok:
+            lines.append(f"{display_name} ({login}): {code}")
+        else:
+            lines.append(f"{display_name} ({login}): ошибка {code}")
+        if acc.get("rental_start") is None:
+            started_now = True
+
     if started_now:
         start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id)
+        lines.extend(["", RENTAL_STARTED_MESSAGE])
 
-    ok, code = get_steam_guard_code(selected.get("mafile_json"))
-    if ok:
-        send_chat_message(logger, account, chat_id, code)
-        if started_now:
-            send_chat_message(logger, account, chat_id, RENTAL_STARTED_MESSAGE)
-        return True
-    send_chat_message(logger, account, chat_id, f"Ошибка получения кода: {code}")
+    send_chat_message(logger, account, chat_id, "\n".join(lines))
     return True
 
 
@@ -333,36 +350,50 @@ def handle_low_priority_replace_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_replacement_account(logger, account, chat_id, accounts, command, args)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
     if not selected:
         return True
 
-    rental_start = selected.get("rental_start")
+    rental_start = _parse_datetime(selected.get("rental_start"))
     if rental_start is None:
-        send_chat_message(logger, account, chat_id, LP_REPLACE_TOO_LATE_MESSAGE)
+        send_chat_message(logger, account, chat_id, LP_REPLACE_NO_CODE_MESSAGE)
         return True
     if datetime.utcnow() - rental_start > timedelta(minutes=LP_REPLACE_WINDOW_MINUTES):
         send_chat_message(logger, account, chat_id, LP_REPLACE_TOO_LATE_MESSAGE)
         return True
-    mmr = selected.get("mmr")
-    if not mmr:
-        send_chat_message(logger, account, chat_id, LP_REPLACE_NO_MMR_MESSAGE)
-        return True
+    raw_mmr = selected.get("mmr")
     try:
-        mmr_value = int(mmr)
+        target_mmr = int(raw_mmr)
     except Exception:
+        target_mmr = None
+    if target_mmr is None:
         send_chat_message(logger, account, chat_id, LP_REPLACE_NO_MMR_MESSAGE)
         return True
 
-    replacement = find_replacement_account_for_lot(
-        mysql_cfg,
-        user_id=int(user_id),
-        lot_number=int(selected.get("lot_number") or 0),
-        workspace_id=workspace_id,
+    try:
+        available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
+    except mysql.connector.Error as exc:
+        logger.warning("Low priority replace lookup failed: %s", exc)
+        send_chat_message(logger, account, chat_id, LP_REPLACE_FAILED_MESSAGE)
+        return True
+
+    replacement = _select_replacement_account(
+        available,
+        target_mmr=target_mmr,
+        exclude_id=int(selected.get("id") or 0),
+        max_delta=LP_REPLACE_MMR_RANGE,
     )
     if not replacement:
         send_chat_message(logger, account, chat_id, LP_REPLACE_NO_MATCH_MESSAGE)
         return True
+
+    rental_minutes = resolve_rental_minutes(selected)
+    try:
+        rental_units = int(selected.get("rental_duration") or 0)
+    except Exception:
+        rental_units = 0
+    if rental_units <= 0 and rental_minutes > 0:
+        rental_units = max(1, (rental_minutes + 59) // 60)
 
     ok = replace_rental_account(
         mysql_cfg,
@@ -372,8 +403,8 @@ def handle_low_priority_replace_command(
         owner=sender_username,
         workspace_id=workspace_id,
         rental_start=rental_start,
-        rental_duration=int(selected.get("rental_duration") or 0),
-        rental_duration_minutes=int(selected.get("rental_duration_minutes") or 0),
+        rental_duration=rental_units,
+        rental_duration_minutes=rental_minutes,
     )
     if not ok:
         send_chat_message(logger, account, chat_id, LP_REPLACE_FAILED_MESSAGE)
@@ -381,9 +412,12 @@ def handle_low_priority_replace_command(
 
     replacement_info = dict(replacement)
     replacement_info["owner"] = sender_username
-    replacement_info["rental_duration"] = selected.get("rental_duration")
-    replacement_info["rental_duration_minutes"] = selected.get("rental_duration_minutes")
-    message = f"{LP_REPLACE_SUCCESS_PREFIX}\n{build_account_message(replacement_info, resolve_rental_minutes(replacement_info), True)}"
+    replacement_info["rental_start"] = rental_start
+    replacement_info["rental_duration"] = rental_units
+    replacement_info["rental_duration_minutes"] = rental_minutes
+    replacement_info["account_frozen"] = 0
+    replacement_info["rental_frozen"] = 0
+    message = f"{LP_REPLACE_SUCCESS_PREFIX}\n{build_account_message(replacement_info, rental_minutes, False)}"
     send_chat_message(logger, account, chat_id, message)
     return True
 
