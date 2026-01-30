@@ -157,6 +157,130 @@ def log_order_history(
         conn.close()
 
 
+def _normalize_order_id(order_id: str | None) -> str:
+    order_key = str(order_id or "").strip()
+    if order_key.startswith("#"):
+        order_key = order_key[1:]
+    return order_key
+
+
+def fetch_order_history_summary(
+    mysql_cfg: dict,
+    *,
+    order_id: str,
+    owner: str,
+    workspace_id: int | None = None,
+) -> dict | None:
+    order_key = _normalize_order_id(order_id)
+    owner_key = normalize_owner_name(owner)
+    if not order_key or not owner_key:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "order_history"):
+            return None
+        params: list = [order_key, owner_key]
+        workspace_clause = ""
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT id, account_id, account_name, user_id, workspace_id, rental_minutes, lot_number, action
+            FROM order_history
+            WHERE order_id = %s AND owner = %s{workspace_clause}
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
+
+def has_review_bonus(
+    mysql_cfg: dict,
+    *,
+    order_id: str,
+    owner: str,
+    workspace_id: int | None = None,
+) -> bool:
+    order_key = _normalize_order_id(order_id)
+    owner_key = normalize_owner_name(owner)
+    if not order_key or not owner_key:
+        return False
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return False
+        params: list = [order_key, owner_key]
+        workspace_clause = ""
+        if workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT 1
+            FROM order_history
+            WHERE order_id = %s AND owner = %s AND action = 'review_bonus'{workspace_clause}
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def apply_review_bonus_for_order(
+    mysql_cfg: dict,
+    *,
+    order_id: str,
+    owner: str,
+    bonus_minutes: int = 60,
+) -> dict | None:
+    summary = fetch_order_history_summary(mysql_cfg, order_id=order_id, owner=owner)
+    if not summary:
+        return None
+    if has_review_bonus(mysql_cfg, order_id=order_id, owner=owner, workspace_id=summary.get("workspace_id")):
+        return None
+    account_id = summary.get("account_id")
+    user_id = summary.get("user_id")
+    if account_id is None or user_id is None:
+        return None
+    if summary.get("rental_minutes") in (None, 0):
+        return None
+    updated = extend_rental_for_buyer(
+        mysql_cfg,
+        account_id=int(account_id),
+        user_id=int(user_id),
+        buyer=owner,
+        add_units=1,
+        add_minutes=int(bonus_minutes),
+        workspace_id=summary.get("workspace_id"),
+    )
+    if not updated:
+        return None
+    log_order_history(
+        mysql_cfg,
+        order_id=order_id,
+        owner=owner,
+        user_id=int(user_id),
+        workspace_id=summary.get("workspace_id"),
+        account_id=int(account_id),
+        account_name=summary.get("account_name"),
+        rental_minutes=int(bonus_minutes),
+        lot_number=summary.get("lot_number"),
+        action="review_bonus",
+    )
+    return updated
+
+
 def fetch_latest_order_id_for_account(
     mysql_cfg: dict,
     *,

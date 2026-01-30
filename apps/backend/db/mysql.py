@@ -355,6 +355,25 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS telegram_links (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                token_hash CHAR(64) NULL,
+                token_hint VARCHAR(12) NULL,
+                chat_id BIGINT NULL,
+                verified_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_telegram_user (user_id),
+                UNIQUE KEY uniq_telegram_token (token_hash),
+                INDEX idx_telegram_chat (chat_id),
+                CONSTRAINT fk_telegram_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS chats (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 chat_id BIGINT NOT NULL,
