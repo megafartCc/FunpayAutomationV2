@@ -9,6 +9,7 @@ from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
 from .db_utils import resolve_workspace_mysql_cfg, table_exists
+from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
 
@@ -54,19 +55,8 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
     try:
         chat = account.get_chat_by_name(owner, True)
     except Exception as exc:
-        chat = None
         logger.warning("Failed to resolve chat for %s: %s", owner, exc)
-    if not chat:
-        try:
-            chats = account.get_chats(update=True) or {}
-            owner_key = owner.strip().lower()
-            for item in chats.values():
-                name = getattr(item, "name", None)
-                if name and name.strip().lower() == owner_key:
-                    chat = item
-                    break
-        except Exception as exc:
-            logger.warning("Failed to search chats for %s: %s", owner, exc)
+        return False
     chat_id = getattr(chat, "id", None)
     if not chat_id:
         logger.warning("Chat not found for %s.", owner)
@@ -230,6 +220,17 @@ def insert_chat_message(
                     int(workspace_id) if workspace_id is not None else None,
                     int(chat_id),
                 ),
+            )
+            chat_url = f"https://funpay.com/chat/?node={int(chat_id)}"
+            log_notification_event(
+                mysql_cfg,
+                event_type="admin_call",
+                status="new",
+                title="Admin request received",
+                message=f"Buyer requested admin assistance. Open chat: {chat_url}",
+                owner=author,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
             )
         conn.commit()
     finally:
