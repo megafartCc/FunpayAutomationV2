@@ -8,10 +8,9 @@ from urllib.parse import urlparse
 
 import bcrypt
 import mysql.connector
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -23,6 +22,15 @@ from telegram.ext import (
 logger = logging.getLogger("telegram-bot")
 
 LOGIN_USERNAME, LOGIN_PASSWORD = range(2)
+
+MENU_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("/login"), KeyboardButton("/workspaces")],
+        [KeyboardButton("/help")],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+)
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -221,16 +229,9 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if context.args:
         token = context.args[0].strip()
     if not token:
-        keyboard = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("🔐 Login", callback_data="login")],
-                [InlineKeyboardButton("🗂️ Workspaces", callback_data="workspaces")],
-                [InlineKeyboardButton("ℹ️ Help", callback_data="help")],
-            ]
-        )
         await update.message.reply_text(
             "Hi! Please open the verification link from the dashboard so I can link your account.",
-            reply_markup=keyboard,
+            reply_markup=MENU_KEYBOARD,
         )
         return
     user_id = verify_token(token, int(update.effective_chat.id))
@@ -239,6 +240,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     await update.message.reply_text(
         "✅ Telegram linked! You will now receive admin-call alerts with direct chat links.",
+        reply_markup=MENU_KEYBOARD,
     )
 
 
@@ -271,16 +273,16 @@ async def login_password_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_id = authenticate_user(username, password)
     context.user_data.pop("login_username", None)
     if not user_id:
-        await update.message.reply_text("Login failed. Check your credentials.")
+        await update.message.reply_text("Login failed. Check your credentials.", reply_markup=MENU_KEYBOARD)
         return ConversationHandler.END
     link_chat_to_user(user_id, int(update.effective_chat.id))
-    await update.message.reply_text("✅ Logged in. Telegram linked to your account.")
+    await update.message.reply_text("✅ Logged in. Telegram linked to your account.", reply_markup=MENU_KEYBOARD)
     return ConversationHandler.END
 
 
 async def login_cancel_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message:
-        await update.message.reply_text("Login cancelled.", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Login cancelled.", reply_markup=MENU_KEYBOARD)
     return ConversationHandler.END
 
 
@@ -295,30 +297,16 @@ async def workspaces_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> No
         return
     user_id = get_user_id_by_chat(int(chat.id))
     if not user_id:
-        await message.reply_text("Please /login first to see your workspaces.")
+        await message.reply_text("Please /login first to see your workspaces.", reply_markup=MENU_KEYBOARD)
         return
     rows = list_workspaces(user_id)
     if not rows:
-        await message.reply_text("No workspaces found for your account.")
+        await message.reply_text("No workspaces found for your account.", reply_markup=MENU_KEYBOARD)
         return
     lines = ["Your workspaces:"]
     for workspace_id, name in rows:
         lines.append(f"- {name} (ID {workspace_id})")
-    await message.reply_text("\n".join(lines))
-
-
-async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.callback_query:
-        return
-    await update.callback_query.answer()
-    action = update.callback_query.data
-    if action == "login":
-        return
-    if action == "workspaces":
-        await workspaces_handler(update, context)
-        return
-    if action == "help":
-        await help_handler(update, context)
+    await message.reply_text("\n".join(lines), reply_markup=MENU_KEYBOARD)
 
 
 async def help_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
@@ -331,6 +319,7 @@ async def help_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await message.reply_text(
         "Open the verification link from Settings to connect your account. "
         "Once connected, I will alert you when a buyer requests admin help.",
+        reply_markup=MENU_KEYBOARD,
     )
 
 
@@ -419,7 +408,6 @@ def main() -> None:
     login_flow = ConversationHandler(
         entry_points=[
             CommandHandler("login", login_handler),
-            CallbackQueryHandler(login_handler, pattern="^login$"),
         ],
         states={
             LOGIN_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, login_username_handler)],
@@ -428,7 +416,6 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", login_cancel_handler)],
     )
     app.add_handler(login_flow)
-    app.add_handler(CallbackQueryHandler(menu_handler))
     app.add_handler(CommandHandler("workspaces", workspaces_handler))
     app.add_handler(CommandHandler("help", help_handler))
     app.job_queue.run_repeating(poll_notifications, interval=10, first=5)

@@ -122,6 +122,41 @@ def _fetch_latest_chat_times(
         conn.close()
 
 
+def _fetch_recent_chat_messages(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    limit: int = 10,
+) -> list[dict]:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "chat_messages"):
+            return []
+        cursor.execute(
+            """
+            SELECT author, text, sent_time, by_bot
+            FROM chat_messages
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            ORDER BY sent_time DESC, id DESC
+            LIMIT %s
+            """,
+            (
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+                int(max(1, min(limit, 50))),
+            ),
+        )
+        rows = list(cursor.fetchall() or [])
+        rows.reverse()
+        return rows
+    finally:
+        conn.close()
+
+
 def _is_admin_command(text: str | None) -> bool:
     if not text:
         return False
@@ -234,12 +269,40 @@ def insert_chat_message(
                 ),
             )
             chat_url = _build_panel_chat_url(int(chat_id))
+            recent_messages = _fetch_recent_chat_messages(
+                mysql_cfg,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+                limit=10,
+            )
+            summary_lines: list[str] = []
+            for row in recent_messages:
+                sent_time = row.get("sent_time")
+                timestamp = ""
+                if isinstance(sent_time, datetime):
+                    timestamp = sent_time.strftime("%Y-%m-%d %H:%M:%S")
+                elif sent_time:
+                    timestamp = str(sent_time)
+                author = row.get("author") or ("Bot" if row.get("by_bot") else "Unknown")
+                text_value = row.get("text")
+                text_value = text_value.replace("\n", " ").strip() if isinstance(text_value, str) else "<no text>"
+                prefix = f"{timestamp} | " if timestamp else ""
+                summary_lines.append(f"{prefix}{author}: {text_value}".strip())
+            message_lines = [
+                "Buyer requested admin assistance.",
+                f"Open chat in panel: {chat_url}",
+            ]
+            if summary_lines:
+                message_lines.append("")
+                message_lines.append("Last 10 messages:")
+                message_lines.extend(summary_lines)
             log_notification_event(
                 mysql_cfg,
                 event_type="admin_call",
                 status="new",
                 title="Admin request received",
-                message=f"Buyer requested admin assistance. Open chat in panel: {chat_url}",
+                message="\n".join(message_lines),
                 owner=author,
                 user_id=int(user_id),
                 workspace_id=int(workspace_id) if workspace_id is not None else None,
