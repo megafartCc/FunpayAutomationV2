@@ -468,13 +468,15 @@ def run_single_user(logger: logging.Logger) -> None:
     state = RentalMonitorState()
     chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
     chat_sync_last = 0.0
+    rental_scheduler_enabled = env_bool("FUNPAY_RENTAL_SCHEDULER_ENABLED", False)
     while True:
         updates = runner.get_updates()
         events = runner.parse_updates(updates)
         for event in events:
             if isinstance(event, NewMessageEvent):
                 log_message(logger, account, account.username, None, None, event)
-        process_rental_monitor(logger, account, account.username, None, None, state)
+        if not rental_scheduler_enabled:
+            process_rental_monitor(logger, account, account.username, None, None, state)
         try:
             mysql_cfg = get_mysql_config()
         except RuntimeError:
@@ -510,6 +512,7 @@ def workspace_worker_loop(
     state = RentalMonitorState()
     chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
     chat_sync_last = 0.0
+    rental_scheduler_enabled = env_bool("FUNPAY_RENTAL_SCHEDULER_ENABLED", False)
     try:
         mysql_cfg = get_mysql_config()
     except RuntimeError:
@@ -572,7 +575,8 @@ def workspace_worker_loop(
                         break
                     if isinstance(event, NewMessageEvent):
                         log_message(logger, account, site_username, user_id, workspace_id, event)
-                process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
+                if not rental_scheduler_enabled:
+                    process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
                 if mysql_cfg and user_id is not None:
                     if time.time() - chat_sync_last >= chat_sync_interval:
                         sync_chats_list(mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
