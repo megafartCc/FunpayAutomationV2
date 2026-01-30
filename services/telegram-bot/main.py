@@ -6,14 +6,13 @@ import os
 from datetime import datetime
 from urllib.parse import urlparse
 
+import bcrypt
 import mysql.connector
-from passlib.context import CryptContext
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 
 logger = logging.getLogger("telegram-bot")
-_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -112,7 +111,12 @@ def authenticate_user(username: str, password: str) -> int | None:
         row = cursor.fetchone()
         if not row:
             return None
-        if not _password_context.verify(password, row.get("password_hash") or ""):
+        stored_hash = row.get("password_hash") or ""
+        try:
+            hash_bytes = stored_hash.encode("utf-8")
+        except Exception:
+            return None
+        if not bcrypt.checkpw(password.encode("utf-8"), hash_bytes):
             return None
         return int(row["id"])
     finally:
