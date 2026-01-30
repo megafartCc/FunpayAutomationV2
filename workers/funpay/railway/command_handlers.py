@@ -6,7 +6,12 @@ from datetime import datetime, timedelta
 import mysql.connector
 from FunPayAPI.account import Account
 
-from .account_utils import build_account_message, build_rental_choice_message, resolve_rental_minutes
+from .account_utils import (
+    build_account_message,
+    build_display_name,
+    build_rental_choice_message,
+    resolve_rental_minutes,
+)
 from .blacklist_utils import is_blacklisted, log_blacklist_event
 from .chat_utils import send_chat_message, send_message_by_owner
 from .constants import (
@@ -29,6 +34,7 @@ from .constants import (
     RENTAL_PAUSE_EXPIRED_MESSAGE,
     RENTAL_PAUSE_IN_MATCH_MESSAGE,
     RENTAL_RESUMED_MESSAGE,
+    RENTAL_STARTED_MESSAGE,
     RENTAL_UNFROZEN_MESSAGE,
     RENTALS_EMPTY,
     STOCK_DB_MISSING,
@@ -44,6 +50,7 @@ from .lot_utils import (
     fetch_owner_accounts,
     find_replacement_account_for_lot,
     replace_rental_account,
+    start_rental_for_owner,
 )
 from .rental_utils import update_rental_freeze_state
 from .steam_guard_utils import get_steam_guard_code, steam_id_from_mafile
@@ -272,19 +279,33 @@ def handle_code_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
-    if not selected:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    if selected.get("rental_frozen"):
+    active_accounts = [acc for acc in accounts if not acc.get("rental_frozen")]
+    if not active_accounts:
         send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
         return True
 
-    ok, code = get_steam_guard_code(selected.get("mafile_json"))
-    if ok:
-        send_chat_message(logger, account, chat_id, code)
-        return True
-    send_chat_message(logger, account, chat_id, f"Ошибка получения кода: {code}")
+    lines = ["Коды Steam Guard:"]
+    started_now = False
+    for acc in active_accounts:
+        display_name = build_display_name(acc)
+        ok, code = get_steam_guard_code(acc.get("mafile_json"))
+        login = acc.get("login") or "-"
+        if ok:
+            lines.append(f"{display_name} ({login}): {code}")
+        else:
+            lines.append(f"{display_name} ({login}): ошибка {code}")
+        if acc.get("rental_start") is None:
+            started_now = True
+
+    if started_now:
+        start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id)
+        lines.extend(["", RENTAL_STARTED_MESSAGE])
+
+    send_chat_message(logger, account, chat_id, "\n".join(lines))
     return True
 
 

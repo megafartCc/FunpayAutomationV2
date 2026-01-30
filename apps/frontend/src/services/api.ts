@@ -206,6 +206,14 @@ export type ChatMessageItem = {
   workspace_id?: number | null;
 };
 
+export type TelegramStatus = {
+  connected: boolean;
+  chat_id?: number | null;
+  verified_at?: string | null;
+  token_hint?: string | null;
+  start_url?: string | null;
+};
+
 const API_BASE = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_URL || "";
 const API_PREFIX = "/api";
 
@@ -431,4 +439,7 @@ export const api = {
       method: "POST",
       body: { text },
     }),
+  getTelegramStatus: () => request<TelegramStatus>("/telegram/status", { method: "GET" }),
+  createTelegramToken: () => request<TelegramStatus>("/telegram/token", { method: "POST" }),
+  disconnectTelegram: () => request<TelegramStatus>("/telegram/connection", { method: "DELETE" }),
 };

@@ -28,6 +28,7 @@ class Settings:
     remember_cookie_name: str
     session_ttl_seconds: int
     remember_days: int
+    telegram_bot_username: str
 
     def __init__(self) -> None:
         self.jwt_secret = _get_env("JWT_SECRET", "change-me")
@@ -41,6 +42,7 @@ class Settings:
         self.remember_cookie_name = _get_env("REMEMBER_COOKIE_NAME", "diamond_key")
         self.session_ttl_seconds = _get_int("SESSION_TTL_SECONDS", 60 * 60 * 24 * 7)
         self.remember_days = _get_int("REMEMBER_DAYS", 90)
+        self.telegram_bot_username = _get_env("TELEGRAM_BOT_USERNAME", "FunpayAutomation_bot")
 
 
 settings = Settings()
