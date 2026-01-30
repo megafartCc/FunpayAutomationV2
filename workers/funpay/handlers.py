@@ -14,6 +14,8 @@ from FunPayAPI import exceptions, utils as fp_utils
 from FunPayAPI.updater.events import *
 
 from Utils import cardinal_tools
+from railway.db_utils import get_mysql_config
+from railway.order_utils import apply_review_bonus_for_order
 from locales.localizer import Localizer
 from threading import Thread
 import configparser
@@ -237,6 +239,18 @@ def process_review_handler(c: Cardinal, e: NewMessageEvent | LastChatMessageChan
             return
 
         logger.info(f"Изменен отзыв на заказ #{order.id}.")  # locale
+
+        if int(order.review.stars) == 5:
+            try:
+                mysql_cfg = get_mysql_config()
+                apply_review_bonus_for_order(
+                    mysql_cfg,
+                    order_id=str(order.id),
+                    owner=order.buyer_username,
+                    bonus_minutes=60,
+                )
+            except Exception:
+                logger.exception("Failed to apply 5-star rental bonus.")
 
         toggle = f"star{order.review.stars}Reply"
         text = f"star{order.review.stars}ReplyText"
@@ -652,5 +666,4 @@ BIND_TO_ORDER_STATUS_CHANGED = [send_thank_u_message_handler]
 BIND_TO_POST_DELIVERY: list = []
 
 BIND_TO_POST_START: list = []
-
 
