@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-import { api, WorkspaceItem, WorkspaceProxyCheck } from "../../services/api";
+import { api, TelegramStatus, WorkspaceItem, WorkspaceProxyCheck } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 type SettingsPageProps = {
@@ -62,6 +62,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const [editProxyUsername, setEditProxyUsername] = useState("");
   const [editProxyPassword, setEditProxyPassword] = useState("");
   const [proxyChecks, setProxyChecks] = useState<Record<number, WorkspaceProxyCheck & { status: string }>>({});
+  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+  const [telegramLink, setTelegramLink] = useState("");
+  const [telegramBusy, setTelegramBusy] = useState(false);
 
   const platformCopy = useMemo(
     () => ({
@@ -89,6 +92,59 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     setNewProxyUsername("");
     setNewProxyPassword("");
     setNewDefault(false);
+  };
+
+  const refreshTelegramStatus = async () => {
+    try {
+      const status = await api.getTelegramStatus();
+      setTelegramStatus(status);
+    } catch {
+      setTelegramStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    refreshTelegramStatus();
+  }, []);
+
+  const handleGenerateTelegramLink = async () => {
+    if (telegramBusy) return;
+    setTelegramBusy(true);
+    try {
+      const status = await api.createTelegramToken();
+      setTelegramStatus(status);
+      setTelegramLink(status.start_url || "");
+      onToast?.("Telegram link generated.");
+    } catch (err) {
+      onToast?.((err as { message?: string })?.message || "Failed to generate Telegram link.", true);
+    } finally {
+      setTelegramBusy(false);
+    }
+  };
+
+  const handleDisconnectTelegram = async () => {
+    if (telegramBusy) return;
+    setTelegramBusy(true);
+    try {
+      const status = await api.disconnectTelegram();
+      setTelegramStatus(status);
+      setTelegramLink("");
+      onToast?.("Telegram disconnected.");
+    } catch (err) {
+      onToast?.((err as { message?: string })?.message || "Failed to disconnect Telegram.", true);
+    } finally {
+      setTelegramBusy(false);
+    }
+  };
+
+  const handleCopyTelegramLink = async () => {
+    if (!telegramLink) return;
+    try {
+      await navigator.clipboard.writeText(telegramLink);
+      onToast?.("Link copied to clipboard.");
+    } catch {
+      onToast?.("Unable to copy link.", true);
+    }
   };
 
   const startEdit = (item: WorkspaceItem) => {
@@ -500,6 +556,101 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               No workspaces connected yet.
             </div>
           )}
+        </div>
+      </div>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900">Telegram notifications</h3>
+          <p className="text-xs text-neutral-500">
+            Get an instant Telegram alert any time a buyer calls admin in any workspace, including a direct chat link.
+          </p>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-neutral-800">Connection status</div>
+              <p className="text-xs text-neutral-500">
+                Secure your personal link to tie Telegram to this account.
+              </p>
+            </div>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                telegramStatus?.connected
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-neutral-200 bg-white text-neutral-600"
+              }`}
+            >
+              {telegramStatus?.connected ? "Connected" : "Not connected"}
+            </span>
+          </div>
+          {telegramStatus?.connected ? (
+            <div className="text-xs text-neutral-500">
+              Linked chat ID {telegramStatus.chat_id || "—"}.
+              {telegramStatus.verified_at
+                ? ` Verified ${new Date(telegramStatus.verified_at).toLocaleString()}.`
+                : ""}
+            </div>
+          ) : (
+            <div className="text-xs text-neutral-500">
+              {telegramStatus?.token_hint
+                ? `Last generated key ended in ${telegramStatus.token_hint}.`
+                : "No Telegram link generated yet."}
+            </div>
+          )}
+          <ol className="list-decimal pl-5 text-xs text-neutral-600 space-y-1">
+            <li>Generate your personal verification link.</li>
+            <li>Open it in Telegram and tap Start.</li>
+            <li>Done! Admin call alerts will show up here with a chat link.</li>
+          </ol>
+          {telegramLink ? (
+            <div className="grid gap-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                Verification link
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={telegramLink}
+                  readOnly
+                  className="min-w-[220px] flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700"
+                />
+                <button
+                  onClick={handleCopyTelegramLink}
+                  className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600"
+                >
+                  Copy link
+                </button>
+                <a
+                  href={telegramLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white"
+                >
+                  Open Telegram
+                </a>
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                Each link is unique. Generate a new one any time you need to re-connect.
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleGenerateTelegramLink}
+              disabled={telegramBusy}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
+            >
+              {telegramBusy ? "Working..." : "Generate link"}
+            </button>
+            {telegramStatus?.connected ? (
+              <button
+                onClick={handleDisconnectTelegram}
+                disabled={telegramBusy}
+                className="rounded-lg border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Disconnect
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
