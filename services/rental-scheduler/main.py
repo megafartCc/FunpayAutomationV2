@@ -5,7 +5,15 @@ import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+def _resolve_repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "workers").exists():
+            return parent
+    return current.parent
+
+
+ROOT = _resolve_repo_root()
 sys.path.insert(0, str(ROOT))
 
 from FunPayAPI.account import Account
