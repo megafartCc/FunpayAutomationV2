@@ -300,7 +300,7 @@ def assign_account_to_buyer(
             f"""
             UPDATE accounts
             SET {', '.join(updates)}
-            WHERE id = %s AND user_id = %s AND (owner IS NULL OR owner = '')
+            WHERE id = %s AND user_id = %s
             """,
             tuple(params),
         )
@@ -401,43 +401,13 @@ def find_replacement_account_for_lot(
     lot_number: int,
     workspace_id: int | None = None,
 ) -> dict | None:
-    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
-    conn = mysql.connector.connect(**cfg)
     try:
-        cursor = conn.cursor(dictionary=True)
-        if not table_exists(cursor, "lots") or not table_exists(cursor, "accounts"):
-            return None
-        has_low_priority = column_exists(cursor, "accounts", "low_priority")
-        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
-        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
-        params: list = [int(user_id), int(lot_number)]
-        workspace_clause = ""
-        if workspace_id is not None and column_exists(cursor, "lots", "workspace_id"):
-            workspace_clause = " AND (l.workspace_id = %s OR l.workspace_id IS NULL)"
-            params.append(int(workspace_id))
-        cursor.execute(
-            f"""
-            SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
-                   a.rental_start, a.rental_duration, a.rental_duration_minutes,
-                   {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
-                   {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
-                   {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
-                   l.lot_number, l.lot_url
-            FROM lots l
-            JOIN accounts a ON a.id = l.account_id
-            WHERE l.user_id = %s AND l.lot_number = %s{workspace_clause}
-              AND (a.owner IS NULL OR a.owner = '')
-              AND (a.account_frozen = 0 OR a.account_frozen IS NULL)
-              AND (a.rental_frozen = 0 OR a.rental_frozen IS NULL)
-              {('AND (a.low_priority = 0 OR a.low_priority IS NULL)' if has_low_priority else '')}
-            ORDER BY a.id ASC
-            LIMIT 1
-            """,
-            tuple(params),
-        )
-        return cursor.fetchone()
-    finally:
-        conn.close()
+        available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
+    except mysql.connector.Error:
+        return None
+    if not available:
+        return None
+    return available[0]
 
 
 def replace_rental_account(
