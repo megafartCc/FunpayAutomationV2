@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -66,6 +67,13 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
         logger.warning("Chat not found for %s.", owner)
         return False
     return send_chat_message(logger, account, int(chat_id), text)
+
+
+def _build_panel_chat_url(chat_id: int) -> str:
+    base = os.getenv("PANEL_BASE_URL", "").strip() or os.getenv("PANEL_URL", "").strip()
+    if base:
+        return f"{base.rstrip('/')}/chats/{chat_id}"
+    return f"https://funpay.com/chat/?node={chat_id}"
 
 
 def _fetch_latest_chat_times(
@@ -225,13 +233,13 @@ def insert_chat_message(
                     int(chat_id),
                 ),
             )
-            chat_url = f"https://funpay.com/chat/?node={int(chat_id)}"
+            chat_url = _build_panel_chat_url(int(chat_id))
             log_notification_event(
                 mysql_cfg,
                 event_type="admin_call",
                 status="new",
                 title="Admin request received",
-                message=f"Buyer requested admin assistance. Open chat: {chat_url}",
+                message=f"Buyer requested admin assistance. Open chat in panel: {chat_url}",
                 owner=author,
                 user_id=int(user_id),
                 workspace_id=int(workspace_id) if workspace_id is not None else None,
