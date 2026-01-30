@@ -5,7 +5,7 @@ from datetime import datetime
 import mysql.connector
 
 from .db_utils import column_exists, resolve_workspace_mysql_cfg, table_exists
-from .text_utils import normalize_owner_name
+from .text_utils import normalize_owner_name, normalize_username
 
 
 def fetch_lot_mapping(
@@ -281,7 +281,9 @@ def assign_account_to_buyer(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        owner_key = normalize_owner_name(buyer)
+        owner_value = (buyer or "").strip()
+        if not owner_value:
+            return False
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         updates = [
             "owner = %s",
@@ -289,7 +291,7 @@ def assign_account_to_buyer(
             "rental_duration_minutes = %s",
             "rental_start = NULL",
         ]
-        params: list = [owner_key, int(units), int(total_minutes)]
+        params: list = [owner_value, int(units), int(total_minutes)]
         if workspace_id is not None and has_last_rented_workspace:
             updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id))
@@ -454,34 +456,67 @@ def replace_rental_account(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
-        owner_key = normalize_owner_name(owner)
-        if not owner_key:
+        owner_value = (owner or "").strip()
+        if not owner_value:
             return False
+        has_last_rented = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
         rental_start_str = rental_start.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            conn.start_transaction()
+        except Exception:
+            pass
+        updates = [
+            "owner = %s",
+            "rental_duration = %s",
+            "rental_duration_minutes = %s",
+            "rental_start = %s",
+            "rental_frozen = 0",
+        ]
+        params: list = [owner_value, int(rental_duration), int(rental_duration_minutes), rental_start_str]
+        if has_frozen_at:
+            updates.append("rental_frozen_at = NULL")
+        if workspace_id is not None and has_last_rented:
+            updates.append("last_rented_workspace_id = %s")
+            params.append(int(workspace_id))
+        params.extend([int(new_account_id), int(user_id)])
+        where_clauses = ["id = %s", "user_id = %s", "(owner IS NULL OR owner = '')"]
+        if has_account_frozen:
+            where_clauses.append("(account_frozen = 0 OR account_frozen IS NULL)")
+        if has_rental_frozen:
+            where_clauses.append("(rental_frozen = 0 OR rental_frozen IS NULL)")
+        if has_low_priority:
+            where_clauses.append("(`low_priority` = 0 OR `low_priority` IS NULL)")
         cursor.execute(
-            """
-            UPDATE accounts
-            SET owner = %s,
-                rental_start = %s,
-                rental_duration = %s,
-                rental_duration_minutes = %s
-            WHERE id = %s AND user_id = %s
-            """,
-            (owner_key, rental_start_str, int(rental_duration), int(rental_duration_minutes), int(new_account_id), int(user_id)),
+            f"UPDATE accounts SET {', '.join(updates)} WHERE {' AND '.join(where_clauses)}",
+            tuple(params),
         )
-        if cursor.rowcount <= 0:
+        if cursor.rowcount != 1:
             conn.rollback()
             return False
+        old_updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+        if has_frozen_at:
+            old_updates.append("rental_frozen_at = NULL")
+        if has_low_priority:
+            old_updates.append("`low_priority` = 1")
+        old_params: list = [int(old_account_id), int(user_id)]
+        old_where = "id = %s AND user_id = %s"
+        if owner_value:
+            old_where += " AND LOWER(owner) = %s"
+            old_params.append(normalize_username(owner_value))
+        if workspace_id is not None and has_last_rented:
+            old_where += " AND last_rented_workspace_id = %s"
+            old_params.append(int(workspace_id))
         cursor.execute(
-            """
-            UPDATE accounts
-            SET owner = NULL,
-                rental_start = NULL,
-                rental_frozen = 0
-            WHERE id = %s AND user_id = %s
-            """,
-            (int(old_account_id), int(user_id)),
+            f"UPDATE accounts SET {', '.join(old_updates)} WHERE {old_where}",
+            tuple(old_params),
         )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return False
         conn.commit()
         return True
     finally:
