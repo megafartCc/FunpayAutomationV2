@@ -70,10 +70,8 @@ def send_message_by_owner(logger: logging.Logger, account: Account, owner: str |
 
 
 def _build_panel_chat_url(chat_id: int) -> str:
-    base = os.getenv("PANEL_BASE_URL", "").strip() or os.getenv("PANEL_URL", "").strip()
-    if base:
-        return f"{base.rstrip('/')}/chats/{chat_id}"
-    return f"https://funpay.com/chat/?node={chat_id}"
+    base = "https://frontend-production-bf8b.up.railway.app"
+    return f"{base}/chats/{chat_id}"
 
 
 def _fetch_latest_chat_times(
