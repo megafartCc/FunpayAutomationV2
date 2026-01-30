@@ -14,7 +14,9 @@ def _resolve_repo_root() -> Path:
 
 
 ROOT = _resolve_repo_root()
+WORKERS_FUNPAY = ROOT / "workers" / "funpay"
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(WORKERS_FUNPAY))
 
 from FunPayAPI.account import Account
 
