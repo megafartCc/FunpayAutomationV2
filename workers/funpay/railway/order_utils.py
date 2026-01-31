@@ -482,6 +482,50 @@ def fetch_latest_account_for_owner_lot(
         conn.close()
 
 
+def fetch_latest_order_id_for_owner_lot(
+    mysql_cfg: dict,
+    *,
+    owner: str,
+    lot_number: int,
+    user_id: int,
+    workspace_id: int | None,
+) -> str | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    try:
+        lot_number_int = int(lot_number)
+    except Exception:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return None
+        has_workspace = column_exists(cursor, "order_history", "workspace_id")
+        workspace_clause = ""
+        params: list = [owner_key, int(lot_number_int), int(user_id)]
+        if has_workspace and workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT order_id
+            FROM order_history
+            WHERE owner = %s AND lot_number = %s AND user_id = %s{workspace_clause}
+              AND order_id IS NOT NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
 def handle_order_purchased(
     logger: logging.Logger,
     account: Account,
