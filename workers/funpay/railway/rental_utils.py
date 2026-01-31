@@ -340,12 +340,10 @@ def process_rental_monitor(
                 user_id=int(user_id),
                 workspace_id=workspace_id,
             )
-            if order_id:
-                confirm_message = (
-                    f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
-                    f"Подтвердите тут -> https://funpay.com/orders/{order_id}/"
-                )
-            else:
-                confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
+            order_suffix = order_id or "______"
+            confirm_message = (
+                f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
+                f"Подтвердите тут -> https://funpay.com/orders/{order_suffix}/"
+            )
             send_message_by_owner(logger, account, owner, confirm_message)
         _clear_expire_delay_state(state, account_id)
