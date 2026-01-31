@@ -76,6 +76,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
   const [accountEditLogin, setAccountEditLogin] = useState("");
   const [accountEditPassword, setAccountEditPassword] = useState("");
   const [accountEditMmr, setAccountEditMmr] = useState("");
+  const [accountEditWorkspaceId, setAccountEditWorkspaceId] = useState<number | null>(null);
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [accountControlBusy, setAccountControlBusy] = useState(false);
   const { workspaces } = useWorkspace();
@@ -132,12 +133,14 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
       setAccountEditLogin("");
       setAccountEditPassword("");
       setAccountEditMmr("");
+      setAccountEditWorkspaceId(null);
       return;
     }
     setAccountEditName(selectedAccount.name || "");
     setAccountEditLogin(selectedAccount.login || "");
     setAccountEditPassword(selectedAccount.password || "");
     setAccountEditMmr(selectedAccount.mmr !== "-" && selectedAccount.mmr !== undefined ? String(selectedAccount.mmr) : "");
+    setAccountEditWorkspaceId(selectedAccount.workspaceId ?? null);
   }, [selectedAccount]);
 
   const emptyMessage = loading
@@ -207,6 +210,12 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
         return;
       }
       if (String(mmr) !== String(selectedAccount.mmr ?? "")) payload.mmr = mmr;
+    }
+    if (
+      accountEditWorkspaceId !== null &&
+      accountEditWorkspaceId !== (selectedAccount.workspaceId ?? null)
+    ) {
+      payload.workspace_id = accountEditWorkspaceId;
     }
 
     if (!Object.keys(payload).length) {
@@ -329,7 +338,10 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
               editMmrRaw &&
               Number.isFinite(editMmrValue) &&
               String(editMmrValue) !== String(selectedAccount.mmr ?? "");
-            const hasChanges = nameChanged || loginChanged || passwordChanged || mmrChanged;
+            const workspaceChanged =
+              accountEditWorkspaceId !== null &&
+              accountEditWorkspaceId !== (selectedAccount.workspaceId ?? null);
+            const hasChanges = nameChanged || loginChanged || passwordChanged || mmrChanged || workspaceChanged;
             return (
               <div className="space-y-4">
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -429,9 +441,21 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
-                      <div className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                        {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}
-                      </div>
+                      <select
+                        value={accountEditWorkspaceId ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setAccountEditWorkspaceId(value ? Number(value) : null);
+                        }}
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+                      >
+                        <option value="">Select workspace</option>
+                        {workspaces.map((workspace) => (
+                          <option key={workspace.id} value={workspace.id}>
+                            {formatWorkspaceLabel(workspace.name, workspace.id)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <input
                       value={accountEditMmr}
