@@ -827,8 +827,16 @@ def handle_order_purchased(
         )
 
     display_minutes = resolve_rental_minutes(updated_account or mapping) or total_minutes
-    message = build_account_message(updated_account or mapping, display_minutes, include_timer_note=True)
     if owner:
-        message = f"✅ Оплата получена. Аренда продлена.\n\n{message}"
+        account_id = (updated_account or mapping).get("id")
+        duration_label = format_duration_minutes(display_minutes)
+        id_suffix = f" {account_id}" if account_id is not None else ""
+        message = (
+            "✅ Оплата получена. Аренда продлена.\n"
+            f"Текущая аренда: {duration_label}.\n"
+            f"Для данных: !акк{id_suffix}."
+        )
+    else:
+        message = build_account_message(updated_account or mapping, display_minutes, include_timer_note=True)
     send_chat_message(logger, account, chat_id, message)
     mark_order_processed(site_username, site_user_id, workspace_id, order_id)
