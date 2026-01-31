@@ -436,7 +436,12 @@ def handle_code_command(
             started_now = True
 
     if started_now:
-        start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id)
+        account_ids = [
+            int(acc.get("id"))
+            for acc in active_accounts
+            if acc.get("rental_start") is None and acc.get("id") is not None
+        ]
+        start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id, account_ids)
         lines.extend(["", RENTAL_STARTED_MESSAGE])
 
     send_chat_message(logger, account, chat_id, "\n".join(lines))
