@@ -77,6 +77,8 @@ def fetch_available_lot_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
+        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
+        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
 
         account_filters: list[str] = ["a.owner IS NULL"]
         if has_account_frozen:
@@ -179,6 +181,7 @@ def fetch_owner_accounts(
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
                        {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
+                       {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
                        {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
                        {'a.mmr' if has_mmr else 'NULL AS mmr'},
                        l.lot_number, l.lot_url
@@ -197,6 +200,7 @@ def fetch_owner_accounts(
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
                        {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
+                       {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
                        {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
                        {'a.mmr' if has_mmr else 'NULL AS mmr'},
                        NULL AS lot_number,
