@@ -77,9 +77,6 @@ def fetch_available_lot_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
-        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-
         account_filters: list[str] = ["a.owner IS NULL"]
         if has_account_frozen:
             account_filters.append("a.account_frozen = 0")
@@ -163,6 +160,7 @@ def fetch_owner_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
+        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         params: list = [owner_key, int(user_id)]
