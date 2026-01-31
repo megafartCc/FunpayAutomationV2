@@ -420,6 +420,21 @@ def find_replacement_account_for_lot(
         return None
     if not available:
         return None
+    has_lot_number = any(acc.get("lot_number") is not None for acc in available)
+    if has_lot_number:
+        filtered: list[dict] = []
+        for acc in available:
+            acc_lot_number = acc.get("lot_number")
+            if acc_lot_number is None:
+                continue
+            try:
+                if int(acc_lot_number) == int(lot_number):
+                    filtered.append(acc)
+            except Exception:
+                continue
+        if not filtered:
+            return None
+        available = filtered
     if target_mmr is not None:
         candidates: list[tuple[int, int, dict]] = []
         for acc in available:
