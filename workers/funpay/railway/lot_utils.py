@@ -318,6 +318,7 @@ def start_rental_for_owner(
     user_id: int,
     owner: str,
     workspace_id: int | None = None,
+    account_ids: list[int] | None = None,
 ) -> int:
     owner_key = normalize_owner_name(owner)
     if not owner_key:
@@ -331,11 +332,16 @@ def start_rental_for_owner(
         if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
             workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(int(workspace_id))
+        id_clause = ""
+        if account_ids:
+            placeholders = ", ".join(["%s"] * len(account_ids))
+            id_clause = f" AND id IN ({placeholders})"
+            params.extend([int(acc_id) for acc_id in account_ids])
         cursor.execute(
             f"""
             UPDATE accounts
             SET rental_start = NOW()
-            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}
+            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}{id_clause}
             """,
             tuple(params),
         )
