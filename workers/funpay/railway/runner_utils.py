@@ -29,7 +29,7 @@ from .chat_utils import (
 )
 from .account_utils import build_account_message, build_rental_choice_message, get_remaining_label, resolve_rental_minutes
 from .command_handlers import build_stock_messages, handle_command
-from .constants import COMMANDS_RU, RENTALS_EMPTY, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
+from .constants import COMMAND_PREFIXES, COMMANDS_RU, RENTALS_EMPTY, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
@@ -251,6 +251,29 @@ def _extract_buyer_from_review_text(text: str | None) -> str | None:
         return match.group(1)
     return None
 
+def _extract_command_tokens(text: str) -> list[str]:
+    if not text:
+        return []
+    tokens = re.findall(r"![^\s]+", text.lower())
+    cleaned: list[str] = []
+    for token in tokens:
+        token = token.strip(".,;:!?)]}>'\\\"")
+        if token == "!":
+            continue
+        cleaned.append(token)
+    return cleaned
+
+
+def _contains_unknown_commands(text: str) -> bool:
+    if not text:
+        return False
+    allowed = set(COMMAND_PREFIXES)
+    for token in _extract_command_tokens(text):
+        if token not in allowed:
+            return True
+    return False
+
+
 def _handle_review_bonus(
     logger: logging.Logger,
     account: Account,
@@ -370,6 +393,7 @@ def log_message(
         return None
 
     msg = event.message
+    lower_text = ""
 
     sender_username = None
 
@@ -618,6 +642,14 @@ def log_message(
             context=ai_context,
         )
         if ai_text:
+            if _contains_unknown_commands(ai_text):
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    "Я не выполняю действия напрямую. Используйте команды:\n" + COMMANDS_RU,
+                )
+                return None
             send_chat_message(logger, account, int(chat_id), ai_text)
     if is_system:
         logger.info(
