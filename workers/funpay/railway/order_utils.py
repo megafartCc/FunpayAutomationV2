@@ -769,6 +769,10 @@ def handle_order_purchased(
             total_minutes=total_minutes,
             workspace_id=workspace_id,
         )
+        updated_account = dict(mapping)
+        updated_account["owner"] = buyer
+        updated_account["rental_duration"] = amount
+        updated_account["rental_duration_minutes"] = total_minutes
         log_order_history(
             mysql_cfg,
             order_id=order_id,
