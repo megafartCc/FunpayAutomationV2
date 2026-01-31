@@ -34,7 +34,7 @@ from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
 from .notifications_utils import upsert_workspace_status
-from .order_utils import apply_review_bonus_for_order, handle_order_purchased
+from .order_utils import apply_review_bonus_for_order, handle_order_purchased, revert_review_bonus_for_order
 from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 from .rental_utils import process_rental_monitor
@@ -45,10 +45,8 @@ from .text_utils import extract_order_id, parse_command
 
 WELCOME_MESSAGE = os.getenv(
     "FUNPAY_WELCOME_MESSAGE",
-    "\u041f\u0440\u0438\u0432\u0435\u0442, "
-    "\u0432\u044b\u0434\u0430\u0447\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432 "
-    "\u043f\u043e\u043b\u043d\u043e\u0441\u0442\u044c\u044e \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f."
-    "\n\n"
+    "????????????! ????? ?????? ? ??????? ????????, ??????????? ??????? !????. "
+    "??? ??????? ??????? ?????? ?????????. ???? ????? ?????? ? ?????? ????????.\n\n"
     + COMMANDS_RU,
 )
 
@@ -226,6 +224,16 @@ def _build_ai_context(
     return "\n".join(sections) if sections else None
 
 
+
+
+def _extract_buyer_from_review_text(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"(?:??????????|The buyer)\s+([A-Za-z0-9_-]+)", text)
+    if match:
+        return match.group(1)
+    return None
+
 def _handle_review_bonus(
     logger: logging.Logger,
     account: Account,
@@ -236,25 +244,25 @@ def _handle_review_bonus(
     chat_name: str,
     chat_id: int | None,
 ) -> None:
-    if getattr(msg, "type", None) not in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED):
+    if getattr(msg, "type", None) not in (
+        MessageTypes.NEW_FEEDBACK,
+        MessageTypes.FEEDBACK_CHANGED,
+        MessageTypes.FEEDBACK_DELETED,
+    ):
         return
     order_id = extract_order_id(getattr(msg, "text", None) or "")
     if not order_id:
         return
+    order = None
     try:
         order = account.get_order(order_id)
     except Exception as exc:
         logger.warning("Failed to fetch order %s for review bonus: %s", order_id, exc)
-        return
-    review = getattr(order, "review", None)
-    stars = getattr(review, "stars", None)
-    try:
-        stars_value = int(stars)
-    except Exception:
-        return
-    if stars_value != 5:
-        return
-    buyer = getattr(order, "buyer_username", None) or chat_name
+    buyer = None
+    if order is not None:
+        buyer = getattr(order, "buyer_username", None)
+    if not buyer:
+        buyer = _extract_buyer_from_review_text(getattr(msg, "text", None) or "") or chat_name
     if not buyer:
         return
     try:
@@ -262,21 +270,61 @@ def _handle_review_bonus(
     except RuntimeError:
         return
     bonus_minutes = env_int("REVIEW_BONUS_MINUTES", 60)
-    updated = apply_review_bonus_for_order(
-        mysql_cfg,
-        order_id=str(order_id),
-        owner=buyer,
-        bonus_minutes=int(bonus_minutes),
-    )
-    if not updated or chat_id is None:
-        return
-    bonus_label = f"+{bonus_minutes} минут"
+    bonus_label = f"+{bonus_minutes} ?????"
     if int(bonus_minutes) == 60:
-        bonus_label = "+1 час"
-    account_id = updated.get("id")
-    account_suffix = f" аккаунта (ID {account_id})" if account_id is not None else ""
-    message = f"Мы обнаружили отзыв и начислили {bonus_label} к аренде{account_suffix}."
-    send_chat_message(logger, account, int(chat_id), message)
+        bonus_label = "+1 ???"
+
+    def _send_bonus_message(updated: dict | None) -> None:
+        if not updated or chat_id is None:
+            return
+        account_id = updated.get("id")
+        account_suffix = f" ???????? (ID {account_id})" if account_id is not None else ""
+        message = f"?? ?????????? ????? ? ????????? {bonus_label} ? ??????{account_suffix}."
+        send_chat_message(logger, account, int(chat_id), message)
+
+    def _send_revert_message(updated: dict | None, reason: str) -> None:
+        if not updated or chat_id is None:
+            return
+        account_id = updated.get("id")
+        account_suffix = f" ???????? (ID {account_id})" if account_id is not None else ""
+        message = f"{reason} ? ????? {bonus_label} ??????? ? ??????{account_suffix}."
+        send_chat_message(logger, account, int(chat_id), message)
+
+    if getattr(msg, "type", None) == MessageTypes.FEEDBACK_DELETED:
+        updated = revert_review_bonus_for_order(
+            mysql_cfg,
+            order_id=str(order_id),
+            owner=buyer,
+            bonus_minutes=int(bonus_minutes),
+        )
+        _send_revert_message(updated, "?? ?????????? ???????? ??????")
+        return
+
+    if order is None:
+        return
+    review = getattr(order, "review", None)
+    stars = getattr(review, "stars", None)
+    try:
+        stars_value = int(stars)
+    except Exception:
+        return
+    if stars_value == 5:
+        updated = apply_review_bonus_for_order(
+            mysql_cfg,
+            order_id=str(order_id),
+            owner=buyer,
+            bonus_minutes=int(bonus_minutes),
+        )
+        _send_bonus_message(updated)
+        return
+    if getattr(msg, "type", None) == MessageTypes.FEEDBACK_CHANGED:
+        updated = revert_review_bonus_for_order(
+            mysql_cfg,
+            order_id=str(order_id),
+            owner=buyer,
+            bonus_minutes=int(bonus_minutes),
+        )
+        _send_revert_message(updated, "????? ???????")
 
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
     sleep_time = interval_seconds
@@ -562,7 +610,7 @@ def log_message(
             chat_url,
             (msg.text or "").strip(),
         )
-        if msg.type in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED):
+        if msg.type in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED, MessageTypes.FEEDBACK_DELETED):
             _handle_review_bonus(
                 logger,
                 account,

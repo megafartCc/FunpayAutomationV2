@@ -376,8 +376,8 @@ def extend_rental_for_buyer(
         base_minutes = row.get("rental_duration_minutes")
         if base_minutes is None:
             base_minutes = base_duration * 60
-        total_minutes = int(base_minutes or 0) + int(add_minutes)
-        total_units = base_duration + int(add_units)
+        total_minutes = max(0, int(base_minutes or 0) + int(add_minutes))
+        total_units = max(0, base_duration + int(add_units))
         cursor.execute(
             """
             UPDATE accounts
