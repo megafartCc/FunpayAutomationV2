@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -30,6 +30,7 @@ const titles: Record<string, string> = {
 
 const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const title =
     titles[location.pathname] ||
     (location.pathname.startsWith("/chats") ? "Chats" : "Dashboard");
@@ -42,15 +43,27 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   return (
     <WorkspaceProvider>
       <div className="flex h-screen overflow-hidden bg-neutral-50">
-        <Sidebar />
+        <Sidebar className="hidden lg:flex" />
+        {sidebarOpen ? (
+          <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        ) : null}
+        {sidebarOpen ? (
+          <Sidebar
+            className="fixed left-0 top-0 z-40 w-72 lg:hidden"
+            isMobile
+            onClose={() => setSidebarOpen(false)}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+        ) : null}
         <div className="flex h-screen min-h-0 flex-1 flex-col overflow-hidden">
           <TopBar
             title={title}
             userInitial={initial}
             onLogout={onLogout}
             hideWorkspaceControls={hideWorkspaceControls}
+            onMenuToggle={() => setSidebarOpen((prev) => !prev)}
           />
-          <main className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+          <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
             <Outlet />
           </main>
         </div>
