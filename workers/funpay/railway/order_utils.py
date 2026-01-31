@@ -6,7 +6,7 @@ import mysql.connector
 from FunPayAPI.account import Account
 from FunPayAPI.common.enums import MessageTypes
 
-from .account_utils import build_account_message
+from .account_utils import build_account_message, resolve_rental_minutes
 from .blacklist_utils import (
     get_blacklist_compensation_total,
     is_blacklisted,
@@ -826,6 +826,9 @@ def handle_order_purchased(
             action="extend",
         )
 
-    message = build_account_message(updated_account or mapping, total_minutes, include_timer_note=True)
+    display_minutes = resolve_rental_minutes(updated_account or mapping) or total_minutes
+    message = build_account_message(updated_account or mapping, display_minutes, include_timer_note=True)
+    if owner:
+        message = f"✅ Оплата получена. Аренда продлена.\n\n{message}"
     send_chat_message(logger, account, chat_id, message)
     mark_order_processed(site_username, site_user_id, workspace_id, order_id)
