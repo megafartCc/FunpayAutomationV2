@@ -395,6 +395,7 @@ def log_message(
 
     message_text = msg.text or ""
     normalized_text = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", message_text)
+    lower_text = normalized_text.lower()
     command, command_args = parse_command(message_text)
     if not sender_username or sender_username == "-":
         return None
@@ -510,7 +511,6 @@ def log_message(
             send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
             return None
 
-        lower_text = normalized_text.lower()
         lot_url = _extract_lot_url(normalized_text)
         if lot_url:
             logger.info(
