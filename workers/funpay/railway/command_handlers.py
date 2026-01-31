@@ -352,25 +352,26 @@ def handle_extend_command(
         send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, "!продлить"))
         return True
 
-    updated = extend_rental_for_buyer(
-        mysql_cfg,
-        account_id=int(selected["id"]),
-        user_id=int(user_id),
-        buyer=sender_username,
-        add_units=int(hours),
-        add_minutes=int(hours) * 60,
-        workspace_id=workspace_id,
-    )
-    if not updated:
-        send_chat_message(logger, account, chat_id, "Не удалось продлить аренду. Попробуйте позже.")
-        return True
-
     duration_label = format_duration_minutes(int(hours) * 60)
+    lot_url = selected.get("lot_url")
+    lot_number = selected.get("lot_number")
+    if not lot_url and lot_number:
+        lot_url = f"лот №{lot_number}"
+    if lot_url:
+        message = (
+            f"Чтобы продлить аренду на {duration_label}, оплатите этот лот: {lot_url}.\n"
+            "1 шт = 1 час."
+        )
+    else:
+        message = (
+            f"Чтобы продлить аренду на {duration_label}, оплатите соответствующий лот.\n"
+            "Лот не найден, пожалуйста напишите !админ."
+        )
     send_chat_message(
         logger,
         account,
         chat_id,
-        f"✅ Аренда продлена на {duration_label}. Для проверки данных: !акк {updated.get('id')}.",
+        message,
     )
     return True
 
