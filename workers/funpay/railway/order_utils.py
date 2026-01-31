@@ -634,7 +634,12 @@ def handle_order_purchased(
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen") or mapping.get("low_priority"):
         replacement = find_replacement_account_for_lot(
-            mysql_cfg, int(user_id), int(lot_number), workspace_id
+            mysql_cfg,
+            int(user_id),
+            int(lot_number),
+            workspace_id,
+            target_mmr=mapping.get("mmr"),
+            exclude_account_id=mapping.get("id"),
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
@@ -697,7 +702,12 @@ def handle_order_purchased(
     buyer_key = normalize_username(buyer)
     if owner_key and owner_key != buyer_key:
         replacement = find_replacement_account_for_lot(
-            mysql_cfg, int(user_id), int(lot_number), workspace_id
+            mysql_cfg,
+            int(user_id),
+            int(lot_number),
+            workspace_id,
+            target_mmr=mapping.get("mmr"),
+            exclude_account_id=mapping.get("id"),
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)

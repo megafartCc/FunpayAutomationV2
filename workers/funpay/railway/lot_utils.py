@@ -4,6 +4,7 @@ from datetime import datetime
 
 import mysql.connector
 
+from .constants import LP_REPLACE_MMR_RANGE
 from .db_utils import column_exists, resolve_workspace_mysql_cfg, table_exists
 from .text_utils import normalize_owner_name, normalize_username
 
@@ -402,6 +403,10 @@ def find_replacement_account_for_lot(
     user_id: int,
     lot_number: int,
     workspace_id: int | None = None,
+    *,
+    target_mmr: int | None = None,
+    exclude_account_id: int | None = None,
+    max_delta: int = LP_REPLACE_MMR_RANGE,
 ) -> dict | None:
     try:
         available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
@@ -409,7 +414,30 @@ def find_replacement_account_for_lot(
         return None
     if not available:
         return None
-    return available[0]
+    if target_mmr is not None:
+        candidates: list[tuple[int, int, dict]] = []
+        for acc in available:
+            if exclude_account_id is not None and int(acc.get("id") or 0) == int(exclude_account_id):
+                continue
+            raw_mmr = acc.get("mmr")
+            if raw_mmr is None:
+                continue
+            try:
+                mmr = int(raw_mmr)
+            except Exception:
+                continue
+            diff = abs(mmr - int(target_mmr))
+            if diff > max_delta:
+                continue
+            candidates.append((diff, mmr, acc))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1], int(item[2].get("id") or 0)))
+            return candidates[0][2]
+    for acc in available:
+        if exclude_account_id is not None and int(acc.get("id") or 0) == int(exclude_account_id):
+            continue
+        return acc
+    return None
 
 
 def replace_rental_account(
