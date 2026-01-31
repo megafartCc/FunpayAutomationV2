@@ -159,6 +159,13 @@ def _wants_account_info(text: str) -> bool:
 
 
 
+def _wants_command_list(text: str) -> bool:
+    if not text:
+        return False
+    hints = ("команд", "commands", "help", "помощ", "что умеешь", "что можешь", "список команд")
+    return any(word in text for word in hints)
+
+
 def _wants_stock_list(text: str) -> bool:
     if not text:
         return False
@@ -499,6 +506,10 @@ def log_message(
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
+        if _wants_command_list(lower_text):
+            send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            return None
+
         lower_text = normalized_text.lower()
         lot_url = _extract_lot_url(normalized_text)
         if lot_url:
