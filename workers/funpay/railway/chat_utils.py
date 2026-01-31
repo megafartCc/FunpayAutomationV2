@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 import mysql.connector
+from requests import exceptions as requests_exceptions
 from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
@@ -43,12 +44,33 @@ def is_first_time_chat(
 
 
 def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, text: str) -> bool:
-    try:
-        account.send_message(chat_id, text)
-        return True
-    except Exception as exc:
-        logger.warning("Failed to send chat message: %s", exc)
-        return False
+    retries = max(0, env_int("FUNPAY_CHAT_SEND_RETRIES", 2))
+    retry_delay = max(0, env_int("FUNPAY_CHAT_SEND_RETRY_DELAY", 1))
+    for attempt in range(retries + 1):
+        try:
+            account.send_message(chat_id, text)
+            return True
+        except Exception as exc:
+            should_retry = isinstance(
+                exc,
+                (
+                    requests_exceptions.SSLError,
+                    requests_exceptions.ConnectionError,
+                    requests_exceptions.Timeout,
+                ),
+            )
+            if should_retry and attempt < retries:
+                logger.warning(
+                    "Failed to send chat message (attempt %s/%s): %s",
+                    attempt + 1,
+                    retries + 1,
+                    exc,
+                )
+                if retry_delay:
+                    time.sleep(retry_delay)
+                continue
+            logger.warning("Failed to send chat message: %s", exc)
+            return False
 
 
 def send_message_by_owner(logger: logging.Logger, account: Account, owner: str | None, text: str) -> bool:

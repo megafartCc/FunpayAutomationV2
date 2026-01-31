@@ -158,7 +158,7 @@ class MySQLWorkspaceRepo:
                     (workspace_id, user_id),
                 )
             conn.commit()
-            return cursor.rowcount > 0
+            return True
         finally:
             conn.close()
 

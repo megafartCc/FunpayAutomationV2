@@ -39,6 +39,7 @@ class AccountUpdate(BaseModel):
     mmr: int | None = Field(None, ge=0)
     rental_duration: int | None = Field(None, ge=1, le=9999)
     rental_minutes: int | None = Field(None, ge=0, le=59)
+    workspace_id: int | None = Field(None, ge=1)
 
 
 class AssignRequest(BaseModel):
@@ -232,6 +233,11 @@ def update_account(
         fields["password"] = payload.password
     if payload.mmr is not None:
         fields["mmr"] = payload.mmr
+    if payload.workspace_id is not None:
+        target_workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
+        if not target_workspace:
+            raise HTTPException(status_code=400, detail="Select a workspace for this account.")
+        fields["workspace_id"] = int(payload.workspace_id)
 
     if payload.rental_duration is not None or payload.rental_minutes is not None:
         current_hours = int(current.get("rental_duration") or 0)
