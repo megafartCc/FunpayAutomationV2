@@ -693,7 +693,9 @@ def handle_order_purchased(
         return
 
     owner = mapping.get("owner")
-    if owner and normalize_username(owner) != normalize_username(buyer):
+    owner_key = normalize_username(owner)
+    buyer_key = normalize_username(buyer)
+    if owner_key and owner_key != buyer_key:
         replacement = find_replacement_account_for_lot(
             mysql_cfg, int(user_id), int(lot_number), workspace_id
         )
@@ -757,7 +759,7 @@ def handle_order_purchased(
     total_minutes = unit_minutes * amount
 
     updated_account = mapping
-    if not owner:
+    if not owner_key:
         assign_account_to_buyer(
             mysql_cfg,
             account_id=int(mapping["id"]),
@@ -827,7 +829,7 @@ def handle_order_purchased(
         )
 
     display_minutes = resolve_rental_minutes(updated_account or mapping) or total_minutes
-    if owner:
+    if owner_key:
         account_id = (updated_account or mapping).get("id")
         duration_label = format_duration_minutes(display_minutes)
         id_suffix = f" {account_id}" if account_id is not None else ""
