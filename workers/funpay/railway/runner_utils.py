@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from .chat_time_utils import _extract_datetime_from_html
 from .ai_utils import generate_ai_reply
 from .chat_utils import (
+    build_recent_chat_context,
     insert_chat_message,
     is_first_time_chat,
     process_chat_outbox,
@@ -26,21 +27,21 @@ from .chat_utils import (
     sync_chats_list,
     upsert_chat_summary,
 )
-from .account_utils import build_account_message, build_rental_choice_message, resolve_rental_minutes
+from .account_utils import build_account_message, build_rental_choice_message, get_remaining_label, resolve_rental_minutes
 from .command_handlers import build_stock_messages, handle_command
 from .constants import COMMANDS_RU, RENTALS_EMPTY, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
 from .notifications_utils import upsert_workspace_status
-from .order_utils import handle_order_purchased
+from .order_utils import apply_review_bonus_for_order, handle_order_purchased
 from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
 from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
 from .user_utils import get_user_id_by_username
-from .text_utils import parse_command
+from .text_utils import extract_order_id, parse_command
 
 WELCOME_MESSAGE = os.getenv(
     "FUNPAY_WELCOME_MESSAGE",
@@ -100,34 +101,20 @@ def _respond_free_lots(
         send_chat_message(logger, account, chat_id, message)
 
 
-def _is_rental_related(text: str) -> bool:
+def _wants_low_priority_replace(text: str) -> bool:
     if not text:
         return False
-    keywords = (
-        "аренд",
-        "аккаунт",
-        "лот",
-        "сток",
-        "код",
-        "steam",
-        "доступ",
-        "заказ",
-        "покуп",
-        "оплат",
-        "продл",
-        "замен",
-        "ммр",
-        "mmr",
-        "логин",
-        "парол",
-        "refund",
-        "возврат",
-        "верни",
-        "деньг",
-        "refund",
-        "moneyback",
-    )
-    return any(key in text for key in keywords)
+    if "Ð»Ð¿Ð·Ð°Ð¼ÐµÐ½Ð°" in text:
+        return True
+    if ("Ð·Ð°Ð¼ÐµÐ½" in text or "replace" in text or "replacement" in text) and (
+        "Ð°ÐºÐºÐ°ÑÐ½Ñ" in text or "account" in text or "Ð»Ð¾Ñ" in text or "mmr" in text or "Ð»Ð¿" in text
+    ):
+        return True
+    return False
+
+
+
+
 
 
 def _wants_refund(text: str) -> bool:
@@ -162,9 +149,134 @@ def _wants_account_info(text: str) -> bool:
         "времени",
         "срок",
         "доступ",
+        "Ð°ÑÐµÐ½Ð´",
+        "Ð°ÑÐµÐ½Ð´Ð°",
+        "Ð°ÑÐµÐ½Ð´Ñ",
+        "rental",
+        "rent",
+        "ÑÐµÐºÑÑ",
+        "Ð°ÐºÑÐ¸Ð²Ð½",
     )
     return any(key in text for key in keywords)
 
+
+
+def _extract_account_id_hint(text: str) -> str:
+    if not text:
+        return ""
+    match = re.search(r"(?:id|ID|Ð°Ð¹Ð´Ð¸|#)\s*(\d{2,})", text)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _build_rental_summary(accounts: list[dict], limit: int) -> list[str]:
+    if not accounts or limit <= 0:
+        return []
+    now = datetime.utcnow()
+    lines: list[str] = []
+    for acc in accounts[:limit]:
+        account_id = acc.get("id")
+        name = acc.get("display_name") or acc.get("account_name") or f"ID {account_id}"
+        expiry_str, remaining_str = get_remaining_label(acc, now)
+        if expiry_str:
+            remaining = f"{remaining_str} (expires {expiry_str} MSK)"
+        else:
+            remaining = "awaiting !ÐºÐ¾Ð´"
+        status = "frozen" if acc.get("rental_frozen") else "active"
+        label = f"ID {account_id}" if account_id is not None else "ID -"
+        lines.append(f"{label}: {name} | {status} | remaining {remaining}")
+    return lines
+
+
+def _build_ai_context(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    sender_username: str,
+) -> str | None:
+    history_limit = env_int("AI_CONTEXT_MESSAGES", 8)
+    summary_limit = env_int("AI_RENTAL_SUMMARY_LIMIT", 5)
+    history_lines: list[str] = []
+    rental_lines: list[str] = []
+    try:
+        history_lines = build_recent_chat_context(
+            mysql_cfg,
+            int(user_id),
+            int(workspace_id) if workspace_id is not None else None,
+            int(chat_id),
+            limit=history_limit,
+            include_bot=False,
+        )
+    except Exception:
+        history_lines = []
+    try:
+        accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
+        rental_lines = _build_rental_summary(accounts, summary_limit)
+    except Exception:
+        rental_lines = []
+    sections: list[str] = []
+    if history_lines:
+        sections.append("Recent buyer messages:")
+        sections.extend(history_lines)
+    if rental_lines:
+        sections.append("Current rentals summary:")
+        sections.extend(rental_lines)
+    return "\n".join(sections) if sections else None
+
+
+def _handle_review_bonus(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    msg: object,
+    chat_name: str,
+    chat_id: int | None,
+) -> None:
+    if getattr(msg, "type", None) not in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED):
+        return
+    order_id = extract_order_id(getattr(msg, "text", None) or "")
+    if not order_id:
+        return
+    try:
+        order = account.get_order(order_id)
+    except Exception as exc:
+        logger.warning("Failed to fetch order %s for review bonus: %s", order_id, exc)
+        return
+    review = getattr(order, "review", None)
+    stars = getattr(review, "stars", None)
+    try:
+        stars_value = int(stars)
+    except Exception:
+        return
+    if stars_value != 5:
+        return
+    buyer = getattr(order, "buyer_username", None) or chat_name
+    if not buyer:
+        return
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        return
+    bonus_minutes = env_int("REVIEW_BONUS_MINUTES", 60)
+    updated = apply_review_bonus_for_order(
+        mysql_cfg,
+        order_id=str(order_id),
+        owner=buyer,
+        bonus_minutes=int(bonus_minutes),
+    )
+    if not updated or chat_id is None:
+        return
+    bonus_label = f"+{bonus_minutes} минут"
+    if int(bonus_minutes) == 60:
+        bonus_label = "+1 час"
+    account_id = updated.get("id")
+    account_suffix = f" аккаунта (ID {account_id})" if account_id is not None else ""
+    message = f"Мы обнаружили отзыв и начислили {bonus_label} к аренде{account_suffix}."
+    send_chat_message(logger, account, int(chat_id), message)
 
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
     sleep_time = interval_seconds
@@ -379,6 +491,21 @@ def log_message(
                 if not accounts:
                     send_chat_message(logger, account, int(chat_id), RENTALS_EMPTY)
                     return None
+            if _wants_low_priority_replace(lower_text):
+                handle_command(
+                    logger,
+                    account,
+                    site_username,
+                    site_user_id,
+                    workspace_id,
+                    chat_name,
+                    sender_username,
+                    msg.chat_id,
+                    "!Ð»Ð¿Ð·Ð°Ð¼ÐµÐ½Ð°",
+                    _extract_account_id_hint(message_text),
+                    chat_url,
+                )
+                return None
                 if len(accounts) > 1:
                     send_chat_message(
                         logger,
@@ -403,24 +530,25 @@ def log_message(
                 "По вопросам возврата напишите !админ — я подключу продавца, он разберётся.",
             )
             return None
-        if not _is_rental_related(lower_text):
-            send_chat_message(
-                logger,
-                account,
-                int(chat_id),
-                "Я отвечаю только по аренде аккаунтов. Напишите вопрос по аренде или используйте команды:\n"
-                + COMMANDS_RU,
-            )
-            return None
     if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
+        ai_context = None
+        if mysql_cfg and user_id is not None and chat_id is not None:
+            ai_context = _build_ai_context(
+                mysql_cfg,
+                int(user_id),
+                workspace_id,
+                int(chat_id),
+                sender_username,
+            )
         ai_text = generate_ai_reply(
             message_text,
             sender=sender_username,
             chat_name=chat_name,
+            context=ai_context,
         )
         if ai_text:
             send_chat_message(logger, account, int(chat_id), ai_text)
@@ -434,8 +562,26 @@ def log_message(
             chat_url,
             (msg.text or "").strip(),
         )
+        if msg.type in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED):
+            _handle_review_bonus(
+                logger,
+                account,
+                site_username,
+                site_user_id,
+                workspace_id,
+                msg,
+                chat_name,
+                chat_id,
+            )
         if msg.type == MessageTypes.ORDER_PURCHASED:
-            handle_order_purchased(logger, account, site_username, site_user_id, workspace_id, msg)
+            handle_order_purchased(
+                logger,
+                account,
+                site_username,
+                site_user_id,
+                workspace_id,
+                msg,
+            )
     return None
 
 

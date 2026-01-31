@@ -237,12 +237,39 @@ def handle_account_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    for acc in accounts:
-        total_minutes = acc.get("rental_duration_minutes")
-        if total_minutes is None:
-            total_minutes = get_unit_minutes(acc)
-        message = build_account_message(acc, int(total_minutes or 0), include_timer_note=True)
-        send_chat_message(logger, account, chat_id, message)
+    def _send_account_choice() -> None:
+        lines = ["У вас есть несколько аренд:", ""]
+        for acc in accounts:
+            display = build_display_name(acc)
+            lines.append(f"{display} - ID {acc.get('id')}")
+        lines.extend(["", "Выберите, к какому аккаунту хотите получить данные: !акк <ID>"])
+        send_chat_message(logger, account, chat_id, "\n".join(lines))
+
+    account_id = parse_account_id_arg(args)
+    if len(accounts) > 1 and account_id is None:
+        _send_account_choice()
+        return True
+
+    selected = None
+    if account_id is not None:
+        for acc in accounts:
+            try:
+                if int(acc.get("id")) == int(account_id):
+                    selected = acc
+                    break
+            except Exception:
+                continue
+        if not selected:
+            _send_account_choice()
+            return True
+    else:
+        selected = accounts[0]
+
+    total_minutes = selected.get("rental_duration_minutes")
+    if total_minutes is None:
+        total_minutes = get_unit_minutes(selected)
+    message = build_account_message(selected, int(total_minutes or 0), include_timer_note=True)
+    send_chat_message(logger, account, chat_id, message)
     return True
 
 

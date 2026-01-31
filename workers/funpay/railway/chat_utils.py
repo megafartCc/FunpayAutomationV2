@@ -155,6 +155,37 @@ def _fetch_recent_chat_messages(
         conn.close()
 
 
+def build_recent_chat_context(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    *,
+    limit: int = 8,
+    include_bot: bool = False,
+) -> list[str]:
+    rows = _fetch_recent_chat_messages(
+        mysql_cfg,
+        user_id,
+        workspace_id,
+        chat_id,
+        limit=limit,
+    )
+    lines: list[str] = []
+    for row in rows:
+        if not include_bot and row.get("by_bot"):
+            continue
+        text = row.get("text")
+        if not text:
+            continue
+        author = row.get("author") or ("Bot" if row.get("by_bot") else "User")
+        cleaned = " ".join(str(text).split())
+        if not cleaned:
+            continue
+        lines.append(f"{author}: {cleaned}")
+    return lines
+
+
 def _is_admin_command(text: str | None) -> bool:
     if not text:
         return False

@@ -19,9 +19,17 @@ DEFAULT_PROMPT = (
 )
 
 
-def _build_payload(user_text: str, *, sender: str | None, chat_name: str | None) -> dict[str, Any]:
+def _build_payload(
+    user_text: str,
+    *,
+    sender: str | None,
+    chat_name: str | None,
+    context: str | None = None,
+) -> dict[str, Any]:
     system_prompt = os.getenv("GROQ_SYSTEM_PROMPT", DEFAULT_PROMPT)
     user_prefix = f"Покупатель: {sender or '-'}\nЧат: {chat_name or '-'}\nСообщение: "
+    if context:
+        user_text = f"Context:\n{context}\n\nUser message:\n{user_text}"
     return {
         "model": os.getenv("GROQ_MODEL", DEFAULT_MODEL),
         "messages": [
@@ -38,6 +46,7 @@ def generate_ai_reply(
     *,
     sender: str | None,
     chat_name: str | None,
+    context: str | None = None,
 ) -> str | None:
     logger = logging.getLogger("funpay.ai")
     api_key = os.getenv("GROQ_API_KEY", "").strip()
@@ -45,7 +54,7 @@ def generate_ai_reply(
         if not api_key:
             logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
         return None
-    payload = _build_payload(user_text, sender=sender, chat_name=chat_name)
+    payload = _build_payload(user_text, sender=sender, chat_name=chat_name, context=context)
     try:
         response = requests.post(
             GROQ_API_URL,
