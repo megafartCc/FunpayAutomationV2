@@ -4,6 +4,7 @@ from datetime import datetime
 
 import mysql.connector
 
+from .constants import LP_REPLACE_MMR_RANGE
 from .db_utils import column_exists, resolve_workspace_mysql_cfg, table_exists
 from .text_utils import normalize_owner_name, normalize_username
 
@@ -77,9 +78,6 @@ def fetch_available_lot_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
-        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
-
         account_filters: list[str] = ["a.owner IS NULL"]
         if has_account_frozen:
             account_filters.append("a.account_frozen = 0")
@@ -163,6 +161,7 @@ def fetch_owner_accounts(
         has_low_priority = column_exists(cursor, "accounts", "low_priority")
         has_mmr = column_exists(cursor, "accounts", "mmr")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
+        has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         params: list = [owner_key, int(user_id)]
@@ -319,6 +318,7 @@ def start_rental_for_owner(
     user_id: int,
     owner: str,
     workspace_id: int | None = None,
+    account_ids: list[int] | None = None,
 ) -> int:
     owner_key = normalize_owner_name(owner)
     if not owner_key:
@@ -332,11 +332,16 @@ def start_rental_for_owner(
         if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
             workspace_clause = " AND last_rented_workspace_id = %s"
             params.append(int(workspace_id))
+        id_clause = ""
+        if account_ids:
+            placeholders = ", ".join(["%s"] * len(account_ids))
+            id_clause = f" AND id IN ({placeholders})"
+            params.extend([int(acc_id) for acc_id in account_ids])
         cursor.execute(
             f"""
             UPDATE accounts
             SET rental_start = NOW()
-            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}
+            WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}{id_clause}
             """,
             tuple(params),
         )
@@ -404,6 +409,10 @@ def find_replacement_account_for_lot(
     user_id: int,
     lot_number: int,
     workspace_id: int | None = None,
+    *,
+    target_mmr: int | None = None,
+    exclude_account_id: int | None = None,
+    max_delta: int = LP_REPLACE_MMR_RANGE,
 ) -> dict | None:
     try:
         available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
@@ -411,7 +420,45 @@ def find_replacement_account_for_lot(
         return None
     if not available:
         return None
-    return available[0]
+    has_lot_number = any(acc.get("lot_number") is not None for acc in available)
+    if has_lot_number:
+        filtered: list[dict] = []
+        for acc in available:
+            acc_lot_number = acc.get("lot_number")
+            if acc_lot_number is None:
+                continue
+            try:
+                if int(acc_lot_number) == int(lot_number):
+                    filtered.append(acc)
+            except Exception:
+                continue
+        if not filtered:
+            return None
+        available = filtered
+    if target_mmr is not None:
+        candidates: list[tuple[int, int, dict]] = []
+        for acc in available:
+            if exclude_account_id is not None and int(acc.get("id") or 0) == int(exclude_account_id):
+                continue
+            raw_mmr = acc.get("mmr")
+            if raw_mmr is None:
+                continue
+            try:
+                mmr = int(raw_mmr)
+            except Exception:
+                continue
+            diff = abs(mmr - int(target_mmr))
+            if diff > max_delta:
+                continue
+            candidates.append((diff, mmr, acc))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1], int(item[2].get("id") or 0)))
+            return candidates[0][2]
+    for acc in available:
+        if exclude_account_id is not None and int(acc.get("id") or 0) == int(exclude_account_id):
+            continue
+        return acc
+    return None
 
 
 def replace_rental_account(

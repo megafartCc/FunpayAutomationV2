@@ -200,7 +200,14 @@ const pathToNavId = (path: string): string => {
   return "overview";
 };
 
-const Sidebar: React.FC = () => {
+type SidebarProps = {
+  className?: string;
+  onClose?: () => void;
+  onNavigate?: () => void;
+  isMobile?: boolean;
+};
+
+const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMobile }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const activeNav = pathToNavId(location.pathname);
@@ -243,9 +250,35 @@ const Sidebar: React.FC = () => {
     };
   }, [workspaceId]);
 
+  const handleNavigate = (nextPath: string) => {
+    navigate(nextPath, { replace: false });
+    onNavigate?.();
+  };
+
   return (
-    <aside className="relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)]">
-      <div className="text-lg font-semibold tracking-tight text-neutral-900">Funpay Automation</div>
+    <aside
+      className={`relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)] ${className || ""}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-semibold tracking-tight text-neutral-900">Funpay Automation</div>
+        {isMobile ? (
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition hover:bg-neutral-100"
+            onClick={onClose}
+            aria-label="Close sidebar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M6 6L18 18M18 6L6 18"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
       <nav className="relative mt-8 flex flex-1 flex-col">
         <div className="flex flex-col space-y-2">
           <AnimatePresence>
@@ -259,7 +292,7 @@ const Sidebar: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const nextPath = navIdToPath[item.id] || "/dashboard";
-                    navigate(nextPath, { replace: false });
+                    handleNavigate(nextPath);
                   }}
                   className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none hover:bg-neutral-50"
                   whileHover={{ x: 2 }}
@@ -324,7 +357,7 @@ const Sidebar: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const nextPath = navIdToPath[item.id] || "/dashboard";
-                    navigate(nextPath, { replace: false });
+                    handleNavigate(nextPath);
                   }}
                   className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-3 text-left text-sm font-semibold transition focus:outline-none hover:bg-neutral-50"
                   whileHover={{ x: 2 }}

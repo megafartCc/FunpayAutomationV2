@@ -436,6 +436,96 @@ def fetch_latest_order_id_for_account(
         conn.close()
 
 
+def fetch_latest_account_for_owner_lot(
+    mysql_cfg: dict,
+    *,
+    owner: str,
+    lot_number: int,
+    user_id: int,
+    workspace_id: int | None,
+) -> int | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    try:
+        lot_number_int = int(lot_number)
+    except Exception:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return None
+        has_workspace = column_exists(cursor, "order_history", "workspace_id")
+        workspace_clause = ""
+        params: list = [owner_key, int(lot_number_int), int(user_id)]
+        if has_workspace and workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT account_id
+            FROM order_history
+            WHERE owner = %s AND lot_number = %s AND user_id = %s{workspace_clause}
+              AND account_id IS NOT NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return int(row[0]) if row[0] is not None else None
+    finally:
+        conn.close()
+
+
+def fetch_latest_order_id_for_owner_lot(
+    mysql_cfg: dict,
+    *,
+    owner: str,
+    lot_number: int,
+    user_id: int,
+    workspace_id: int | None,
+) -> str | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    try:
+        lot_number_int = int(lot_number)
+    except Exception:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return None
+        has_workspace = column_exists(cursor, "order_history", "workspace_id")
+        workspace_clause = ""
+        params: list = [owner_key, int(lot_number_int), int(user_id)]
+        if has_workspace and workspace_id is not None:
+            workspace_clause = " AND workspace_id = %s"
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT order_id
+            FROM order_history
+            WHERE owner = %s AND lot_number = %s AND user_id = %s{workspace_clause}
+              AND order_id IS NOT NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
+    finally:
+        conn.close()
+
+
 def handle_order_purchased(
     logger: logging.Logger,
     account: Account,
@@ -616,6 +706,22 @@ def handle_order_purchased(
             if account_lot_number == int(lot_number):
                 mapping = account_row
                 break
+        if mapping == lot_mapping and owner_accounts:
+            history_account_id = fetch_latest_account_for_owner_lot(
+                mysql_cfg,
+                owner=buyer,
+                lot_number=int(lot_number),
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+            if history_account_id is not None:
+                for account_row in owner_accounts:
+                    try:
+                        if int(account_row.get("id")) == int(history_account_id):
+                            mapping = account_row
+                            break
+                    except Exception:
+                        continue
     if not mapping:
         log_order_history(
             mysql_cfg,
@@ -634,7 +740,12 @@ def handle_order_purchased(
 
     if mapping.get("account_frozen") or mapping.get("rental_frozen") or mapping.get("low_priority"):
         replacement = find_replacement_account_for_lot(
-            mysql_cfg, int(user_id), int(lot_number), workspace_id
+            mysql_cfg,
+            int(user_id),
+            int(lot_number),
+            workspace_id,
+            target_mmr=mapping.get("mmr"),
+            exclude_account_id=mapping.get("id"),
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
@@ -693,9 +804,16 @@ def handle_order_purchased(
         return
 
     owner = mapping.get("owner")
-    if owner and normalize_username(owner) != normalize_username(buyer):
+    owner_key = normalize_username(owner)
+    buyer_key = normalize_username(buyer)
+    if owner_key and owner_key != buyer_key:
         replacement = find_replacement_account_for_lot(
-            mysql_cfg, int(user_id), int(lot_number), workspace_id
+            mysql_cfg,
+            int(user_id),
+            int(lot_number),
+            workspace_id,
+            target_mmr=mapping.get("mmr"),
+            exclude_account_id=mapping.get("id"),
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
@@ -757,7 +875,7 @@ def handle_order_purchased(
     total_minutes = unit_minutes * amount
 
     updated_account = mapping
-    if not owner:
+    if not owner_key:
         assign_account_to_buyer(
             mysql_cfg,
             account_id=int(mapping["id"]),
@@ -767,6 +885,10 @@ def handle_order_purchased(
             total_minutes=total_minutes,
             workspace_id=workspace_id,
         )
+        updated_account = dict(mapping)
+        updated_account["owner"] = buyer
+        updated_account["rental_duration"] = amount
+        updated_account["rental_duration_minutes"] = total_minutes
         log_order_history(
             mysql_cfg,
             order_id=order_id,
@@ -827,7 +949,7 @@ def handle_order_purchased(
         )
 
     display_minutes = resolve_rental_minutes(updated_account or mapping) or total_minutes
-    if owner:
+    if owner_key:
         account_id = (updated_account or mapping).get("id")
         duration_label = format_duration_minutes(display_minutes)
         id_suffix = f" {account_id}" if account_id is not None else ""
