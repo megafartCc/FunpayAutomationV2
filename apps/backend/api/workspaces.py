@@ -170,10 +170,9 @@ def update_workspace(workspace_id: int, payload: WorkspaceUpdate, user=Depends(g
     if payload.golden_key is not None and payload.golden_key.strip():
         fields["golden_key"] = payload.golden_key.strip()
     if payload.proxy_url is not None:
-        proxy_url = payload.proxy_url.strip()
-        if not proxy_url:
-            raise HTTPException(status_code=400, detail="Proxy is required for this workspace.")
-        fields["proxy_url"] = proxy_url
+        proxy_url = str(payload.proxy_url).strip()
+        if proxy_url:
+            fields["proxy_url"] = proxy_url
 
     make_default = payload.is_default is True
     if not fields and not make_default:
