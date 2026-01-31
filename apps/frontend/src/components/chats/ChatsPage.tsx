@@ -176,6 +176,7 @@ const ChatsPage: React.FC = () => {
   const [extendHours, setExtendHours] = useState("");
   const [extendMinutes, setExtendMinutes] = useState("");
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
+  const [mobileView, setMobileView] = useState<"list" | "chat" | "actions">("list");
   const messagesRef = useRef<ChatMessageItem[]>([]);
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
@@ -205,6 +206,12 @@ const ChatsPage: React.FC = () => {
     if (!routeChatId) return;
     setSelectedChatId(routeChatId);
   }, [routeChatId]);
+
+  useEffect(() => {
+    if (selectedChatId) {
+      setMobileView("chat");
+    }
+  }, [selectedChatId]);
 
   useEffect(() => {
     listSinceRef.current = null;
@@ -568,6 +575,7 @@ const ChatsPage: React.FC = () => {
 
   const handleSelectChat = (chatId: number) => {
     setSelectedChatId(chatId);
+    setMobileView("chat");
     pendingScrollRef.current = true;
     keepScrollPinnedRef.current = true;
     syncChatRoute(chatId);
@@ -715,8 +723,8 @@ const ChatsPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm shadow-neutral-200/70 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
             <p className="text-sm text-neutral-500">Workspace scoped chat inbox.</p>
@@ -728,14 +736,40 @@ const ChatsPage: React.FC = () => {
             Refresh
           </button>
         </div>
+        <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
+          {(
+            [
+              { key: "list", label: "Chats list" },
+              { key: "chat", label: "Messages" },
+              { key: "actions", label: "Actions" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                mobileView === item.key
+                  ? "bg-neutral-900 text-white"
+                  : "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+              }`}
+              onClick={() => setMobileView(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         {status ? (
           <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
             {status}
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)_320px]">
-          <div className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)_320px] lg:gap-6">
+          <div
+            className={`min-h-0 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4 ${
+              mobileView === "list" ? "flex" : "hidden"
+            } lg:flex`}
+          >
             <div className="flex items-center gap-2">
               <input
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -825,7 +859,7 @@ const ChatsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col">
+          <div className={`${mobileView === "chat" ? "flex" : "hidden"} min-h-0 flex-col lg:flex`}>
             <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -836,13 +870,22 @@ const ChatsPage: React.FC = () => {
                     {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
                   </div>
                 </div>
-                <button
-                  className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
-                  type="button"
-                  onClick={() => loadHistory(selectedChatId)}
-                >
-                  Load history
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 lg:hidden"
+                    type="button"
+                    onClick={() => setMobileView("list")}
+                  >
+                    Back to list
+                  </button>
+                  <button
+                    className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600"
+                    type="button"
+                    onClick={() => loadHistory(selectedChatId)}
+                  >
+                    Load history
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-4">
@@ -921,7 +964,7 @@ const ChatsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4">
+          <div className={`${mobileView === "actions" ? "flex" : "hidden"} min-h-0 flex-col gap-4 lg:flex`}>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-neutral-900">Rental actions</div>

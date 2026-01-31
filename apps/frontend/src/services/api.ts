@@ -52,6 +52,7 @@ export type AccountUpdatePayload = {
   mmr?: number | null;
   rental_duration?: number;
   rental_minutes?: number;
+  workspace_id?: number | null;
 };
 
 export type LotItem = {
