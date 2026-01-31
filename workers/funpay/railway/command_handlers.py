@@ -48,6 +48,7 @@ from .lot_utils import (
     fetch_available_lot_accounts,
     fetch_lot_mapping,
     fetch_owner_accounts,
+    extend_rental_for_buyer,
     replace_rental_account,
     start_rental_for_owner,
 )
@@ -270,6 +271,107 @@ def handle_account_command(
         total_minutes = get_unit_minutes(selected)
     message = build_account_message(selected, int(total_minutes or 0), include_timer_note=True)
     send_chat_message(logger, account, chat_id, message)
+    return True
+
+
+def handle_extend_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Extend command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Extend command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    tokens = args.split()
+    if not tokens:
+        send_chat_message(logger, account, chat_id, "Укажите часы и ID: !продлить <часы> <ID_аккаунта>")
+        return True
+    try:
+        hours = int(tokens[0])
+    except Exception:
+        hours = 0
+    if hours <= 0:
+        send_chat_message(logger, account, chat_id, "Укажите часы и ID: !продлить <часы> <ID_аккаунта>")
+        return True
+
+    account_id = parse_account_id_arg(" ".join(tokens[1:])) if len(tokens) > 1 else None
+
+    accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
+    if not accounts:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    selected = None
+    if account_id is not None:
+        for acc in accounts:
+            try:
+                if int(acc.get("id")) == int(account_id):
+                    selected = acc
+                    break
+            except Exception:
+                continue
+        if not selected:
+            send_chat_message(
+                logger,
+                account,
+                chat_id,
+                build_rental_choice_message(accounts, "!продлить"),
+            )
+            return True
+    elif len(accounts) == 1:
+        selected = accounts[0]
+    else:
+        send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, "!продлить"))
+        return True
+
+    updated = extend_rental_for_buyer(
+        mysql_cfg,
+        account_id=int(selected["id"]),
+        user_id=int(user_id),
+        buyer=sender_username,
+        add_units=int(hours),
+        add_minutes=int(hours) * 60,
+        workspace_id=workspace_id,
+    )
+    if not updated:
+        send_chat_message(logger, account, chat_id, "Не удалось продлить аренду. Попробуйте позже.")
+        return True
+
+    duration_label = format_duration_minutes(int(hours) * 60)
+    send_chat_message(
+        logger,
+        account,
+        chat_id,
+        f"✅ Аренда продлена на {duration_label}. Для проверки данных: !акк {updated.get('id')}.",
+    )
     return True
 
 
@@ -624,7 +726,7 @@ def handle_command(
         "!сток": handle_stock_command,
         "!акк": handle_account_command,
         "!код": handle_code_command,
-        "!продлить": lambda *a: _log_command_stub(*a, action="extend"),
+        "!продлить": handle_extend_command,
         "!лпзамена": handle_low_priority_replace_command,
         "!отмена": lambda *a: _log_command_stub(*a, action="cancel"),
         "!админ": lambda *a: _log_command_stub(*a, action="admin"),
