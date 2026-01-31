@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from api.deps import get_current_user
@@ -15,7 +17,7 @@ telegram_repo = MySQLTelegramRepo()
 class TelegramStatusResponse(BaseModel):
     connected: bool
     chat_id: int | None = None
-    verified_at: str | None = None
+    verified_at: datetime | None = None
     token_hint: str | None = None
     start_url: str | None = None
 
