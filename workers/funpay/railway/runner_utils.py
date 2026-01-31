@@ -159,6 +159,16 @@ def _wants_account_info(text: str) -> bool:
 
 
 
+def _wants_stock_list(text: str) -> bool:
+    if not text:
+        return False
+    subjects = ("аккаунт", "аккаунты", "лот", "лоты", "сток", "stock")
+    hints = ("свобод", "налич", "free", "available")
+    if "какие" in text and any(word in text for word in subjects):
+        return True
+    return any(word in text for word in hints) and any(word in text for word in subjects)
+
+
 def _extract_account_id_hint(text: str) -> str:
     if not text:
         return ""
@@ -527,9 +537,7 @@ def log_message(
                 )
             return None
         if mysql_cfg and user_id is not None:
-            wants_stock = ("лот" in lower_text and "свобод" in lower_text) or (
-                "free" in lower_text and "lot" in lower_text
-            )
+            wants_stock = _wants_stock_list(lower_text)
             if wants_stock:
                 accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
                 _respond_free_lots(logger, account, int(chat_id), accounts)
