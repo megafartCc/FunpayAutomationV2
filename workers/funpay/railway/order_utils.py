@@ -15,7 +15,7 @@ from .blacklist_utils import (
 )
 from .chat_utils import send_chat_message
 from .constants import (
-    ORDER_ACCOUNT_BUSY,
+    ORDER_ACCOUNT_NO_REPLACEMENT,
     ORDER_ACCOUNT_REPLACEMENT_PREFIX,
     ORDER_LOT_MISSING,
     ORDER_LOT_UNMAPPED,
@@ -746,6 +746,8 @@ def handle_order_purchased(
             workspace_id,
             target_mmr=mapping.get("mmr"),
             exclude_account_id=mapping.get("id"),
+            max_delta=1000,
+            match_lot_number=False,
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
@@ -799,7 +801,7 @@ def handle_order_purchased(
             price=price_value,
             action="busy",
         )
-        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_NO_REPLACEMENT)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
@@ -814,6 +816,8 @@ def handle_order_purchased(
             workspace_id,
             target_mmr=mapping.get("mmr"),
             exclude_account_id=mapping.get("id"),
+            max_delta=1000,
+            match_lot_number=False,
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
@@ -867,7 +871,7 @@ def handle_order_purchased(
             price=price_value,
             action="busy",
         )
-        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+        send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_NO_REPLACEMENT)
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
 
@@ -929,7 +933,7 @@ def handle_order_purchased(
                 price=price_value,
                 action="busy",
             )
-            send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_BUSY)
+            send_chat_message(logger, account, chat_id, ORDER_ACCOUNT_NO_REPLACEMENT)
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
         log_order_history(

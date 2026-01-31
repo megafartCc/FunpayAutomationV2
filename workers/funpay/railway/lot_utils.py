@@ -413,6 +413,7 @@ def find_replacement_account_for_lot(
     target_mmr: int | None = None,
     exclude_account_id: int | None = None,
     max_delta: int = LP_REPLACE_MMR_RANGE,
+    match_lot_number: bool = True,
 ) -> dict | None:
     try:
         available = fetch_available_lot_accounts(mysql_cfg, user_id, workspace_id=workspace_id)
@@ -420,7 +421,7 @@ def find_replacement_account_for_lot(
         return None
     if not available:
         return None
-    has_lot_number = any(acc.get("lot_number") is not None for acc in available)
+    has_lot_number = match_lot_number and any(acc.get("lot_number") is not None for acc in available)
     if has_lot_number:
         filtered: list[dict] = []
         for acc in available:
