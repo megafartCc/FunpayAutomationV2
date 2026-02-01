@@ -66,6 +66,13 @@ def _extract_lot_url(text: str) -> str | None:
     return None
 
 
+def _auto_raise_gate_enabled() -> bool:
+    raw = os.getenv("FUNPAY_AUTO_RAISE")
+    if raw is None or raw.strip() == "":
+        return True
+    return env_bool("FUNPAY_AUTO_RAISE", False)
+
+
 def _lot_display_name(row: dict) -> str:
     return (
         row.get("display_name")
@@ -702,7 +709,7 @@ def run_single_user(logger: logging.Logger) -> None:
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
     raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
     raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
-    auto_raise_enabled = lambda: env_bool("FUNPAY_AUTO_RAISE", False)
+    auto_raise_enabled = _auto_raise_gate_enabled
     raise_sync_last = 0.0
 
     logger.info("Initializing FunPay account...")
@@ -799,7 +806,7 @@ def workspace_worker_loop(
         mysql_cfg = None
     last_status_ping = 0.0
     status_platform = (workspace.get("platform") or "funpay").lower()
-    auto_raise_enabled = lambda: env_bool("FUNPAY_AUTO_RAISE", False)
+    auto_raise_enabled = _auto_raise_gate_enabled
     raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
     while not stop_event.is_set():
         try:
