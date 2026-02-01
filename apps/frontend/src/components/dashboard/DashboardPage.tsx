@@ -1021,7 +1021,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="flex-1 min-h-0 overflow-x-hidden">
             <div className="flex h-full min-w-0 flex-col">
-              <div className="mt-3 list-scroll flex-1 min-h-0 max-h-none">
+              <div className="mt-3 list-scroll dashboard-list-scroll flex-1 min-h-0">
                 <div
                   className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: INVENTORY_GRID }}
@@ -1160,7 +1160,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="flex-1 min-h-0 overflow-x-hidden">
             <div className="flex h-full min-w-0 flex-col">
-              <div className="mt-3 list-scroll flex-1 min-h-0 max-h-none">
+              <div className="mt-3 list-scroll dashboard-list-scroll flex-1 min-h-0">
                 <div
                   className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: RENTALS_GRID }}
