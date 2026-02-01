@@ -1015,13 +1015,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm flex flex-col">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-neutral-900">Инвентарь</h3>
           </div>
-          <div className="overflow-x-hidden">
-            <div className="min-w-0">
-              <div className="mt-3 list-scroll">
+          <div className="flex-1 min-h-0 overflow-x-hidden">
+            <div className="flex h-full min-w-0 flex-col">
+              <div className="mt-3 list-scroll flex-1 min-h-0 max-h-none">
                 <div
                   className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: INVENTORY_GRID }}
@@ -1153,14 +1153,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
         </div>
 
-        <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm flex flex-col">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-neutral-900">Активные аренды</h3>
             <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Статус</button>
           </div>
-          <div className="overflow-x-hidden">
-            <div className="min-w-0">
-              <div className="mt-3 list-scroll">
+          <div className="flex-1 min-h-0 overflow-x-hidden">
+            <div className="flex h-full min-w-0 flex-col">
+              <div className="mt-3 list-scroll flex-1 min-h-0 max-h-none">
                 <div
                   className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: RENTALS_GRID }}
