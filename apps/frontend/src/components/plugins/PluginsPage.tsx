@@ -76,11 +76,7 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     return map;
   }, [workspaces]);
 
-  const selectedWorkspaceLabel = useMemo(() => {
-    if (selectedId === "all") return t("common.allWorkspaces");
-    const match = workspaces.find((ws) => ws.id === selectedId);
-    return match?.name || `${t("common.workspace")} ${selectedId}`;
-  }, [selectedId, t, workspaces]);
+  const selectedWorkspaceLabel = useMemo(() => t("common.allWorkspaces"), [t]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -122,7 +118,7 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     setCategoriesLoading(true);
     setCategoriesError(null);
     try {
-      const res = await api.listRaiseCategories(selectedWorkspaceId ?? null);
+      const res = await api.listRaiseCategories(null);
       setCategories(res.items || []);
     } catch (err) {
       const message = (err as { message?: string })?.message;
@@ -130,7 +126,7 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     } finally {
       setCategoriesLoading(false);
     }
-  }, [selectedWorkspaceId, t]);
+  }, [t]);
 
   useEffect(() => {
     void loadCategories();
