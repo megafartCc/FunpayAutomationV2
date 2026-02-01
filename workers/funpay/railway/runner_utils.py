@@ -274,6 +274,33 @@ def _contains_unknown_commands(text: str) -> bool:
     return False
 
 
+def _format_review_reply_text(text_: str) -> str:
+    max_len = 999
+    text_ = text_[: max_len + 1]
+    if len(text_) > max_len:
+        ln = len(text_)
+        indexes = []
+        for char in (".", "!", "\n"):
+            index1 = text_.rfind(char)
+            indexes.extend([index1, text_[:index1].rfind(char)])
+        text_ = text_[: max(indexes, key=lambda x: (x < ln - 1, x))] + "🐦"
+    text_ = text_.strip()
+    while text_.count("\n") > 9 and text_.count("\n\n") > 1:
+        text_ = text_[::-1].replace("\n\n", "\n", min([text_.count("\n\n") - 1, text_.count("\n") - 9]))[::-1]
+    if text_.count("\n") > 9:
+        text_ = text_[::-1].replace("\n", " ", text_.count("\n") - 9)[::-1]
+    return text_
+
+
+def _build_review_reply_text(order) -> str | None:
+    candidate = getattr(order, "short_description", None) or getattr(order, "title", None)
+    if not candidate:
+        candidate = getattr(order, "full_description", None) or getattr(order, "lot_params_text", None)
+    if not candidate:
+        return None
+    return _format_review_reply_text(str(candidate))
+
+
 def _handle_review_bonus(
     logger: logging.Logger,
     account: Account,
@@ -348,6 +375,18 @@ def _handle_review_bonus(
         stars_value = int(stars)
     except Exception:
         return
+    if getattr(msg, "type", None) in (MessageTypes.NEW_FEEDBACK, MessageTypes.FEEDBACK_CHANGED):
+        reply_text = None
+        if review is not None and getattr(review, "reply", None):
+            reply_text = None
+        else:
+            reply_text = _build_review_reply_text(order)
+        if reply_text:
+            try:
+                account.send_review(order.id, reply_text)
+                logger.info("Replied to review for order %s.", order.id)
+            except Exception:
+                logger.exception("Failed to reply to review for order %s.", order.id)
     if stars_value == 5:
         updated = apply_review_bonus_for_order(
             mysql_cfg,
