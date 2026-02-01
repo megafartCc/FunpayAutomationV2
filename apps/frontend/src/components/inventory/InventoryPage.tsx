@@ -600,17 +600,21 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
           </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
-              <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
-                <span>ID</span>
-                <span>Name</span>
-                <span>Login</span>
-                <span>Password</span>
-                <span>Steam ID</span>
-                <span>MMR</span>
-                <span className="text-center">State</span>
-              </div>
-              <div className="mt-3 space-y-3 list-scroll">
-                {accounts.map((acc, idx) => {
+              <div className="mt-3 list-scroll">
+                <div
+                  className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
+                  style={{ gridTemplateColumns: INVENTORY_GRID }}
+                >
+                  <span>ID</span>
+                  <span>Name</span>
+                  <span>Login</span>
+                  <span>Password</span>
+                  <span>Steam ID</span>
+                  <span>MMR</span>
+                  <span className="text-center">State</span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {accounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const lowPriority = !!acc.lowPriority;
@@ -698,12 +702,13 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                       </span>
                     </motion.div>
                   );
-                })}
-                {accounts.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    {emptyMessage}
-                  </div>
-                )}
+                  })}
+                  {accounts.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                      {emptyMessage}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

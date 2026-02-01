@@ -753,18 +753,22 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="overflow-x-hidden">
           <div className="min-w-0">
-            <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
-              <span>ID</span>
-              <span>Account</span>
-              <span>Buyer</span>
-              <span>Started</span>
-              <span>Time Left</span>
-              <span>Match Time</span>
-              <span>Hero</span>
-              <span className="text-center">Status</span>
-            </div>
-            <div className="mt-3 space-y-3 list-scroll">
-              {rentals.map((row, idx) => {
+            <div className="mt-3 list-scroll">
+              <div
+                className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
+                style={{ gridTemplateColumns: RENTALS_GRID }}
+              >
+                <span>ID</span>
+                <span>Account</span>
+                <span>Buyer</span>
+                <span>Started</span>
+                <span>Time Left</span>
+                <span>Match Time</span>
+                <span>Hero</span>
+                <span className="text-center">Status</span>
+              </div>
+              <div className="mt-3 space-y-3">
+                {rentals.map((row, idx) => {
                 const isSelected = selectedRowKey === row.rowKey;
                 const pill = statusPill(row.status);
                 const account = accountByKey.get(row.accountKey);
@@ -827,17 +831,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     </div>
                   </motion.div>
                 );
-              })}
-              {rentals.length === 0 && !loading && (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  No active rentals yet.
-                </div>
-              )}
-              {loading && (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading rentals...
-                </div>
-              )}
+                })}
+                {rentals.length === 0 && !loading && (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                    No active rentals yet.
+                  </div>
+                )}
+                {loading && (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                    Loading rentals...
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

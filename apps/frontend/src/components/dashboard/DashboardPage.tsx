@@ -1019,20 +1019,24 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
-              <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
-                <span>ID</span>
-                <span>Name</span>
-                <span>Login</span>
-                <span>Password</span>
-                <span>Steam ID</span>
-                <span>MMR</span>
-                <span className="text-center">State</span>
-              </div>
-              <div className="mt-3 space-y-3 list-scroll">
-                {inventoryAccounts.map((acc, idx) => {
-                  const rented = !!acc.owner;
-                  const frozen = !!acc.accountFrozen;
-                  const lowPriority = !!acc.lowPriority;
+              <div className="mt-3 list-scroll">
+                <div
+                  className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
+                  style={{ gridTemplateColumns: INVENTORY_GRID }}
+                >
+                  <span>ID</span>
+                  <span>Name</span>
+                  <span>Login</span>
+                  <span>Password</span>
+                  <span>Steam ID</span>
+                  <span>MMR</span>
+                  <span className="text-center">State</span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {inventoryAccounts.map((acc, idx) => {
+                    const rented = !!acc.owner;
+                    const frozen = !!acc.accountFrozen;
+                    const lowPriority = !!acc.lowPriority;
                   const stateLabel = lowPriority ? "Low Priority" : frozen ? "Frozen" : rented ? "Rented out" : "Available";
                   const stateClass = lowPriority
                     ? "bg-rose-50 text-rose-600"
@@ -1135,12 +1139,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       </span>
                     </motion.div>
                   );
-                })}
-                {inventoryAccounts.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    {emptyAccountMessage}
-                  </div>
-                )}
+                  })}
+                  {inventoryAccounts.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                      {emptyAccountMessage}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1153,20 +1158,24 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
-              <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
-                <span>ID</span>
-                <span>Account</span>
-                <span>Buyer</span>
-                <span>Started</span>
-                <span>Time Left</span>
-                <span>Match Time</span>
-                <span>Hero</span>
-                <span className="text-center">Status</span>
-              </div>
-              <div className="mt-3 space-y-3 list-scroll">
-                {filteredRentals.map((row, idx) => {
-                  const isSelected = selectedRowKey === row.rowKey;
-                  const pill = statusPill(row.status);
+              <div className="mt-3 list-scroll">
+                <div
+                  className="sticky top-0 z-10 grid gap-4 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
+                  style={{ gridTemplateColumns: RENTALS_GRID }}
+                >
+                  <span>ID</span>
+                  <span>Account</span>
+                  <span>Buyer</span>
+                  <span>Started</span>
+                  <span>Time Left</span>
+                  <span>Match Time</span>
+                  <span>Hero</span>
+                  <span className="text-center">Status</span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  {filteredRentals.map((row, idx) => {
+                    const isSelected = selectedRowKey === row.rowKey;
+                    const pill = statusPill(row.status);
                   const account = accountById.get(row.id);
                   const workspaceLabel = resolveWorkspaceName(
                     row.workspaceId ?? account?.workspaceId,
@@ -1229,12 +1238,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       </div>
                     </motion.div>
                   );
-                })}
-                {filteredRentals.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    {emptyRentalMessage}
-                  </div>
-                )}
+                  })}
+                  {filteredRentals.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                      {emptyRentalMessage}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

@@ -168,43 +168,44 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
         </div>
         <div className="overflow-x-hidden">
           <div className="min-w-0">
-            <div
-              className="grid gap-3 px-6 text-xs font-semibold text-neutral-500"
-              style={{ gridTemplateColumns: ORDERS_GRID }}
-            >
-              <span>Order</span>
-              <span>Buyer</span>
-              <span>Account</span>
-              <span>Steam ID</span>
-              <span>Duration</span>
-              <span>Price</span>
-              <span className="text-center">Action</span>
-              <span>Date</span>
-              <span>Workspace</span>
-            </div>
-            <div className="mt-3 space-y-3 list-scroll">
-              {loading && (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading orders...
-                </div>
-              )}
-              {!loading &&
-                visibleOrders.map((order, idx) => {
-                  const pill = orderActionPill(order.action);
-                  const priceLabel =
-                    order.price !== null && order.price !== undefined && !Number.isNaN(Number(order.price))
-                      ? `RUB ${Number(order.price).toLocaleString()}`
-                      : "-";
-                  const accountLabel = order.account_name || "-";
-                  const subLabel = order.lot_number ? `Lot ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
-                  const platformKey = workspacePlatforms.get(order.workspace_id ?? -1) || "funpay";
-                  const platformBadge = platformPill(platformKey);
-                  return (
-                    <div
-                      key={order.id ?? idx}
-                      className="grid items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)]"
-                      style={{ gridTemplateColumns: ORDERS_GRID }}
-                    >
+            <div className="mt-3 list-scroll">
+              <div
+                className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
+                style={{ gridTemplateColumns: ORDERS_GRID }}
+              >
+                <span>Order</span>
+                <span>Buyer</span>
+                <span>Account</span>
+                <span>Steam ID</span>
+                <span>Duration</span>
+                <span>Price</span>
+                <span className="text-center">Action</span>
+                <span>Date</span>
+                <span>Workspace</span>
+              </div>
+              <div className="mt-3 space-y-3">
+                {loading && (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                    Loading orders...
+                  </div>
+                )}
+                {!loading &&
+                  visibleOrders.map((order, idx) => {
+                    const pill = orderActionPill(order.action);
+                    const priceLabel =
+                      order.price !== null && order.price !== undefined && !Number.isNaN(Number(order.price))
+                        ? `RUB ${Number(order.price).toLocaleString()}`
+                        : "-";
+                    const accountLabel = order.account_name || "-";
+                    const subLabel = order.lot_number ? `Lot ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
+                    const platformKey = workspacePlatforms.get(order.workspace_id ?? -1) || "funpay";
+                    const platformBadge = platformPill(platformKey);
+                    return (
+                      <div
+                        key={order.id ?? idx}
+                        className="grid items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)]"
+                        style={{ gridTemplateColumns: ORDERS_GRID }}
+                      >
                       <a
                         href={`https://funpay.com/orders/${order.order_id}/`}
                         target="_blank"
@@ -245,14 +246,15 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                           </span>
                         ) : null}
                       </div>
-                    </div>
-                  );
-                })}
-              {!loading && visibleOrders.length === 0 && (
-                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  No orders found.
-                </div>
-              )}
+                      </div>
+                    );
+                  })}
+                {!loading && visibleOrders.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                    No orders found.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
