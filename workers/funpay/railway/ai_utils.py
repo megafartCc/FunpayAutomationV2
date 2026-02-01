@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 import requests
@@ -22,7 +23,38 @@ DEFAULT_PROMPT = (
     "??? ????????? ? !???????? <????> <ID_????????>. "
     "??? ????? ? ??????? ? !?????. "
     "???? ?????? ?? ?? ?????? ? ??????? ???????, ??? ????????? ?????? ?? ??????, ? ????????? ???????."
+    "\n\nTone: reply briefly in clear, neutral Russian. Avoid assumptions. If unclear, ask a short clarification."
 )
+CLARIFY_RESPONSE = "Йоу, братанчик, тебе помочь чем или как? Уточни, пожалуйста."
+
+_ALNUM_RE = re.compile(r"[A-Za-zА-Яа-я0-9]+")
+_CODE_RE = re.compile(r"^[A-Za-z0-9]{3,12}$")
+
+
+def _is_code_like(text: str) -> bool:
+    cleaned = re.sub(r"\s+", "", text.strip())
+    if not cleaned or not _CODE_RE.match(cleaned):
+        return False
+    return any(ch.isdigit() for ch in cleaned)
+
+
+def _is_gibberish(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    tokens = _ALNUM_RE.findall(stripped)
+    if not tokens:
+        return True
+    if len(tokens) == 1 and len(tokens[0]) <= 1:
+        return True
+    if len(tokens) >= 5:
+        avg_len = sum(len(token) for token in tokens) / len(tokens)
+        if avg_len <= 2.2:
+            return True
+    short_tokens = [token for token in tokens if len(token) <= 2]
+    if len(tokens) >= 4 and len(short_tokens) / len(tokens) >= 0.7:
+        return True
+    return False
 
 
 def _build_payload(
@@ -59,6 +91,10 @@ def generate_ai_reply(
     if not api_key or not user_text:
         if not api_key:
             logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
+        return None
+    if _is_code_like(user_text):
+        return CLARIFY_RESPONSE
+    if _is_gibberish(user_text):
         return None
     payload = _build_payload(user_text, sender=sender, chat_name=chat_name, context=context)
     try:
