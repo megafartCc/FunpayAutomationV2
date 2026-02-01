@@ -47,7 +47,7 @@ const splitProxyCredentials = (raw: string) => {
 };
 
 const statusKey = (workspaceId: number | null | undefined, platform?: string | null) =>
-  `${workspaceId ? "none"}:${(platform || "funpay").toLowerCase()}`;
+  `${workspaceId ?? "none"}:${(platform || "funpay").toLowerCase()}`;
 const normalizeStatus = (value?: string | null) => (value || "").toLowerCase();
 const parseUpdatedAt = (value?: string | null) => {
   if (!value) return null;
