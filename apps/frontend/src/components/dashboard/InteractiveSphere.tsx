@@ -254,7 +254,9 @@ const InteractiveSphere: React.FC = () => {
               "totalEmissiveRadiance *= nightMask;",
             ].join("\n"),
           );
-          earthMaterial?.userData.shader = shader;
+          if (earthMaterial) {
+            earthMaterial.userData.shader = shader;
+          }
         };
         earthMesh = new THREE.Mesh(earthGeo, earthMaterial);
         earthMesh.userData.targetKey = "earth";
