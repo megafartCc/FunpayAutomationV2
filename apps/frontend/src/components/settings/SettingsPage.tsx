@@ -510,7 +510,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               <input
                 type="checkbox"
                 checked={newDefault}
-                onChange={(e) =>Сделать по умолчанию</label>
+                onChange={(event) => setNewDefault(event.target.checked)}
+              />
+              Сделать по умолчанию
+            </label>
             <button
               onClick={handleCreate}
               disabled={keyActionBusy || !newKey.trim() || !newProxyUrl.trim() || !newName.trim()}
