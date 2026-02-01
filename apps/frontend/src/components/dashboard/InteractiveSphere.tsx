@@ -1,89 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
+import earthMapUrl from "../../assets/earth/earth_atmos_2048.jpg";
+import earthNormalUrl from "../../assets/earth/earth_normal_2048.jpg";
+import earthSpecularUrl from "../../assets/earth/earth_specular_2048.jpg";
+import earthCloudsUrl from "../../assets/earth/earth_clouds_1024.png";
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const createEarthTexture = (size = 1024) => {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-
-  ctx.fillStyle = "#0b1f3a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const continents = 220;
-  for (let i = 0; i < continents; i += 1) {
-    const x = Math.random() * canvas.width;
-    const y = Math.random() * canvas.height;
-    const radius = 18 + Math.random() * 45;
-    const hue = 110 + Math.random() * 20;
-    const lightness = 28 + Math.random() * 20;
-    ctx.beginPath();
-    ctx.fillStyle = `hsl(${hue}, 45%, ${lightness}%)`;
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-  ctx.beginPath();
-  ctx.ellipse(canvas.width * 0.5, canvas.height * 0.06, canvas.width * 0.5, canvas.height * 0.1, 0, 0, Math.PI * 2);
-  ctx.ellipse(canvas.width * 0.5, canvas.height * 0.94, canvas.width * 0.5, canvas.height * 0.1, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const noise = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < noise.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 16;
-    noise.data[i] = clamp(noise.data[i] + n, 0, 255);
-    noise.data[i + 1] = clamp(noise.data[i + 1] + n, 0, 255);
-    noise.data[i + 2] = clamp(noise.data[i + 2] + n, 0, 255);
-  }
-  ctx.putImageData(noise, 0, 0);
-
-  return canvas;
-};
-
-const createCloudTexture = (size = 1024) => {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < 160; i += 1) {
-    const x = Math.random() * canvas.width;
-    const y = Math.random() * canvas.height;
-    const radius = 20 + Math.random() * 55;
-    const alpha = 0.08 + Math.random() * 0.12;
-    ctx.beginPath();
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  return canvas;
-};
-
-const createBumpTexture = (size = 1024) => {
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-
-  const imageData = ctx.createImageData(canvas.width, canvas.height);
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    const v = 180 + Math.random() * 50;
-    imageData.data[i] = v;
-    imageData.data[i + 1] = v;
-    imageData.data[i + 2] = v;
-    imageData.data[i + 3] = 255;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
-};
+const loadTexture = (loader: THREE.TextureLoader, url: string) =>
+  new Promise<THREE.Texture>((resolve, reject) => {
+    loader.load(url, (texture) => resolve(texture), undefined, (err) => reject(err));
+  });
 
 const InteractiveSphere: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -93,6 +20,7 @@ const InteractiveSphere: React.FC = () => {
     const container = containerRef.current;
     if (!container) return;
 
+    let disposed = false;
     let renderer: THREE.WebGLRenderer | null = null;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -113,48 +41,95 @@ const InteractiveSphere: React.FC = () => {
     renderer.domElement.style.height = "100%";
     container.appendChild(renderer.domElement);
 
-    const earthCanvas = createEarthTexture();
-    const earthTexture = new THREE.CanvasTexture(earthCanvas);
-    earthTexture.colorSpace = THREE.SRGBColorSpace;
+    let earth: THREE.Mesh | null = null;
+    let clouds: THREE.Mesh | null = null;
+    let glow: THREE.Mesh | null = null;
+    let earthGeometry: THREE.SphereGeometry | null = null;
+    let cloudGeometry: THREE.SphereGeometry | null = null;
+    let glowGeometry: THREE.SphereGeometry | null = null;
+    let earthMaterial: THREE.MeshPhongMaterial | THREE.MeshStandardMaterial | null = null;
+    let cloudMaterial: THREE.MeshStandardMaterial | null = null;
+    let glowMaterial: THREE.MeshBasicMaterial | null = null;
+    const textures: THREE.Texture[] = [];
 
-    const bumpCanvas = createBumpTexture();
-    const bumpTexture = new THREE.CanvasTexture(bumpCanvas);
+    const buildFallbackEarth = () => {
+      if (disposed) return;
+      earthGeometry = new THREE.SphereGeometry(1, 64, 64);
+      earthMaterial = new THREE.MeshStandardMaterial({
+        color: new THREE.Color("#3b82f6"),
+        metalness: 0.1,
+        roughness: 0.4,
+      });
+      earth = new THREE.Mesh(earthGeometry, earthMaterial);
+      scene.add(earth);
 
-    const cloudCanvas = createCloudTexture();
-    const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
-    cloudTexture.colorSpace = THREE.SRGBColorSpace;
+      glowGeometry = new THREE.SphereGeometry(1.07, 64, 64);
+      glowMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color("#7dd3fc"),
+        transparent: true,
+        opacity: 0.18,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+      });
+      glow = new THREE.Mesh(glowGeometry, glowMaterial);
+      scene.add(glow);
+    };
 
-    const geometry = new THREE.SphereGeometry(1, 96, 96);
-    const material = new THREE.MeshPhongMaterial({
-      map: earthTexture,
-      bumpMap: bumpTexture,
-      bumpScale: 0.05,
-      specular: new THREE.Color("#1d4ed8"),
-      shininess: 15,
-    });
-    const earth = new THREE.Mesh(geometry, material);
-    scene.add(earth);
+    const init = async () => {
+      try {
+        const loader = new THREE.TextureLoader();
+        const [earthMap, earthNormal, earthSpecular, earthClouds] = await Promise.all([
+          loadTexture(loader, earthMapUrl),
+          loadTexture(loader, earthNormalUrl),
+          loadTexture(loader, earthSpecularUrl),
+          loadTexture(loader, earthCloudsUrl),
+        ]);
 
-    const cloudGeometry = new THREE.SphereGeometry(1.01, 72, 72);
-    const cloudMaterial = new THREE.MeshStandardMaterial({
-      map: cloudTexture,
-      transparent: true,
-      opacity: 0.6,
-      depthWrite: false,
-    });
-    const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
-    scene.add(clouds);
+        textures.push(earthMap, earthNormal, earthSpecular, earthClouds);
+        if (disposed) {
+          textures.forEach((texture) => texture.dispose());
+          return;
+        }
+        earthMap.colorSpace = THREE.SRGBColorSpace;
+        earthClouds.colorSpace = THREE.SRGBColorSpace;
 
-    const glowGeometry = new THREE.SphereGeometry(1.07, 64, 64);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: new THREE.Color("#7dd3fc"),
-      transparent: true,
-      opacity: 0.2,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
-    });
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    scene.add(glow);
+        earthGeometry = new THREE.SphereGeometry(1, 128, 128);
+        earthMaterial = new THREE.MeshPhongMaterial({
+          map: earthMap,
+          normalMap: earthNormal,
+          specularMap: earthSpecular,
+          specular: new THREE.Color("#40547a"),
+          shininess: 18,
+        });
+        earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        scene.add(earth);
+
+        cloudGeometry = new THREE.SphereGeometry(1.01, 96, 96);
+        cloudMaterial = new THREE.MeshStandardMaterial({
+          map: earthClouds,
+          transparent: true,
+          opacity: 0.75,
+          depthWrite: false,
+        });
+        clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        scene.add(clouds);
+
+        glowGeometry = new THREE.SphereGeometry(1.07, 64, 64);
+        glowMaterial = new THREE.MeshBasicMaterial({
+          color: new THREE.Color("#7dd3fc"),
+          transparent: true,
+          opacity: 0.22,
+          blending: THREE.AdditiveBlending,
+          side: THREE.BackSide,
+        });
+        glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        scene.add(glow);
+      } catch {
+        buildFallbackEarth();
+      }
+    };
+
+    void init();
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     const light = new THREE.DirectionalLight(0xffffff, 1.15);
@@ -211,10 +186,14 @@ const InteractiveSphere: React.FC = () => {
       if (!state.isDragging) {
         state.targetY += 0.0025;
       }
-      earth.rotation.x += (state.targetX - earth.rotation.x) * 0.08;
-      earth.rotation.y += (state.targetY - earth.rotation.y) * 0.08;
-      clouds.rotation.x = earth.rotation.x * 1.02;
-      clouds.rotation.y = earth.rotation.y + 0.008;
+      if (earth) {
+        earth.rotation.x += (state.targetX - earth.rotation.x) * 0.08;
+        earth.rotation.y += (state.targetY - earth.rotation.y) * 0.08;
+        if (clouds) {
+          clouds.rotation.x = earth.rotation.x * 1.02;
+          clouds.rotation.y = earth.rotation.y + 0.008;
+        }
+      }
       camera.position.z += (state.distance - camera.position.z) * 0.1;
       renderer?.render(scene, camera);
     };
@@ -238,6 +217,7 @@ const InteractiveSphere: React.FC = () => {
     }
 
     return () => {
+      disposed = true;
       window.cancelAnimationFrame(frame);
       if (resizeObserver) {
         resizeObserver.disconnect();
@@ -250,15 +230,13 @@ const InteractiveSphere: React.FC = () => {
       container.removeEventListener("pointerleave", endDrag);
       container.removeEventListener("pointercancel", endDrag);
       container.removeEventListener("wheel", handleWheel);
-      geometry.dispose();
-      cloudGeometry.dispose();
-      glowGeometry.dispose();
-      material.dispose();
-      cloudMaterial.dispose();
-      glowMaterial.dispose();
-      earthTexture.dispose();
-      bumpTexture.dispose();
-      cloudTexture.dispose();
+      earthGeometry?.dispose();
+      cloudGeometry?.dispose();
+      glowGeometry?.dispose();
+      earthMaterial?.dispose();
+      cloudMaterial?.dispose();
+      glowMaterial?.dispose();
+      textures.forEach((texture) => texture.dispose());
       renderer?.dispose();
       if (renderer?.domElement && renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement);
