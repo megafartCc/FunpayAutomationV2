@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 
-import earthMapUrl from "../../assets/earth/earth_atmos_2048.jpg";
+import earthMapUrl from "../../assets/earth/earth_atmos_4096.jpg";
 import earthNormalUrl from "../../assets/earth/earth_normal_2048.jpg";
 import earthSpecularUrl from "../../assets/earth/earth_specular_2048.jpg";
-import earthCloudsUrl from "../../assets/earth/earth_clouds_1024.png";
+import earthCloudsUrl from "../../assets/earth/earth_clouds_2048.png";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const loadTexture = (loader: THREE.TextureLoader, url: string) =>
@@ -92,6 +92,11 @@ const InteractiveSphere: React.FC = () => {
         }
         earthMap.colorSpace = THREE.SRGBColorSpace;
         earthClouds.colorSpace = THREE.SRGBColorSpace;
+        const maxAniso = renderer?.capabilities.getMaxAnisotropy() ?? 1;
+        earthMap.anisotropy = maxAniso;
+        earthNormal.anisotropy = maxAniso;
+        earthSpecular.anisotropy = maxAniso;
+        earthClouds.anisotropy = maxAniso;
 
         earthGeometry = new THREE.SphereGeometry(1, 128, 128);
         earthMaterial = new THREE.MeshPhongMaterial({
