@@ -575,7 +575,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -609,7 +609,10 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 <span>MMR</span>
                 <span className="text-center">State</span>
               </div>
-              <div className="mt-3 space-y-3">
+              <div
+                className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
+                style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
+              >
                 {accounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;

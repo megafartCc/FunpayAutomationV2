@@ -182,7 +182,10 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
               <span>Date</span>
               <span>Workspace</span>
             </div>
-            <div className="mt-3 space-y-3">
+            <div
+              className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
+              style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
+            >
               {loading && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                   Loading orders...
