@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { api, WorkspaceStatusItem } from "../../services/api";
+import { useI18n } from "../../i18n/useI18n";
 
 type TopBarProps = {
   title: string;
@@ -21,18 +22,19 @@ const TopBar: React.FC<TopBarProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [funpayStatus, setFunpayStatus] = useState<WorkspaceStatusItem | null>(null);
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { workspaces, visibleWorkspaces, loading, selectedId, setSelectedId, selectedPlatform, setSelectedPlatform } =
     useWorkspace();
 
   const selectedLabel = useMemo(() => {
-    if (selectedId === "all") return "All workspaces";
+    if (selectedId === "all") return t("common.allWorkspaces");
     const match = visibleWorkspaces.find((item) => item.id === selectedId);
     if (!match) {
       const fallback = visibleWorkspaces.find((item) => item.is_default) || workspaces.find((item) => item.is_default);
-      return fallback ? `${fallback.name} (Default)` : "Workspace";
+      return fallback ? `${fallback.name} (${t("common.default")})` : t("common.workspace");
     }
-    return match.is_default ? `${match.name} (Default)` : match.name;
-  }, [selectedId, visibleWorkspaces, workspaces]);
+    return match.is_default ? `${match.name} (${t("common.default")})` : match.name;
+  }, [selectedId, visibleWorkspaces, workspaces, t]);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,7 +70,7 @@ const TopBar: React.FC<TopBarProps> = ({
             workspace_id: selectedId === "all" ? null : (selectedId as number),
             platform: "funpay",
             status: "error",
-            message: "Failed to load FunPay status.",
+            message: t("common.funpayStatusError"),
           });
         }
       }
@@ -79,7 +81,7 @@ const TopBar: React.FC<TopBarProps> = ({
       isMounted = false;
       window.clearInterval(handle);
     };
-  }, [selectedId, selectedPlatform]);
+  }, [selectedId, selectedPlatform, t]);
 
   const funpayIndicator = useMemo(() => {
     if (!funpayStatus) return null;
@@ -98,7 +100,7 @@ const TopBar: React.FC<TopBarProps> = ({
               type="button"
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-700 transition hover:bg-neutral-100 lg:hidden"
               onClick={onMenuToggle}
-              aria-label="Open navigation"
+              aria-label={t("common.openNav")}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M4 7H20M4 12H20M4 17H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -113,9 +115,9 @@ const TopBar: React.FC<TopBarProps> = ({
             <>
               <div className="flex h-10 items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-1 text-xs font-semibold text-neutral-600 shadow-sm shadow-neutral-200">
                 {[
-                  { key: "all", label: "All" },
-                  { key: "funpay", label: "FunPay" },
-                  { key: "playerok", label: "PlayerOk" },
+                  { key: "all", label: t("common.all") },
+                  { key: "funpay", label: t("common.funpay") },
+                  { key: "playerok", label: t("common.playerok") },
                 ].map((item) => (
                   <button
                     key={item.key}
@@ -143,7 +145,7 @@ const TopBar: React.FC<TopBarProps> = ({
               </div>
               <div className="flex h-10 w-full items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-xs font-semibold text-neutral-600 shadow-sm shadow-neutral-200 sm:w-auto">
                 <span className="hidden sm:inline text-[11px] uppercase tracking-wide text-neutral-500">
-                  Workspace
+                  {t("common.workspace")}
                 </span>
                 <select
                   className="h-8 bg-transparent text-sm font-semibold leading-none text-neutral-700 outline-none"
@@ -165,10 +167,10 @@ const TopBar: React.FC<TopBarProps> = ({
                   }}
                   disabled={loading}
                 >
-                  {selectedPlatform === "all" ? <option value="all">All workspaces</option> : null}
+                  {selectedPlatform === "all" ? <option value="all">{t("common.allWorkspaces")}</option> : null}
                   {visibleWorkspaces.map((item) => (
                     <option key={item.id} value={String(item.id)}>
-                      {item.is_default ? `${item.name} (Default)` : item.name}
+                      {item.is_default ? `${item.name} (${t("common.default")})` : item.name}
                     </option>
                   ))}
                 </select>
@@ -177,7 +179,7 @@ const TopBar: React.FC<TopBarProps> = ({
                   className="flex h-8 items-center justify-center rounded-md border border-neutral-200 bg-white px-3 text-[11px] font-semibold text-neutral-600 transition hover:bg-neutral-100"
                   onClick={() => navigate("/settings")}
                 >
-                  {selectedLabel ? "Manage" : "Manage"}
+                  {selectedLabel ? t("common.manage") : t("common.manage")}
                 </button>
               </div>
             </>
@@ -202,7 +204,7 @@ const TopBar: React.FC<TopBarProps> = ({
             </svg>
             <input
               type="search"
-              placeholder="Search..."
+              placeholder={t("common.search")}
               className="w-full bg-transparent text-neutral-700 placeholder:text-neutral-400 outline-none"
             />
           </label>
@@ -211,8 +213,8 @@ const TopBar: React.FC<TopBarProps> = ({
             type="button"
             className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-sm transition hover:bg-neutral-100"
             onClick={() => navigate("/notifications")}
-            aria-label="Notifications"
-            title="Notifications"
+            aria-label={t("common.notifications")}
+            title={t("common.notifications")}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
@@ -230,8 +232,8 @@ const TopBar: React.FC<TopBarProps> = ({
               type="button"
               className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900 text-sm font-semibold text-white shadow-sm"
               onClick={() => setMenuOpen((prev) => !prev)}
-              aria-label="Profile"
-              title="Profile"
+              aria-label={t("common.profile")}
+              title={t("common.profile")}
             >
               {userInitial}
             </button>
@@ -241,14 +243,14 @@ const TopBar: React.FC<TopBarProps> = ({
                   type="button"
                   className="w-full rounded-xl px-3 py-2 text-left font-medium text-neutral-700 hover:bg-neutral-100"
                 >
-                  Profile
+                  {t("common.profile")}
                 </button>
                 <button
                   type="button"
                   className="w-full rounded-xl px-3 py-2 text-left font-medium text-neutral-700 hover:bg-neutral-100"
                   onClick={onLogout}
                 >
-                  Log out
+                  {t("common.logout")}
                 </button>
               </div>
             ) : null}

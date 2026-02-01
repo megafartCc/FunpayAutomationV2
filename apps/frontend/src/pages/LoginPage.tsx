@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePreferences } from "../context/PreferencesContext";
+import { useI18n } from "../i18n/useI18n";
 
 type LoginPayload = { username: string; password: string };
 
@@ -11,7 +13,6 @@ type LoginPageProps = {
   onToast: (message: string, isError?: boolean) => void;
 };
 
-type Lang = "en" | "ru";
 
 type Mode = "login" | "register";
 
@@ -129,13 +130,8 @@ const CheckIcon: React.FC = () => (
 );
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) => {
-  const [lang, setLang] = useState<Lang>(() => {
-    if (typeof window === "undefined") return "en";
-    const stored = window.localStorage.getItem("lang");
-    if (stored === "ru" || stored === "en") return stored;
-    return window.navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
-  });
-
+  const { language, setLanguage } = usePreferences();
+  const { tr } = useI18n();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -144,77 +140,56 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
   const [showForgot, setShowForgot] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("lang", lang);
-    } catch {
-      // ignore
-    }
-  }, [lang]);
-
   const copy = useMemo(() => {
     const year = new Date().getFullYear();
-
-    const RU = {
-      titleLogin: "Вход",
-      subtitleLogin: "Войдите, чтобы открыть панель управления.",
-      titleRegister: "Регистрация",
-      subtitleRegister: "Создайте аккаунт и подключите золотой ключ FunPay.",
-      usernamePlaceholder: "Email или логин",
-      passwordPlaceholder: "Пароль",
-      goldenKeyPlaceholder: "Золотой ключ FunPay",
-      forgotPassword: "Забыли пароль?",
-      forgotPasswordHint: "Восстановление пароля пока не подключено.",
-      actionLogin: "Войти",
-      actionRegister: "Создать аккаунт",
-      working: "Подождите...",
-      marketingTitle: "Автоматизируйте свой процесс",
-      marketingSubtitle:
-        "Аккаунты, аренды, лоты, уведомления и чаты — в одной панели. Быстрее, чище, без рутины.",
-      bullet1: "Выдача аккаунтов и продление аренды в пару кликов",
-      bullet2: "Чаты FunPay и уведомления в реальном времени",
-      bullet3: "Инвентарь, лоты и статистика — всё под контролем",
-      footerLeft: `© ${year} FunpayMegamind`,
-      footerSupport: "Поддержка",
-      supportHint: "Поддержка скоро.",
-      validation: "Введите логин и пароль.",
-      validationRegister: "Заполните логин, пароль и золотой ключ.",
-      linkSignUp: "Регистрация",
-      linkSignIn: "Войти",
-      badge: "Автоматизация для продавцов FunPay",
-    } as const;
-
-    const EN = {
-      titleLogin: "Sign In",
-      subtitleLogin: "Sign in to access your dashboard.",
-      titleRegister: "Sign Up",
-      subtitleRegister: "Create an account and connect your FunPay golden key.",
-      usernamePlaceholder: "Email or Username",
-      passwordPlaceholder: "Password",
-      goldenKeyPlaceholder: "FunPay Golden Key",
-      forgotPassword: "Forgot password?",
-      forgotPasswordHint: "Password reset isn't wired up yet.",
-      actionLogin: "Sign In",
-      actionRegister: "Create account",
-      working: "Working...",
-      marketingTitle: "Automate your workflow",
-      marketingSubtitle:
+    return {
+      titleLogin: tr("Sign In", "Вход"),
+      subtitleLogin: tr("Sign in to access your dashboard.", "Войдите, чтобы открыть панель управления."),
+      titleRegister: tr("Sign Up", "Регистрация"),
+      subtitleRegister: tr(
+        "Create an account and connect your FunPay golden key.",
+        "Создайте аккаунт и подключите золотой ключ FunPay.",
+      ),
+      usernamePlaceholder: tr("Email or Username", "Email или логин"),
+      passwordPlaceholder: tr("Password", "Пароль"),
+      goldenKeyPlaceholder: tr("FunPay Golden Key", "Золотой ключ FunPay"),
+      forgotPassword: tr("Forgot password?", "Забыли пароль?"),
+      forgotPasswordHint: tr("Password reset isn't wired up yet.", "Восстановление пароля пока не подключено."),
+      actionLogin: tr("Sign In", "Войти"),
+      actionRegister: tr("Create account", "Создать аккаунт"),
+      working: tr("Working...", "Подождите..."),
+      marketingTitle: tr("Automate your workflow", "Автоматизируйте свой процесс"),
+      marketingSubtitle: tr(
         "Accounts, rentals, lots, notifications, and chats — in one dashboard. Faster, cleaner, less routine.",
-      bullet1: "Issue accounts and extend rentals in a couple clicks",
-      bullet2: "FunPay chats and realtime notifications",
-      bullet3: "Inventory, lots, and stats — always in control",
+        "Аккаунты, аренды, лоты, уведомления и чаты — в одной панели. Быстрее, чище, без рутины.",
+      ),
+      bullet1: tr(
+        "Issue accounts and extend rentals in a couple clicks",
+        "Выдавайте аккаунты и продлевайте аренды в пару кликов",
+      ),
+      bullet2: tr("FunPay chats and realtime notifications", "Чаты FunPay и уведомления в реальном времени"),
+      bullet3: tr(
+        "Inventory, lots, and stats — always in control",
+        "Инвентарь, лоты и статистика — всегда под контролем",
+      ),
       footerLeft: `© ${year} FunpayMegamind`,
-      footerSupport: "Support",
-      supportHint: "Support coming soon.",
-      validation: "Enter username and password.",
-      validationRegister: "Enter username, password, and golden key.",
-      linkSignUp: "Sign Up",
-      linkSignIn: "Sign In",
-      badge: "Automation for FunPay sellers",
-    } as const;
-
-    return lang === "ru" ? RU : EN;
-  }, [lang]);
+      footerSupport: tr("Support", "Поддержка"),
+      supportHint: tr("Support coming soon.", "Поддержка скоро появится."),
+      validation: tr("Enter username and password.", "Введите логин и пароль."),
+      validationRegister: tr(
+        "Enter username, password, and golden key.",
+        "Введите логин, пароль и золотой ключ.",
+      ),
+      linkSignUp: tr("Sign Up", "Регистрация"),
+      linkSignIn: tr("Sign In", "Войти"),
+      badge: tr("Automation for FunPay sellers", "Автоматизация для продавцов FunPay"),
+      noAccount: tr("Don't have an account?", "Нет аккаунта?"),
+      showPassword: tr("Show password", "Показать пароль"),
+      hidePassword: tr("Hide password", "Скрыть пароль"),
+      labelRussian: tr("Russian", "Русский"),
+      labelEnglish: tr("English", "Английский"),
+    };
+  }, [tr]);
 
   const canSubmit = useMemo(() => {
     if (submitting) return false;
@@ -305,7 +280,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
 
               <AnimatePresence mode="wait">
                 <motion.h2
-                  key={`hero-title-${lang}`}
+                  key={`hero-title-${language}`}
                   className="mt-10 text-4xl font-semibold leading-tight tracking-tight md:text-[52px]"
                   variants={FADE_UP}
                   initial="initial"
@@ -317,7 +292,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
               </AnimatePresence>
               <AnimatePresence mode="wait">
                 <motion.p
-                  key={`hero-sub-${lang}`}
+                  key={`hero-sub-${language}`}
                   className="mx-auto mt-5 max-w-[56ch] text-sm leading-relaxed text-white/70"
                   variants={FADE_UP}
                   initial="initial"
@@ -433,7 +408,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
                     <motion.button
                       type="button"
                       className="absolute inset-y-0 right-3 inline-flex h-full w-11 items-center justify-center rounded-full p-0 text-neutral-400 transition hover:text-neutral-600 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-300 focus-visible:outline-offset-2"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? copy.hidePassword : copy.showPassword}
                       onClick={() => setShowPassword((prev) => !prev)}
                       animate={{ rotate: showPassword ? 45 : 0, opacity: 1, scale: 1 }}
                       transition={{ duration: 0.2, ease: EASE }}
@@ -480,7 +455,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
                         animate="animate"
                         exit="exit"
                       >
-                        <span className="mr-2">{lang === "ru" ? "Нет аккаунта?" : "Don't have an account?"}</span>
+                        <span className="mr-2">{copy.noAccount}</span>
                         <button
                           type="button"
                           className="font-semibold text-orange-500 transition hover:text-orange-600"
@@ -533,21 +508,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onRegister, onToast }) =
                 type="button"
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
-                  (lang === "ru" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900")
+                  (language === "ru" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900")
                 }
-                onClick={() => setLang("ru")}
+                onClick={() => setLanguage("ru")}
               >
-                Русский
+                {copy.labelRussian}
               </button>
               <button
                 type="button"
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold transition " +
-                  (lang === "en" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900")
+                  (language === "en" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900")
                 }
-                onClick={() => setLang("en")}
+                onClick={() => setLanguage("en")}
               >
-                English
+                {copy.labelEnglish}
               </button>
             </div>
           </div>

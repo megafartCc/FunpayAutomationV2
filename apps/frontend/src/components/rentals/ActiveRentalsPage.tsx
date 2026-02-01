@@ -46,17 +46,17 @@ const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const statusPill = (status?: string) => {
   const lower = (status || "").toLowerCase();
-  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
-  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Demo Hero" };
-  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Bot Match" };
+  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Заморожено" };
+  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Демо герой" };
+  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Матч с ботом" };
   if (lower.includes("custom"))
-    return { className: "bg-amber-50 text-amber-600", label: "Custom Game" };
-  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
-  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
-  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
-  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Idle" };
-  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Offline" };
-  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+    return { className: "bg-amber-50 text-amber-600", label: "Кастомная игра" };
+  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "В матче" };
+  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "В игре" };
+  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Онлайн" };
+  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Неактивен" };
+  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Оффлайн" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Неизвестно" };
 };
 
 const makeAccountKey = (workspaceId: number | null | undefined, id: number) =>
@@ -123,7 +123,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   workspaceName: item.workspace_name ?? null,
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
-  rentalDuration: item.rental_duration ?? 0,
+  rentalДлительность: item.rental_duration ?? 0,
   rentalDurationMinutes: item.rental_duration_minutes ?? null,
   accountFrozen: !!item.account_frozen,
   rentalFrozen: !!item.rental_frozen,
@@ -138,7 +138,7 @@ const formatDuration = (minutesTotal: number | null | undefined) => {
   const minutes = Math.max(0, Math.floor(minutesTotal));
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
-  return `${hours}h ${rem}m`;
+  return `${hours}\u0447 ${rem}\u043c`;
 };
 
 const parseUtcMs = (value?: string | null) => {
@@ -198,8 +198,8 @@ const resolveWorkspaceName = (
   }
   const fallback = workspaces.find((item) => item.is_default);
   if (fallback) return fallback.name;
-  if (workspaceId) return `Workspace ${workspaceId}`;
-  return "Workspace";
+  if (workspaceId) return `\u0420\u0430\u0431\u043e\u0447\u0435\u0435 \u043f\u0440\u043e\u0441\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u043e ${workspaceId}`;
+  return "\u0420\u0430\u0431\u043e\u0447\u0435\u0435 \u043f\u0440\u043e\u0441\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u043e";
 };
 
 const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
@@ -314,31 +314,31 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
     if (selectedAccount.accountFrozen) {
-      onToast?.("Unfreeze the account before assigning a buyer.", true);
+      onToast?.("Разморозьте аккаунт перед назначением покупателя.", true);
       return;
     }
     if (selectedAccount.owner) {
-      onToast?.("Release the account first.", true);
+      onToast?.("Сначала освободите аккаунт.", true);
       return;
     }
     const owner = assignOwner.trim();
     if (!owner) {
-      onToast?.("Enter a buyer username.", true);
+      onToast?.("Введите логин покупателя.", true);
       return;
     }
     setAccountActionBusy(true);
     try {
       await api.assignAccount(selectedAccount.id, owner, selectedAccount.workspaceId ?? undefined);
-      onToast?.("Rental assigned.");
+      onToast?.("Аренда назначена.");
       setAssignOwner("");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to assign rental.";
+      const message = (err as { message?: string })?.message || "Не удалось назначить аренду.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -347,7 +347,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const handleUpdateAccount = async () => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
@@ -363,24 +363,24 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     if (mmrRaw) {
       const mmr = Number(mmrRaw);
       if (!Number.isFinite(mmr) || mmr < 0) {
-        onToast?.("MMR must be 0 or higher.", true);
+        onToast?.("ММР должен быть 0 или выше.", true);
         return;
       }
       if (String(mmr) !== String(selectedAccount.mmr ?? "")) payload.mmr = mmr;
     }
 
     if (!Object.keys(payload).length) {
-      onToast?.("No changes to save.", true);
+      onToast?.("Нет изменений для сохранения.", true);
       return;
     }
 
     setAccountActionBusy(true);
     try {
       await api.updateAccount(selectedAccount.id, payload, selectedAccount.workspaceId ?? undefined);
-      onToast?.("Account updated.");
+      onToast?.("Аккаунт обновлён.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update account.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить аккаунт.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -389,29 +389,29 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const handleExtendRental = async () => {
     if (!selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     const hours = Number(rentalExtendHours || 0);
     const minutes = Number(rentalExtendMinutes || 0);
     if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
-      onToast?.("Enter valid hours and minutes.", true);
+      onToast?.("Введите корректные часы и минуты.", true);
       return;
     }
     if (hours * 60 + minutes <= 0) {
-      onToast?.("Extension must be greater than 0.", true);
+      onToast?.("Продление должно быть больше 0.", true);
       return;
     }
     setRentalActionBusy(true);
     try {
       await api.extendAccount(selectedAccount.id, hours, minutes, selectedAccount.workspaceId ?? undefined);
-      onToast?.("Rental extended.");
+      onToast?.("Аренда продлена.");
       setRentalExtendHours("");
       setRentalExtendMinutes("");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to extend rental.";
+      const message = (err as { message?: string })?.message || "Не удалось продлить аренду.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -420,17 +420,17 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const handleReleaseRental = async () => {
     if (!selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
       await api.releaseAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
-      onToast?.("Rental released.");
+      onToast?.("Аренда завершена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to release rental.";
+      const message = (err as { message?: string })?.message || "Не удалось завершить аренду.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -439,35 +439,35 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   const handleToggleRentalFreeze = async (nextFrozen: boolean) => {
     if (!selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
       await api.freezeRental(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
-      onToast?.(nextFrozen ? "Rental frozen." : "Rental unfrozen.");
+      onToast?.(nextFrozen ? "Аренда заморожена." : "Аренда разморожена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update rental freeze state.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить статус заморозки аренды.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
     }
   };
 
-  const renderAccountActionsPanel = (title = "Account actions") => {
+  const renderAccountActionsPanel = (title = "Действия аккаунта") => {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-900">{title}</h3>
-          <span className="text-xs text-neutral-500">{selectedAccount ? "Ready" : "Select an account"}</span>
+          <span className="text-xs text-neutral-500">{selectedAccount ? "Готово" : "Выберите аккаунт"}</span>
         </div>
         {selectedAccount ? (
           (() => {
             const rented = !!selectedAccount.owner;
             const frozen = !!selectedAccount.accountFrozen;
-            const stateLabel = frozen ? "Frozen" : rented ? "Rented out" : "Available";
+            const stateLabel = frozen ? "Заморожено" : rented ? "В аренде" : "Доступен";
             const stateClass = frozen
               ? "bg-slate-100 text-slate-700"
               : rented
@@ -483,7 +483,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
               ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
               : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
-              ? `${workspaceLabel} (Default)`
+              ? `${workspaceLabel} (\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e)`
               : workspaceLabel;
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
@@ -507,31 +507,31 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        Selected account
+                        Выбранный аккаунт
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
-                        {selectedAccount.name || "Account"}
+                        {selectedAccount.name || "Аккаунт"}
                       </div>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>{stateLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Login: {selectedAccount.login || "-"}</span>
+                    <span>Логин: {selectedAccount.login || "-"}</span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
-                    <span>Owner: {ownerLabel}</span>
-                    <span>Workspace: {workspaceDisplay}</span>
-                    <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
-                    <span>Duration: {hoursLabel}</span>
+                    <span>Покупатель: {ownerLabel}</span>
+                    <span>Рабочее пространство: {workspaceDisplay}</span>
+                    <span>Начало аренды: {selectedAccount.rentalStart || "-"}</span>
+                    <span>Длительность: {hoursLabel}</span>
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Assign rental</div>
-                  <p className="text-xs text-neutral-500">The countdown starts after the buyer requests the code.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Назначить аренду</div>
+                  <p className="text-xs text-neutral-500">Отсчёт начинается после запроса кода покупателем.</p>
                   <div className="mt-3 space-y-3">
                     <input
                       value={assignOwner}
                       onChange={(e) => setAssignOwner(e.target.value)}
-                      placeholder="Buyer username"
+                      placeholder="Логин покупателя"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                     />
                     <button
@@ -539,40 +539,40 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                       disabled={accountActionBusy || !assignOwner.trim() || !canAssign}
                       className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                     >
-                      Assign rental
+                      Назначить аренду
                     </button>
                     {!canAssign && (
                       <div className="text-xs text-neutral-500">
-                        {frozen ? "Unfreeze the account before assigning a buyer." : "Release the account first."}
+                        {frozen ? "Разморозьте аккаунт перед назначением покупателя." : "Сначала освободите аккаунт."}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Update account</div>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Обновить аккаунт</div>
                   <div className="grid gap-3">
                     <input
                       value={accountEditName}
                       onChange={(e) => setAccountEditName(e.target.value)}
-                      placeholder="Account name"
+                      placeholder="Название аккаунта"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                     />
                     <div className="grid gap-3 md:grid-cols-2">
                       <input
                         value={accountEditLogin}
                         onChange={(e) => setAccountEditLogin(e.target.value)}
-                        placeholder="Login"
+                        placeholder="Логин"
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                       />
                       <input
                         value={accountEditPassword}
                         onChange={(e) => setAccountEditPassword(e.target.value)}
-                        placeholder="Password"
+                        placeholder="Пароль"
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Рабочее пространство</label>
                       <select
                         value={workspaceDisplay}
                         disabled
@@ -591,14 +591,14 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     />
                   </div>
                   {!editMmrValid && (
-                    <div className="mt-2 text-xs text-rose-500">MMR must be 0 or higher.</div>
+                    <div className="mt-2 text-xs text-rose-500">ММР должен быть 0 или выше.</div>
                   )}
                   <button
                     onClick={handleUpdateAccount}
                     disabled={accountActionBusy || !hasChanges || !editMmrValid}
                     className="mt-3 w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                   >
-                    Save changes
+                    Сохранить изменения
                   </button>
                 </div>
               </div>
@@ -606,7 +606,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
           })()
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-            Select an account to unlock account actions.
+            Выберите аккаунт, чтобы открыть действия.
           </div>
         )}
       </div>
@@ -617,13 +617,13 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-neutral-900">Rental actions</h3>
-          <span className="text-xs text-neutral-500">{selectedRental ? "Ready" : "Select a rental"}</span>
+          <h3 className="text-lg font-semibold text-neutral-900">Действия аренды</h3>
+          <span className="text-xs text-neutral-500">{selectedRental ? "Готово" : "Выберите аренду"}</span>
         </div>
         {selectedRental ? (
           (() => {
             const frozen = !!selectedAccount?.rentalFrozen;
-            const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
+            const pill = statusPill(frozen ? "Заморожено" : selectedRental.status);
             const presenceLabel = pill.label;
             const workspaceLabel = resolveWorkspaceName(
               selectedAccount?.workspaceId ?? selectedRental?.workspaceId,
@@ -636,7 +636,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 ? workspaces.find((item) => item.id === selectedRental.workspaceId)
                 : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
-              ? `${workspaceLabel} (Default)`
+              ? `${workspaceLabel} (\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e)`
               : workspaceLabel;
             return (
               <div className="space-y-4">
@@ -644,18 +644,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        Selected rental
+                        Выбранная аренда
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
-                        {selectedRental.account || "Rental"}
+                        {selectedRental.account || "Аренда"}
                       </div>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>{presenceLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Buyer: {selectedRental.buyer || "-"}</span>
+                    <span>Покупатель: {selectedRental.buyer || "-"}</span>
                   <span>
-                    Time left:{" "}
+                    Осталось:{" "}
                     {selectedRental
                       ? getCountdownLabel(
                           accountByKey.get(selectedRental.accountKey),
@@ -664,18 +664,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                         )
                       : "-"}
                   </span>
-                    <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
-                    <span>Hero: {selectedRental.hero || "-"}</span>
-                    <span>Workspace: {workspaceDisplay}</span>
-                    <span>Started: {selectedRental.started || "-"}</span>
+                    <span>Время матча: {getMatchTimeLabel(selectedRental, now)}</span>
+                    <span>Герой: {selectedRental.hero || "-"}</span>
+                    <span>Рабочее пространство: {workspaceDisplay}</span>
+                    <span>Начато: {selectedRental.started || "-"}</span>
                     {frozen && (
-                      <span className="text-rose-600">Frozen: timer paused until you unfreeze.</span>
+                      <span className="text-rose-600">Заморожено: таймер приостановлен до разморозки.</span>
                     )}
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Freeze rental</div>
-                  <p className="text-xs text-neutral-500">Freezing pauses the timer and kicks the user from Steam.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Заморозить аренду</div>
+                  <p className="text-xs text-neutral-500">Заморозка ставит таймер на паузу и выгоняет пользователя из Steam.</p>
                   <button
                     onClick={() => handleToggleRentalFreeze(!frozen)}
                     disabled={rentalActionBusy}
@@ -685,16 +685,16 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                         : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                     }`}
                   >
-                    {frozen ? "Unfreeze rental" : "Freeze rental"}
+                    {frozen ? "Разморозить аренду" : "Заморозить аренду"}
                   </button>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Extend rental</div>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Продлить аренду</div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       value={rentalExtendHours}
                       onChange={(e) => setRentalExtendHours(e.target.value)}
-                      placeholder="Hours"
+                      placeholder="Часы"
                       type="number"
                       min="0"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -702,7 +702,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <input
                       value={rentalExtendMinutes}
                       onChange={(e) => setRentalExtendMinutes(e.target.value)}
-                      placeholder="Minutes"
+                      placeholder="Минуты"
                       type="number"
                       min="0"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -713,18 +713,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     disabled={rentalActionBusy}
                     className="mt-3 w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                   >
-                    Extend rental
+                    Продлить аренду
                   </button>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">End rental</div>
-                  <p className="text-xs text-neutral-500">Stops the rental and releases the account.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Завершить аренду</div>
+                  <p className="text-xs text-neutral-500">Останавливает аренду и освобождает аккаунт.</p>
                   <button
                     onClick={handleReleaseRental}
                     disabled={rentalActionBusy}
                     className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
                   >
-                    Release rental
+                    Завершить аренду
                   </button>
                 </div>
               </div>
@@ -732,7 +732,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
           })()
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-            Select an active rental to unlock actions.
+            Выберите активную аренду, чтобы открыть действия.
           </div>
         )}
       </div>
@@ -741,13 +741,13 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-neutral-900">Active Rentals</h1>
+      <h1 className="text-2xl font-semibold text-neutral-900">Активные аренды</h1>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
-          {rentals.length} active rentals
+          {rentals.length} активных аренд
         </div>
-        <div className="text-sm text-neutral-500">Updated live every second</div>
+        <div className="text-sm text-neutral-500">Обновляется в реальном времени каждую секунду</div>
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
@@ -759,13 +759,13 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 style={{ gridTemplateColumns: RENTALS_GRID }}
               >
                 <span>ID</span>
-                <span>Account</span>
-                <span>Buyer</span>
-                <span>Started</span>
-                <span>Time Left</span>
-                <span>Match Time</span>
-                <span>Hero</span>
-                <span className="text-center">Status</span>
+                <span>Аккаунт</span>
+                <span>Покупатель</span>
+                <span>Начато</span>
+                <span>Осталось</span>
+                <span>Время матча</span>
+                <span>Герой</span>
+                <span className="text-center">Статус</span>
               </div>
               <div className="mt-3 space-y-3">
                 {rentals.map((row, idx) => {
@@ -781,7 +781,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                   ? workspaces.find((item) => item.id === row.workspaceId)
                   : workspaces.find((item) => item.is_default) ?? null;
                 const workspaceBadge = workspaceRecord?.is_default
-                  ? `${workspaceLabel} (Default)`
+                  ? `${workspaceLabel} (\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e)`
                   : workspaceLabel;
                 return (
                   <motion.div
@@ -834,12 +834,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 })}
                 {rentals.length === 0 && !loading && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    No active rentals yet.
+                    No активных аренд yet.
                   </div>
                 )}
                 {loading && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    Loading rentals...
+                    Загрузка аренд...
                   </div>
                 )}
               </div>
@@ -849,7 +849,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {renderAccountActionsPanel("Account actions")}
+        {renderAccountActionsPanel("Действия аккаунта")}
         {renderRentalActionsPanel()}
       </div>
     </div>

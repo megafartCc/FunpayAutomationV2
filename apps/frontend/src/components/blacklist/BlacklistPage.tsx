@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api, BlacklistEntry, BlacklistLog } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
 
 type BlacklistPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -29,13 +30,14 @@ const formatWorkspaceLabel = (
 ) => {
   if (workspaceId && workspaceName) return `${workspaceName} (ID ${workspaceId})`;
   if (workspaceName) return workspaceName;
-  if (!workspaceId) return "Global";
+  if (!workspaceId) return "Глобально";
   const match = workspaces.find((item) => item.id === workspaceId);
-  return match?.name ? `${match.name} (ID ${workspaceId})` : `Workspace ${workspaceId}`;
+  return match?.name ? `${match.name} (ID ${workspaceId})` : `Рабочее пространство ${workspaceId}`;
 };
 
 const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   const { workspaces } = useWorkspace();
+  const { tr } = useI18n();
   const isAllWorkspaces = true;
   const workspaceId: number | null = null;
 
@@ -58,14 +60,14 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     async (orderId: string) => {
       const trimmed = orderId.trim();
       if (!trimmed) {
-        onToast?.("Enter an order ID first.", true);
+        onToast?.(tr("Enter an order ID first.", "Сначала введите ID заказа."), true);
         return null;
       }
       setBlacklistResolving(true);
       try {
         const res = await api.resolveOrder(trimmed, workspaceId ?? undefined);
         if (!res?.owner) {
-          onToast?.("Buyer not found for this order yet.", true);
+          onToast?.(tr("Buyer not found for this order yet.", "Покупатель по этому заказу пока не найден."), true);
           setResolvedWorkspace(null);
           return null;
         }
@@ -78,12 +80,19 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
           id: res.workspace_id ?? null,
           name: res.workspace_name ?? null,
         });
+        const ownerLabel = tr("Buyer found: {owner}", "Покупатель найден: {owner}", { owner: res.owner });
         onToast?.(
-          workspaceLabel ? `Buyer found: ${res.owner} (Workspace: ${workspaceLabel})` : `Buyer found: ${res.owner}`,
+          workspaceLabel
+            ? tr("Buyer found: {owner} (Workspace: {workspace})", "Покупатель найден: {owner} (Пространство: {workspace})", {
+                owner: res.owner,
+                workspace: workspaceLabel,
+              })
+            : ownerLabel,
         );
         return res.owner;
       } catch (err) {
-        const message = (err as { message?: string })?.message || "Order lookup failed.";
+        const message =
+          (err as { message?: string })?.message || tr("Order lookup failed.", "Поиск заказа не удался.");
         onToast?.(message, true);
         setResolvedWorkspace(null);
         return null;
@@ -102,7 +111,8 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       setBlacklistEntries(res.items || []);
       setBlacklistSelected((prev) => prev.filter((owner) => res.items.some((entry) => entry.owner === owner)));
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load blacklist.";
+      const message =
+        (err as { message?: string })?.message || tr("Failed to load blacklist.", "Не удалось загрузить чёрный список.");
       onToast?.(message, true);
     } finally {
       setBlacklistLoading(false);
@@ -116,7 +126,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       const res = await api.listBlacklistLogs(effectiveWorkspaceId, 200);
       setBlacklistLogs(res.items || []);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load blacklist activity.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load blacklist activity.", "Не удалось загрузить активность чёрного списка.");
       onToast?.(message, true);
     } finally {
       setBlacklistLogsLoading(false);
@@ -149,7 +161,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     let owner = blacklistOwner.trim();
     const orderId = blacklistOrderId.trim();
     if (!owner && !orderId) {
-      onToast?.("Enter a buyer username or order ID.", true);
+      onToast?.(tr("Enter a buyer username or order ID.", "Введите имя покупателя или ID заказа."), true);
       return;
     }
     if (!owner && orderId) {
@@ -168,11 +180,13 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       setBlacklistReason("");
       setResolvedWorkspace(null);
       setBlacklistEntries((prev) => [entry, ...prev.filter((item) => item.id !== entry.id)]);
-      onToast?.("User added to blacklist.");
+      onToast?.(tr("User added to blacklist.", "Пользователь добавлен в чёрный список."));
       await loadBlacklist();
       await loadBlacklistLogs();
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to add user to blacklist.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to add user to blacklist.", "Не удалось добавить пользователя в чёрный список.");
       onToast?.(message, true);
     } finally {
       setBlacklistResolving(false);
@@ -195,7 +209,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     if (blacklistEditingId === null || blacklistEditingId === undefined) return;
     const owner = blacklistEditOwner.trim();
     if (!owner) {
-      onToast?.("Owner cannot be empty.", true);
+      onToast?.(tr("Owner cannot be empty.", "Владелец не может быть пустым."), true);
       return;
     }
     try {
@@ -204,47 +218,53 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
         { owner, reason: blacklistEditReason.trim() || null },
         workspaceId ?? undefined,
       );
-      onToast?.("Blacklist entry updated.");
+      onToast?.(tr("Blacklist entry updated.", "Запись чёрного списка обновлена."));
       cancelEditBlacklist();
       setBlacklistEntries((prev) => prev.map((item) => (item.id === entry.id ? entry : item)));
       await loadBlacklistLogs();
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update blacklist entry.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to update blacklist entry.", "Не удалось обновить запись чёрного списка.");
       onToast?.(message, true);
     }
   };
 
   const handleRemoveSelected = async () => {
     if (!blacklistSelected.length) {
-      onToast?.("Select users to unblacklist.", true);
+      onToast?.(tr("Select users to unblacklist.", "Выберите пользователей для разблокировки."), true);
       return;
     }
     try {
       await api.removeBlacklist(blacklistSelected, workspaceId ?? undefined);
-      onToast?.("Selected users removed from blacklist.");
+      onToast?.(tr("Selected users removed from blacklist.", "Выбранные пользователи удалены из чёрного списка."));
       setBlacklistSelected([]);
       await loadBlacklist();
       await loadBlacklistLogs();
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to unblacklist users.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to unblacklist users.", "Не удалось удалить пользователей из чёрного списка.");
       onToast?.(message, true);
     }
   };
 
   const handleClearBlacklist = async () => {
     if (!blacklistEntries.length) {
-      onToast?.("Blacklist is already empty.", true);
+      onToast?.(tr("Blacklist is already empty.", "Чёрный список уже пуст."), true);
       return;
     }
-    if (!window.confirm("Remove everyone from the blacklist?")) return;
+    if (!window.confirm(tr("Remove everyone from the blacklist?", "Удалить всех из чёрного списка?"))) return;
     try {
       await api.clearBlacklist(workspaceId ?? undefined);
-      onToast?.("Blacklist cleared.");
+      onToast?.(tr("Blacklist cleared.", "Чёрный список очищен."));
       setBlacklistSelected([]);
       await loadBlacklist();
       await loadBlacklistLogs();
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to clear blacklist.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to clear blacklist.", "Не удалось очистить чёрный список.");
       onToast?.(message, true);
     }
   };
@@ -258,29 +278,35 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Blacklist</h3>
+            <h3 className="text-lg font-semibold text-neutral-900">{tr("Blacklist", "Чёрный список")}</h3>
             <p className="text-sm text-neutral-500">
-              Block buyers from renting and send a penalty payment notice.
+              {tr(
+                "Block buyers from renting and send a penalty payment notice.",
+                "Блокируйте аренду и отправляйте уведомление о штрафе.",
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">
-              {totalBlacklisted} blocked
+              {tr("{count} blocked", "Заблокировано: {count}", { count: totalBlacklisted })}
             </span>
             <button
               onClick={() => loadBlacklist()}
               className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
             >
-              Refresh
+              {tr("Refresh", "Обновить")}
             </button>
           </div>
         </div>
         <div className="grid gap-4 lg:grid-cols-[1.15fr_1fr]">
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="mb-2 text-sm font-semibold text-neutral-800">Add to blacklist</div>
+            <div className="mb-2 text-sm font-semibold text-neutral-800">{tr("Add to blacklist", "Добавить в чёрный список")}</div>
             {isAllWorkspaces && (
               <div className="mb-3 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
-                All workspaces + platforms selected - blacklist applies globally.
+                {tr(
+                  "All workspaces + platforms selected - blacklist applies globally.",
+                  "Выбраны все рабочие пространства и платформы — чёрный список применяется глобально.",
+                )}
               </div>
             )}
             <div className="space-y-3">
@@ -291,7 +317,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                     setBlacklistOrderId(e.target.value);
                     setResolvedWorkspace(null);
                   }}
-                  placeholder="Order ID (optional)"
+                  placeholder={tr("Order ID (optional)", "ID заказа (необязательно)")}
                   disabled={blacklistResolving}
                   className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                 />
@@ -300,7 +326,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                   disabled={blacklistResolving}
                   className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
                 >
-                  Find buyer
+                  {tr("Find buyer", "Найти покупателя")}
                 </button>
               </div>
               <input
@@ -309,12 +335,12 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                   setBlacklistOwner(e.target.value);
                   if (resolvedWorkspace) setResolvedWorkspace(null);
                 }}
-                placeholder="Buyer username"
+                placeholder={tr("Buyer username", "Имя покупателя")}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               {resolvedWorkspace ? (
                 <div className="text-xs text-neutral-500">
-                  Order workspace:{" "}
+                  {tr("Order workspace:", "Рабочее пространство заказа:")}{" "}
                   {formatWorkspaceLabel(
                     resolvedWorkspace.id ?? null,
                     workspaces,
@@ -325,7 +351,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
               <input
                 value={blacklistReason}
                 onChange={(e) => setBlacklistReason(e.target.value)}
-                placeholder="Reason (optional)"
+                placeholder={tr("Reason (optional)", "Причина (необязательно)")}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <button
@@ -333,16 +359,16 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                 disabled={blacklistResolving || (!blacklistOwner.trim() && !blacklistOrderId.trim())}
                 className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
-                {blacklistResolving ? "Resolving..." : "Add user"}
+                {blacklistResolving ? tr("Resolving...", "Поиск...") : tr("Add user", "Добавить пользователя")}
               </button>
             </div>
           </div>
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="mb-2 text-sm font-semibold text-neutral-800">Manage</div>
+            <div className="mb-2 text-sm font-semibold text-neutral-800">{tr("Manage", "Управление")}</div>
             <input
               value={blacklistQuery}
               onChange={(e) => setBlacklistQuery(e.target.value)}
-              placeholder="Search by buyer"
+              placeholder={tr("Search by buyer", "Поиск по покупателю")}
               type="search"
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
@@ -352,14 +378,14 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                 disabled={!blacklistSelected.length}
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
               >
-                Unblacklist selected
+                {tr("Unblacklist selected", "Разблокировать выбранных")}
               </button>
               <button
                 onClick={handleClearBlacklist}
                 disabled={!blacklistEntries.length}
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
               >
-                Unblacklist all
+                {tr("Unblacklist all", "Разблокировать всех")}
               </button>
             </div>
           </div>
@@ -379,15 +405,15 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                     className="h-4 w-4 rounded border-neutral-300 text-neutral-900"
                   />
                 </label>
-                <span>Buyer</span>
-                <span>Reason</span>
-                <span>Added</span>
-                <span>Actions</span>
+                <span>{tr("Buyer", "Покупатель")}</span>
+                <span>{tr("Reason", "Причина")}</span>
+                <span>{tr("Added", "Добавлено")}</span>
+                <span>{tr("Actions", "Действия")}</span>
               </div>
               <div className="divide-y divide-neutral-100 overflow-x-hidden">
                 {blacklistLoading ? (
                   <div className="px-6 py-6 text-center text-sm text-neutral-500">
-                    Loading blacklist...
+                    {tr("Loading blacklist...", "Загружаем чёрный список...")}
                   </div>
                 ) : blacklistEntries.length ? (
                   blacklistEntries.map((entry, idx) => {
@@ -432,7 +458,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                           <input
                             value={blacklistEditReason}
                             onChange={(e) => setBlacklistEditReason(e.target.value)}
-                            placeholder="Reason (optional)"
+                            placeholder={tr("Reason (optional)", "Причина (необязательно)")}
                             className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                           />
                         ) : (
@@ -446,13 +472,13 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                                 onClick={handleSaveBlacklistEdit}
                                 className="rounded-lg bg-neutral-900 px-3 py-1 text-xs font-semibold text-white"
                               >
-                                Save
+                                {tr("Save", "Сохранить")}
                               </button>
                               <button
                                 onClick={cancelEditBlacklist}
                                 className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
                               >
-                                Cancel
+                                {tr("Cancel", "Отмена")}
                               </button>
                             </>
                           ) : (
@@ -460,7 +486,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                               onClick={() => startEditBlacklist(entry)}
                               className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
                             >
-                              Edit
+                              {tr("Edit", "Редактировать")}
                             </button>
                           )}
                         </div>
@@ -468,7 +494,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                     );
                   })
                 ) : (
-                  <div className="px-6 py-6 text-center text-sm text-neutral-500">Blacklist is empty.</div>
+                  <div className="px-6 py-6 text-center text-sm text-neutral-500">
+                    {tr("Blacklist is empty.", "Чёрный список пуст.")}
+                  </div>
                 )}
               </div>
             </div>
@@ -477,39 +505,39 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
         <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-neutral-900">Activity</div>
-              <div className="text-xs text-neutral-500">Latest blacklist / unblacklist events.</div>
+              <div className="text-sm font-semibold text-neutral-900">{tr("Activity", "Активность")}</div>
+              <div className="text-xs text-neutral-500">{tr("Latest blacklist / unblacklist events.", "Последние события блокировок и разблокировок.")}</div>
             </div>
             <button
               onClick={() => loadBlacklistLogs()}
               disabled={blacklistLogsLoading}
               className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
             >
-              Refresh
+              {tr("Refresh", "Обновить")}
             </button>
           </div>
           {blacklistLogsLoading ? (
-            <div className="py-4 text-sm text-neutral-500">Loading activity...</div>
+            <div className="py-4 text-sm text-neutral-500">{tr("Loading activity...", "Загружаем активность...")}</div>
           ) : blacklistLogs.length === 0 ? (
-            <div className="py-4 text-sm text-neutral-500">No activity yet.</div>
+            <div className="py-4 text-sm text-neutral-500">{tr("No activity yet.", "Пока нет активности.")}</div>
           ) : (
             <div className="space-y-2">
               {blacklistLogs.map((log, idx) => {
                 const action = (log.action || "").toLowerCase();
                 const badge =
                   action === "add"
-                    ? { label: "Added", className: "bg-blue-100 text-blue-700" }
+                    ? { label: tr("Added", "Добавлено"), className: "bg-blue-100 text-blue-700" }
                     : action.includes("unblacklist")
-                      ? { label: "Unblocked", className: "bg-green-100 text-green-700" }
+                      ? { label: tr("Unblocked", "Разблокировано"), className: "bg-green-100 text-green-700" }
                       : action === "blocked_order"
-                        ? { label: "Blocked order", className: "bg-red-100 text-red-700" }
+                        ? { label: tr("Blocked order", "Заблокирован заказ"), className: "bg-red-100 text-red-700" }
                         : action === "blacklist_comp"
-                          ? { label: "Payment", className: "bg-amber-100 text-amber-700" }
+                          ? { label: tr("Payment", "Платёж"), className: "bg-amber-100 text-amber-700" }
                           : action === "update"
-                            ? { label: "Updated", className: "bg-neutral-100 text-neutral-700" }
+                            ? { label: tr("Updated", "Обновлено"), className: "bg-neutral-100 text-neutral-700" }
                             : action === "clear_all"
-                              ? { label: "Cleared", className: "bg-neutral-100 text-neutral-700" }
-                              : { label: action || "Event", className: "bg-neutral-100 text-neutral-700" };
+                              ? { label: tr("Cleared", "Очищено"), className: "bg-neutral-100 text-neutral-700" }
+                              : { label: action || tr("Event", "Событие"), className: "bg-neutral-100 text-neutral-700" };
                 return (
                   <div
                     key={`${log.owner}-${log.action}-${idx}`}

@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
+import type { TranslationKey } from "../../i18n/translations";
 
 const DashboardIcon = () => (
   <svg width="18" height="19" viewBox="0 0 18 19" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -156,22 +158,22 @@ const SettingsIcon = () => (
   </svg>
 );
 
-type NavItem = { id: string; label: string; Icon: React.FC };
+type NavItem = { id: string; labelKey: TranslationKey; Icon: React.FC };
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "funpay-stats", label: "Funpay Statistics", Icon: FunpayStatisticsIcon },
-  { id: "overview", label: "Dashboard", Icon: DashboardIcon },
-  { id: "rentals", label: "Active Rentals", Icon: RentalsIcon },
-  { id: "orders", label: "Orders History", Icon: OrdersHistoryIcon },
-  { id: "tickets", label: "Tickets (FunPay)", Icon: OrdersHistoryIcon },
-  { id: "blacklist", label: "Blacklist", Icon: BlacklistIcon },
-  { id: "low-priority", label: "Low Priority Accounts", Icon: LowPriorityIcon },
-  { id: "inventory", label: "Inventory", Icon: InventoryIcon },
-  { id: "lots", label: "Lots", Icon: LotsIcon },
-  { id: "chats", label: "Chats", Icon: ChatsIcon },
-  { id: "add", label: "Add Account", Icon: AddIcon },
-  { id: "plugins", label: "Plugins", Icon: PluginsIcon },
-  { id: "settings", label: "Settings", Icon: SettingsIcon },
+  { id: "funpay-stats", labelKey: "nav.funpayStats", Icon: FunpayStatisticsIcon },
+  { id: "overview", labelKey: "nav.dashboard", Icon: DashboardIcon },
+  { id: "rentals", labelKey: "nav.rentals", Icon: RentalsIcon },
+  { id: "orders", labelKey: "nav.orders", Icon: OrdersHistoryIcon },
+  { id: "tickets", labelKey: "nav.tickets", Icon: OrdersHistoryIcon },
+  { id: "blacklist", labelKey: "nav.blacklist", Icon: BlacklistIcon },
+  { id: "low-priority", labelKey: "nav.lowPriority", Icon: LowPriorityIcon },
+  { id: "inventory", labelKey: "nav.inventory", Icon: InventoryIcon },
+  { id: "lots", labelKey: "nav.lots", Icon: LotsIcon },
+  { id: "chats", labelKey: "nav.chats", Icon: ChatsIcon },
+  { id: "add", labelKey: "nav.addAccount", Icon: AddIcon },
+  { id: "plugins", labelKey: "nav.plugins", Icon: PluginsIcon },
+  { id: "settings", labelKey: "nav.settings", Icon: SettingsIcon },
 ];
 
 const BOTTOM_NAV_IDS = new Set(["plugins", "settings"]);
@@ -210,6 +212,7 @@ type SidebarProps = {
 const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMobile }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const activeNav = pathToNavId(location.pathname);
   const totalBlacklisted = 0;
   const { selectedId } = useWorkspace();
@@ -309,7 +312,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
                     <item.Icon />
                   </span>
                   <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                   {showBlacklistBadge && (
                     <span
@@ -374,7 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
                     <item.Icon />
                   </span>
                   <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                 </motion.button>
               );

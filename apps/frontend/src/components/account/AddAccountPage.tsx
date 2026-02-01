@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
 
 const AddIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -21,6 +22,7 @@ const AddAccountPage: React.FC = () => {
   const [mmr, setMmr] = useState("");
   const [mafileJson, setMafileJson] = useState("");
   const { visibleWorkspaces, selectedId } = useWorkspace();
+  const { tr } = useI18n();
   const defaultWorkspaceId = useMemo(() => {
     const def = visibleWorkspaces.find((item) => item.is_default);
     return def?.id ?? (visibleWorkspaces[0]?.id ?? null);
@@ -56,22 +58,22 @@ const AddAccountPage: React.FC = () => {
     setStatus(null);
 
     if (!accountName.trim() || !login.trim() || !password.trim()) {
-      setStatus({ message: "Account name, login, and password are required.", isError: true });
+      setStatus({ message: tr("Account name, login, and password are required.", "Название аккаунта, логин и пароль обязательны."), isError: true });
       return;
     }
     if (!workspaceId) {
-      setStatus({ message: "Select a workspace for this account.", isError: true });
+      setStatus({ message: tr("Select a workspace for this account.", "Выберите рабочее пространство для этого аккаунта."), isError: true });
       return;
     }
     if (!mafileJson.trim()) {
-      setStatus({ message: "maFile JSON is required.", isError: true });
+      setStatus({ message: tr("maFile JSON is required.", "Нужен JSON maFile."), isError: true });
       return;
     }
 
     const mmrValue = mmr.trim();
     const mmrNumber = mmrValue ? Number(mmrValue) : undefined;
     if (mmrValue && Number.isNaN(mmrNumber)) {
-      setStatus({ message: "MMR must be a number.", isError: true });
+      setStatus({ message: tr("MMR must be a number.", "MMR должен быть числом."), isError: true });
       return;
     }
 
@@ -89,7 +91,7 @@ const AddAccountPage: React.FC = () => {
     setSubmitting(true);
     try {
       await api.createAccount(payload);
-      setStatus({ message: "Account created." });
+      setStatus({ message: tr("Account created.", "Аккаунт создан.") });
       setAccountName("");
       setLogin("");
       setPassword("");
@@ -100,7 +102,7 @@ const AddAccountPage: React.FC = () => {
       }
     } catch (err) {
       setStatus({
-        message: (err as { message?: string })?.message || "Failed to create account.",
+        message: (err as { message?: string })?.message || tr("Failed to create account.", "Не удалось создать аккаунт."),
         isError: true,
       });
     } finally {
@@ -116,8 +118,8 @@ const AddAccountPage: React.FC = () => {
             <AddIcon />
           </span>
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Add Account</h3>
-            <p className="text-sm text-neutral-500">Upload Steam credentials and maFile JSON.</p>
+            <h3 className="text-lg font-semibold text-neutral-900">{tr("Add Account", "Добавить аккаунт")}</h3>
+            <p className="text-sm text-neutral-500">{tr("Upload Steam credentials and maFile JSON.", "Загрузите Steam-данные и JSON maFile.")}</p>
           </div>
         </div>
 
@@ -136,22 +138,22 @@ const AddAccountPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("Workspace", "Рабочее пространство")}</label>
               <select
                 value={workspaceId ?? ""}
                 onChange={(event) => setWorkspaceId(Number(event.target.value))}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               >
-                <option value="">Select workspace</option>
+                <option value="">{tr("Select workspace", "Выберите пространство")}</option>
                 {visibleWorkspaces.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.is_default ? `${item.name} (Default)` : item.name}
+                    {item.is_default ? `${item.name} (${tr("Default", "По умолчанию")})` : item.name}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Account name</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("Account name", "Название аккаунта")}</label>
               <input
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
                 value={accountName}
@@ -160,7 +162,7 @@ const AddAccountPage: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Login</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("Login", "Логин")}</label>
               <input
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
                 value={login}
@@ -169,7 +171,7 @@ const AddAccountPage: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Password</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("Password", "Пароль")}</label>
               <input
                 type="password"
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
@@ -179,7 +181,7 @@ const AddAccountPage: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">MMR (optional)</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("MMR (optional)", "MMR (необязательно)")}</label>
               <input
                 type="number"
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
@@ -189,7 +191,7 @@ const AddAccountPage: React.FC = () => {
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">maFile JSON</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{tr("maFile JSON", "JSON maFile")}</label>
               <textarea
                 className="min-h-[160px] w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
                 value={mafileJson}
@@ -209,9 +211,9 @@ const AddAccountPage: React.FC = () => {
                   onClick={() => fileInputRef.current?.click()}
                   className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-100"
                 >
-                  Upload maFile
+                  {tr("Upload maFile", "Загрузить maFile")}
                 </button>
-                <span>Paste JSON directly or upload the .maFile.</span>
+                <span>{tr("Paste JSON directly or upload the .maFile.", "Вставьте JSON напрямую или загрузите .maFile.")}</span>
               </div>
             </div>
           </div>
@@ -222,7 +224,7 @@ const AddAccountPage: React.FC = () => {
               type="submit"
               disabled={submitting}
             >
-              {submitting ? "Creating..." : "Create account"}
+              {submitting ? tr("Creating...", "Создаём...") : tr("Create account", "Создать аккаунт")}
             </button>
           </div>
         </form>

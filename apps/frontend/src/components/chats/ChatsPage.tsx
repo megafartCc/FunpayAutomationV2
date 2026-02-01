@@ -38,7 +38,7 @@ const isAdminCommand = (text?: string | null, byBot?: number | null) => {
 
 const normalizeBuyer = (value?: string | null) => (value || "").trim().toLowerCase();
 
-const ADMIN_REPLACE_LABEL = "Replace account (admin)";
+const ADMIN_REPLACE_LABEL = "Заменить аккаунт (админ)";
 
 const CHAT_CACHE_VERSION = "v1";
 const CHAT_LIST_CACHE_TTL_MS = 30_000;
@@ -117,17 +117,17 @@ const parseChatTime = (value?: string | null) => {
 
 const statusPill = (status?: string | null) => {
   const lower = (status || "").toLowerCase();
-  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
-  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Demo Hero" };
-  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Bot Match" };
+  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Заморожено" };
+  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Демо герой" };
+  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Матч с ботом" };
   if (lower.includes("custom"))
-    return { className: "bg-amber-50 text-amber-600", label: "Custom Game" };
-  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
-  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
-  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
-  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Idle" };
-  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Offline" };
-  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+    return { className: "bg-amber-50 text-amber-600", label: "Кастомная игра" };
+  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "В матче" };
+  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "В игре" };
+  if (lower.includes("online") || lower === "1" || lower === "true") return { className: "bg-emerald-50 text-emerald-600", label: "Онлайн" };
+  if (lower.includes("idle") || lower.includes("away")) return { className: "bg-amber-50 text-amber-600", label: "Неактивен" };
+  if (lower.includes("off") || lower === "" || lower === "0") return { className: "bg-rose-50 text-rose-600", label: "Оффлайн" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Неизвестно" };
 };
 
 const getMaxChatTime = (items: ChatItem[]) =>
@@ -275,7 +275,7 @@ const ChatsPage: React.FC = () => {
         setChats([]);
         setSelectedChatId(null);
         setMessages([]);
-        setStatus("Select a workspace to view chats.");
+        setStatus("Выберите рабочее пространство, чтобы открыть чаты.");
         listSinceRef.current = null;
         hasLoadedChatsRef.current = false;
         return;
@@ -334,7 +334,7 @@ const ChatsPage: React.FC = () => {
         }
       } catch (err) {
         if (!silent) {
-          const message = (err as { message?: string })?.message || "Failed to load chats.";
+          const message = (err as { message?: string })?.message || "Не удалось загрузить чаты.";
           setStatus(message);
         }
       } finally {
@@ -436,7 +436,7 @@ const ChatsPage: React.FC = () => {
         }
       } catch (err) {
         if (!silent && historyRequestRef.current.seq === seq && historyRequestRef.current.chatId === chatId) {
-          const message = (err as { message?: string })?.message || "Failed to load chat history.";
+          const message = (err as { message?: string })?.message || "Не удалось загрузить историю чата.";
           setStatus(message);
         }
       } finally {
@@ -622,14 +622,14 @@ const ChatsPage: React.FC = () => {
         return next;
       });
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to send message.";
+      const message = (err as { message?: string })?.message || "Не удалось отправить сообщение.";
       setStatus(message);
     }
   };
 
   const handleExtendRental = async () => {
     if (!selectedRental) {
-      setStatus("Select an active rental first.");
+      setStatus("Сначала выберите активную аренду.");
       return;
     }
     if (!workspaceId) return;
@@ -637,11 +637,11 @@ const ChatsPage: React.FC = () => {
     const hours = Number(extendHours || 0);
     const minutes = Number(extendMinutes || 0);
     if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
-      setStatus("Enter valid hours and minutes.");
+      setStatus("Введите корректные часы и минуты.");
       return;
     }
     if (hours * 60 + minutes <= 0) {
-      setStatus("Extension must be greater than 0.");
+      setStatus("Продление должно быть больше 0.");
       return;
     }
     setRentalActionBusy(true);
@@ -651,7 +651,7 @@ const ChatsPage: React.FC = () => {
       setExtendMinutes("");
       await loadRentals(true);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to extend rental.";
+      const message = (err as { message?: string })?.message || "Не удалось продлить аренду.";
       setStatus(message);
     } finally {
       setRentalActionBusy(false);
@@ -660,7 +660,7 @@ const ChatsPage: React.FC = () => {
 
   const handleReleaseRental = async () => {
     if (!selectedRental) {
-      setStatus("Select an active rental first.");
+      setStatus("Сначала выберите активную аренду.");
       return;
     }
     if (!workspaceId) return;
@@ -670,7 +670,7 @@ const ChatsPage: React.FC = () => {
       await api.releaseAccount(selectedRental.id, workspaceId);
       await loadRentals(true);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to release rental.";
+      const message = (err as { message?: string })?.message || "Не удалось завершить аренду.";
       setStatus(message);
     } finally {
       setRentalActionBusy(false);
@@ -679,7 +679,7 @@ const ChatsPage: React.FC = () => {
 
   const handleSetFreeze = async (nextFrozen: boolean) => {
     if (!selectedRental) {
-      setStatus("Select an active rental first.");
+      setStatus("Сначала выберите активную аренду.");
       return;
     }
     if (!workspaceId) return;
@@ -689,7 +689,7 @@ const ChatsPage: React.FC = () => {
       await api.freezeRental(selectedRental.id, nextFrozen, workspaceId);
       await loadRentals(true);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update freeze state.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить статус заморозки.";
       setStatus(message);
     } finally {
       setRentalActionBusy(false);
@@ -698,11 +698,11 @@ const ChatsPage: React.FC = () => {
 
   const handleReplaceRental = async () => {
     if (!workspaceId) {
-      setStatus("Select a workspace to replace rentals.");
+      setStatus("Выберите рабочее пространство, чтобы заменить аренду.");
       return;
     }
     if (!selectedRental) {
-      setStatus("Select an active rental first.");
+      setStatus("Сначала выберите активную аренду.");
       return;
     }
     if (rentalActionBusy) return;
@@ -714,7 +714,7 @@ const ChatsPage: React.FC = () => {
         await loadHistory(selectedChatId, { silent: true });
       }
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to replace rental.";
+      const message = (err as { message?: string })?.message || "Не удалось заменить аренду.";
       setStatus(message);
     } finally {
       setRentalActionBusy(false);
@@ -726,8 +726,8 @@ const ChatsPage: React.FC = () => {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm shadow-neutral-200/70 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Chats</h3>
-            <p className="text-sm text-neutral-500">Workspace scoped chat inbox.</p>
+            <h3 className="text-lg font-semibold text-neutral-900">Чаты</h3>
+            <p className="text-sm text-neutral-500">Чаты выбранного рабочего пространства.</p>
           </div>
           <button
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
@@ -739,9 +739,9 @@ const ChatsPage: React.FC = () => {
         <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
           {(
             [
-              { key: "list", label: "Chats list" },
-              { key: "chat", label: "Messages" },
-              { key: "actions", label: "Actions" },
+              { key: "list", label: "Список чатов" },
+              { key: "chat", label: "Сообщения" },
+              { key: "actions", label: "Действия" },
             ] as const
           ).map((item) => (
             <button
@@ -773,7 +773,7 @@ const ChatsPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <input
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                placeholder="Search chats"
+                placeholder="Поиск чатов"
                 value={chatSearch}
                 onChange={(event) => setChatSearch(event.target.value)}
               />
@@ -811,13 +811,13 @@ const ChatsPage: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="truncate text-sm font-semibold">{chat.name || "Buyer"}</div>
+                        <div className="truncate text-sm font-semibold">{chat.name || "Покупатель"}</div>
                         <span className={`text-[11px] ${isActive ? "text-neutral-200" : "text-neutral-400"}`}>
                           {formatTime(chat.last_message_time)}
                         </span>
                       </div>
                       <p className={`mt-2 truncate text-xs ${isActive ? "text-neutral-300" : "text-neutral-500"}`}>
-                        {chat.last_message_text || "No messages yet."}
+                        {chat.last_message_text || "Сообщений ещё нет."}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {rentalCount > 0 ? (
@@ -864,10 +864,10 @@ const ChatsPage: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-lg font-semibold text-neutral-900">
-                    {selectedChat ? selectedChat.name : "Select a chat"}
+                    {selectedChat ? selectedChat.name : "Выберите чат"}
                   </div>
                   <div className="text-xs text-neutral-500">
-                    {selectedChat ? `Chat ID: ${selectedChat.chat_id}` : "Pick a buyer to open the conversation."}
+                    {selectedChat ? `ID чата: ${selectedChat.chat_id}` : "Выберите покупателя, чтобы открыть переписку."}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -927,7 +927,7 @@ const ChatsPage: React.FC = () => {
                             </div>
                           ) : null}
                           <div className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pr-1">
-                            {message.text || "(empty)"}
+                            {message.text || "(пусто)"}
                           </div>
                         </div>
                       );
@@ -948,7 +948,7 @@ const ChatsPage: React.FC = () => {
               <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleSend}>
                 <textarea
                   className="min-h-[88px] w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
-                  placeholder={selectedChat ? "Type a message..." : "Select a chat first"}
+                  placeholder={selectedChat ? "Напишите сообщение..." : "Сначала выберите чат"}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   disabled={!selectedChat}
@@ -967,17 +967,17 @@ const ChatsPage: React.FC = () => {
           <div className={`${mobileView === "actions" ? "flex" : "hidden"} min-h-0 flex-col gap-4 lg:flex`}>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-neutral-900">Rental actions</div>
-                <span className="text-[11px] text-neutral-500">{selectedRental ? "Ready" : "Pick a rental"}</span>
+                <div className="text-sm font-semibold text-neutral-900">Действия аренды</div>
+                <span className="text-[11px] text-neutral-500">{selectedRental ? "Готово" : "Выберите аренду"}</span>
               </div>
               {selectedRental ? (
                 <div className="mt-3 space-y-3 text-xs text-neutral-600">
                   <div>
-                    <div className="text-[11px] text-neutral-400">Account</div>
+                    <div className="text-[11px] text-neutral-400">Аккаунт</div>
                     <div className="text-sm font-semibold text-neutral-900">{selectedRental.account || "-"}</div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Time left: {selectedRental.time_left || "-"}</span>
+                    <span>Осталось: {selectedRental.time_left || "-"}</span>
                     <span className="text-[11px] text-neutral-400">
                       {selectedRental.workspace_name || (selectedRental.workspace_id ? `WS ${selectedRental.workspace_id}` : "Workspace")}
                     </span>
@@ -1050,19 +1050,19 @@ const ChatsPage: React.FC = () => {
 
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-neutral-900">Chat controls</div>
-                <span className="text-[11px] text-neutral-500">{selectedChat ? "Ready" : "Select a chat"}</span>
+                <div className="text-sm font-semibold text-neutral-900">Управление чатом</div>
+                <span className="text-[11px] text-neutral-500">{selectedChat ? "Готово" : "Выберите чат"}</span>
               </div>
               <div className="mt-3 space-y-1 text-xs text-neutral-600">
-                <div>Buyer: {selectedChat?.name || "-"}</div>
-                <div>Chat ID: {selectedChat?.chat_id ?? "-"}</div>
-                <div>Active rentals: {selectedChat ? rentalsForBuyer.length : "-"}</div>
+                <div>Покупатель: {selectedChat?.name || "-"}</div>
+                <div>ID чата: {selectedChat?.chat_id ?? "-"}</div>
+                <div>Активные аренды: {selectedChat ? rentalsForBuyer.length : "-"}</div>
               </div>
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-neutral-900">Active rentals</div>
+                <div className="text-sm font-semibold text-neutral-900">Активные аренды</div>
                 <button
                   className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
                   type="button"
@@ -1094,7 +1094,7 @@ const ChatsPage: React.FC = () => {
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="truncate text-sm font-semibold">{item.account || "Account"}</div>
+                            <div className="truncate text-sm font-semibold">{item.account || "Аккаунт"}</div>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.className}`}>
                               {pill.label}
                             </span>

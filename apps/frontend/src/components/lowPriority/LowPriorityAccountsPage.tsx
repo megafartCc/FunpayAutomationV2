@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { api, AccountItem, OrderHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
 
 type AccountRow = {
   id: number;
@@ -23,6 +24,8 @@ type AccountRow = {
 type LowPriorityAccountsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
 };
+
+type TranslateFn = (en: string, ru: string, vars?: Record<string, string | number>) => string;
 
 type EnrichedAccountRow = AccountRow & {
   buyer: string | null;
@@ -55,31 +58,34 @@ const formatWorkspaceLabel = (
   workspaceId: number | null | undefined,
   workspaceName: string | null | undefined,
   workspaces: { id: number; name: string; is_default?: boolean }[],
+  tr: TranslateFn,
 ) => {
   if (workspaceName && workspaceId) return `${workspaceName} (ID ${workspaceId})`;
   if (workspaceName) return workspaceName;
-  if (!workspaceId) return "Workspace";
+  if (!workspaceId) return tr("Workspace", "Рабочее пространство");
   const match = workspaces.find((item) => item.id === workspaceId);
-  return match?.name ? `${match.name} (ID ${workspaceId})` : `Workspace ${workspaceId}`;
+  return match?.name
+    ? `${match.name} (ID ${workspaceId})`
+    : tr("Workspace {id}", "Рабочее пространство {id}", { id: workspaceId });
 };
 
-const formatDuration = (minutesTotal: number | null | undefined) => {
+const formatDuration = (minutesTotal: number | null | undefined, tr: TranslateFn) => {
   if (!minutesTotal && minutesTotal !== 0) return "-";
   const minutes = Math.max(0, Math.floor(minutesTotal));
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
-  return `${hours}h ${rem}m`;
+  return `${hours}${tr("h", "ч")} ${rem}${tr("m", "м")}`;
 };
 
-const formatMinutesLabel = (minutes?: number | null) => {
+const formatMinutesLabel = (minutes: number | null | undefined, tr: TranslateFn) => {
   const numeric = typeof minutes === "number" ? minutes : Number(minutes);
   if (!Number.isFinite(numeric)) return "-";
   const total = Math.max(0, Math.round(numeric));
   const hours = Math.floor(total / 60);
   const mins = total % 60;
-  if (hours && mins) return `${hours}h ${mins}m`;
-  if (hours) return `${hours}h`;
-  return `${mins}m`;
+  if (hours && mins) return `${hours}${tr("h", "ч")} ${mins}${tr("m", "м")}`;
+  if (hours) return `${hours}${tr("h", "ч")}`;
+  return `${mins}${tr("m", "м")}`;
 };
 
 const formatMoscowDateTime = (value?: string | number | null) => {
@@ -89,20 +95,26 @@ const formatMoscowDateTime = (value?: string | number | null) => {
   return new Date(ts).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
 };
 
-const orderActionPill = (action?: string | null) => {
+const orderActionPill = (action: string | null | undefined, tr: TranslateFn) => {
   const lower = (action || "").toLowerCase();
   if (lower.includes("assign") || lower.includes("issued") || lower.includes("paid")) {
-    return { className: "bg-emerald-50 text-emerald-600", label: "Issued" };
+    return { className: "bg-emerald-50 text-emerald-600", label: tr("Issued", "Выдан") };
   }
-  if (lower.includes("extend")) return { className: "bg-sky-50 text-sky-600", label: "Extended" };
+  if (lower.includes("extend")) {
+    return { className: "bg-sky-50 text-sky-600", label: tr("Extended", "Продлён") };
+  }
   if (lower.includes("blacklist_comp") || lower.includes("penalty")) {
-    return { className: "bg-amber-50 text-amber-700", label: "Penalty paid" };
+    return { className: "bg-amber-50 text-amber-700", label: tr("Penalty paid", "Штраф оплачен") };
   }
-  if (lower.includes("blacklist")) return { className: "bg-neutral-200 text-neutral-700", label: "Blacklisted" };
-  if (lower.includes("busy")) return { className: "bg-amber-50 text-amber-600", label: "Busy" };
-  if (lower.includes("unmapped")) return { className: "bg-neutral-100 text-neutral-600", label: "Unmapped" };
-  if (lower.includes("refund")) return { className: "bg-rose-50 text-rose-600", label: "Refunded" };
-  if (lower.includes("closed")) return { className: "bg-neutral-200 text-neutral-700", label: "Closed" };
+  if (lower.includes("blacklist")) {
+    return { className: "bg-neutral-200 text-neutral-700", label: tr("Blacklisted", "В чёрном списке") };
+  }
+  if (lower.includes("busy")) return { className: "bg-amber-50 text-amber-600", label: tr("Busy", "Занят") };
+  if (lower.includes("unmapped")) {
+    return { className: "bg-neutral-100 text-neutral-600", label: tr("Unmapped", "Не привязан") };
+  }
+  if (lower.includes("refund")) return { className: "bg-rose-50 text-rose-600", label: tr("Refunded", "Возврат") };
+  if (lower.includes("closed")) return { className: "bg-neutral-200 text-neutral-700", label: tr("Closed", "Закрыт") };
   if (!lower) return { className: "bg-neutral-100 text-neutral-600", label: "-" };
   return { className: "bg-neutral-100 text-neutral-700", label: action || "-" };
 };
@@ -116,6 +128,7 @@ const buildChatLink = (buyer?: string | null) => {
 
 const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
+  const { tr } = useI18n();
   const isAllWorkspaces = selectedWorkspaceId === "all";
   const workspaceId = isAllWorkspaces ? null : (selectedWorkspaceId as number);
 
@@ -133,7 +146,9 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
       const res = await api.listLowPriorityAccounts(workspaceId ?? undefined);
       setAccounts((res.items || []).map(mapAccount));
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load low priority accounts.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load low priority accounts.", "Не удалось загрузить аккаунты с низким приоритетом.");
       onToast?.(message, true);
     } finally {
       setLoading(false);
@@ -146,7 +161,9 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
       const res = await api.listOrdersHistory(workspaceId ?? undefined, undefined, 500);
       setOrderHistory(res.items || []);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load order history.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load orders history.", "Не удалось загрузить историю заказов.");
       onToast?.(message, true);
     } finally {
       setHistoryLoading(false);
@@ -249,12 +266,12 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
   const selectedBuyerLabel = selectedAccount?.buyer ?? "-";
   const selectedBuyerTag =
     selectedAccount?.buyerSource === "active"
-      ? "active"
+      ? tr("active", "активный")
       : selectedAccount?.buyerSource === "history"
-        ? "history"
+        ? tr("history", "история")
         : null;
   const selectedChatHref = buildChatLink(selectedAccount?.buyer ?? null);
-  const latestOrderPill = latestOrder ? orderActionPill(latestOrder.action) : null;
+  const latestOrderPill = latestOrder ? orderActionPill(latestOrder.action, tr) : null;
 
   const handleRestore = async (account: AccountRow) => {
     if (actionBusy) return;
@@ -263,17 +280,25 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
         ? workspaceId
         : account.workspaceId ?? account.lastRentedWorkspaceId ?? undefined;
     if (!targetWorkspace) {
-      onToast?.("Select a workspace to restore this account.", true);
+      onToast?.(
+        tr(
+          "Select a workspace to restore this account.",
+          "Выберите рабочее пространство, чтобы восстановить этот аккаунт.",
+        ),
+        true,
+      );
       return;
     }
     setActionBusy(true);
     try {
       await api.setLowPriority(account.id, false, targetWorkspace);
-      onToast?.("Low priority removed.");
+      onToast?.(tr("Low priority removed.", "Низкий приоритет снят."));
       await loadAccounts();
       void loadHistory();
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to restore account.";
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to restore account.", "Не удалось восстановить аккаунт.");
       onToast?.(message, true);
     } finally {
       setActionBusy(false);
@@ -284,27 +309,39 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Low priority</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {tr("Low priority", "Низкий приоритет")}
+          </div>
           <div className="mt-2 text-2xl font-semibold text-neutral-900">{totalCount}</div>
-          <div className="mt-1 text-xs text-neutral-500">Accounts blocked from auto-assign.</div>
+          <div className="mt-1 text-xs text-neutral-500">
+            {tr("Accounts blocked from auto-assign.", "Аккаунты исключены из автоназначения.")}
+          </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Buyer linked</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {tr("Buyer linked", "Покупатель привязан")}
+          </div>
           <div className="mt-2 text-2xl font-semibold text-neutral-900">{buyerMatched}</div>
           <div className="mt-1 text-xs text-neutral-500">
             {totalCount === 0
-              ? "No low priority accounts yet."
+              ? tr("No low priority accounts yet.", "Пока нет аккаунтов с низким приоритетом.")
               : buyerMissing === 0
-                ? "All accounts mapped to a buyer."
-                : `${buyerMissing} missing buyer info.`}
+                ? tr("All accounts mapped to a buyer.", "Все аккаунты связаны с покупателем.")
+                : tr("{count} missing buyer info.", "Нет данных о покупателе: {count}.", { count: buyerMissing })}
           </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace scope</div>
-          <div className="mt-2 text-lg font-semibold text-neutral-900">
-            {isAllWorkspaces ? "All workspaces" : `Workspace ${workspaceId ?? "-"}`}
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {tr("Workspace scope", "Область рабочих пространств")}
           </div>
-          <div className="mt-1 text-xs text-neutral-500">Filter in the top bar to change.</div>
+          <div className="mt-2 text-lg font-semibold text-neutral-900">
+            {isAllWorkspaces
+              ? tr("All workspaces", "Все рабочие пространства")
+              : tr("Workspace {id}", "Рабочее пространство {id}", { id: workspaceId ?? "-" })}
+          </div>
+          <div className="mt-1 text-xs text-neutral-500">
+            {tr("Filter in the top bar to change.", "Измените фильтр в верхней панели.")}
+          </div>
         </div>
       </div>
 
@@ -312,8 +349,12 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-neutral-900">Low Priority Accounts</h3>
-              <p className="text-sm text-neutral-500">Review and restore accounts when ready.</p>
+              <h3 className="text-lg font-semibold text-neutral-900">
+                {tr("Low Priority Accounts", "Аккаунты с низким приоритетом")}
+              </h3>
+              <p className="text-sm text-neutral-500">
+                {tr("Review and restore accounts when ready.", "Проверьте и восстановите аккаунты, когда будете готовы.")}
+              </p>
             </div>
             <button
               onClick={() => {
@@ -323,14 +364,17 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
               className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
               disabled={loading || historyLoading}
             >
-              Refresh
+              {tr("Refresh", "Обновить")}
             </button>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by account, login, buyer, workspace..."
+              placeholder={tr(
+                "Search by account, login, buyer, workspace...",
+                "Поиск по аккаунту, логину, покупателю, рабочему пространству...",
+              )}
               className="flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
             {query ? (
@@ -338,7 +382,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                 onClick={() => setQuery("")}
                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600"
               >
-                Clear
+                {tr("Clear", "Очистить")}
               </button>
             ) : null}
           </div>
@@ -346,23 +390,29 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
           <div className="mt-5 overflow-hidden rounded-xl border border-neutral-200">
             <div className="grid bg-neutral-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neutral-500" style={{ gridTemplateColumns: GRID }}>
               <span>ID</span>
-              <span>Account</span>
-              <span>Login</span>
-              <span>Buyer</span>
+              <span>{tr("Account", "Аккаунт")}</span>
+              <span>{tr("Login", "Логин")}</span>
+              <span>{tr("Buyer", "Покупатель")}</span>
               <span>MMR</span>
-              <span>Workspace</span>
-              <span className="justify-self-end text-right">Actions</span>
+              <span>{tr("Workspace", "Рабочее пространство")}</span>
+              <span className="justify-self-end text-right">{tr("Actions", "Действия")}</span>
             </div>
             <div className="max-h-[520px] overflow-y-auto">
               {loading ? (
-                <div className="px-4 py-8 text-center text-sm text-neutral-500">Loading low priority accounts...</div>
+                <div className="px-4 py-8 text-center text-sm text-neutral-500">
+                  {tr("Loading low priority accounts...", "Загружаем аккаунты с низким приоритетом...")}
+                </div>
               ) : filtered.length ? (
                 filtered.map((acc) => {
                   const isActive = acc.id === selectedId;
-                  const workspaceLabel = formatWorkspaceLabel(acc.workspaceId, acc.workspaceName, workspaces);
+                  const workspaceLabel = formatWorkspaceLabel(acc.workspaceId, acc.workspaceName, workspaces, tr);
                   const buyerLabel = acc.buyer || "-";
                   const buyerTag =
-                    acc.buyerSource === "active" ? "active" : acc.buyerSource === "history" ? "history" : null;
+                    acc.buyerSource === "active"
+                      ? tr("active", "активный")
+                      : acc.buyerSource === "history"
+                        ? tr("history", "история")
+                        : null;
                   const chatHref = buildChatLink(acc.buyer);
                   return (
                     <motion.button
@@ -398,11 +448,11 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                             onClick={(event) => event.stopPropagation()}
                             className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-600 transition hover:border-neutral-300"
                           >
-                            Chat
+                            {tr("Chat", "Чат")}
                           </Link>
                         ) : (
                           <span className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs text-neutral-400">
-                            Chat
+                            {tr("Chat", "Чат")}
                           </span>
                         )}
                         <button
@@ -414,7 +464,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                           disabled={actionBusy}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Restore
+                          {tr("Restore", "Восстановить")}
                         </button>
                       </div>
                     </motion.button>
@@ -422,7 +472,9 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                 })
               ) : (
                 <div className="px-4 py-8 text-center text-sm text-neutral-500">
-                  {query ? "No matching accounts found." : "No low priority accounts right now."}
+                  {query
+                    ? tr("No matching accounts found.", "Совпадений не найдено.")
+                    : tr("No low priority accounts right now.", "Сейчас нет аккаунтов с низким приоритетом.")}
                 </div>
               )}
             </div>
@@ -431,30 +483,34 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-neutral-900">Account details</h3>
-            <span className="text-xs text-neutral-500">{selectedAccount ? "Ready" : "Select an account"}</span>
+            <h3 className="text-lg font-semibold text-neutral-900">{tr("Account details", "Детали аккаунта")}</h3>
+            <span className="text-xs text-neutral-500">
+              {selectedAccount ? tr("Ready", "Готово") : tr("Select an account", "Выберите аккаунт")}
+            </span>
           </div>
           {selectedAccount ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Selected</div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Selected", "Выбран")}
+                    </div>
                     <div className="mt-1 text-sm font-semibold text-neutral-900">
-                      {selectedAccount.name || "Account"}
+                      {selectedAccount.name || tr("Account", "Аккаунт")}
                     </div>
                   </div>
                   <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
-                    Low Priority
+                    {tr("Low Priority", "Низкий приоритет")}
                   </span>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-neutral-600">
                   <div className="flex items-center gap-2">
-                    <span>Login:</span>
+                    <span>{tr("Login:", "Логин:")}</span>
                     <span className="min-w-0 truncate">{selectedAccount.login || "-"}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span>Buyer:</span>
+                    <span>{tr("Buyer:", "Покупатель:")}</span>
                     <span className="min-w-0 truncate">{selectedBuyerLabel}</span>
                     {selectedBuyerTag ? (
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
@@ -464,27 +520,29 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                   </div>
                   <div>MMR: {selectedAccount.mmr}</div>
                   <div>
-                    Workspace:{" "}
+                    {tr("Workspace:", "Рабочее пространство:")}{" "}
                     {formatWorkspaceLabel(
                       selectedAccount.workspaceId,
                       selectedAccount.workspaceName,
                       workspaces,
+                      tr,
                     )}
                   </div>
                   <div>
-                    Last rented:{" "}
+                    {tr("Last rented:", "Последняя аренда:")}{" "}
                     {selectedAccount.lastRentedWorkspaceId
                       ? formatWorkspaceLabel(
                           selectedAccount.lastRentedWorkspaceId,
                           selectedAccount.lastRentedWorkspaceName,
                           workspaces,
+                          tr,
                         )
                       : "-"}
                   </div>
-                  <div>Rental start: {selectedAccount.rentalStart || "-"}</div>
-                  <div>Duration: {formatDuration(selectedAccount.rentalDurationMinutes)}</div>
+                  <div>{tr("Rental start:", "Начало аренды:")} {selectedAccount.rentalStart || "-"}</div>
+                  <div>{tr("Duration:", "Длительность:")} {formatDuration(selectedAccount.rentalDurationMinutes, tr)}</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span>Last order:</span>
+                    <span>{tr("Last order:", "Последний заказ:")}</span>
                     {latestOrder ? (
                       <>
                         <a
@@ -514,29 +572,36 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                     to={selectedChatHref}
                     className="mt-3 inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[11px] font-semibold text-neutral-700 transition hover:border-neutral-300"
                   >
-                    Open buyer chat
+                    {tr("Open buyer chat", "Открыть чат с покупателем")}
                   </Link>
                 ) : (
-                  <div className="mt-3 text-[11px] text-neutral-400">No buyer chat linked yet.</div>
+                  <div className="mt-3 text-[11px] text-neutral-400">
+                    {tr("No buyer chat linked yet.", "Чат с покупателем пока не привязан.")}
+                  </div>
                 )}
               </div>
               <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                <div className="mb-2 text-sm font-semibold text-neutral-800">Restore account</div>
+                <div className="mb-2 text-sm font-semibold text-neutral-800">
+                  {tr("Restore account", "Восстановить аккаунт")}
+                </div>
                 <p className="text-xs text-neutral-500">
-                  Restored accounts return to the available inventory and stock lists.
+                  {tr(
+                    "Restored accounts return to the available inventory and stock lists.",
+                    "Восстановленные аккаунты возвращаются в доступный инвентарь и списки стока.",
+                  )}
                 </p>
                 <button
                   onClick={() => handleRestore(selectedAccount)}
                   disabled={actionBusy}
                   className="mt-4 w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Remove low priority
+                  {tr("Remove low priority", "Снять низкий приоритет")}
                 </button>
               </div>
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-              Select an account to review the buyer and history.
+              {tr("Select an account to review the buyer and history.", "Выберите аккаунт, чтобы посмотреть покупателя и историю.")}
             </div>
           )}
         </div>
@@ -545,12 +610,12 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Replacement history</h3>
-            <p className="text-sm text-neutral-500">Order log for the selected low-priority account.</p>
+            <h3 className="text-lg font-semibold text-neutral-900">{tr("Replacement history", "??????? ?????")}</h3>
+            <p className="text-sm text-neutral-500">{tr("Order log for the selected low-priority account.", "?????? ??????? ??? ?????????? ???????? ? ?????? ???????????.")}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-              {selectedAccount ? `${selectedHistory.length} records` : "Select an account"}
+              {selectedAccount ? `${selectedHistory.length} записей` : "Выбрите аккаунт"}
             </span>
             <button
               onClick={() => loadHistory()}
@@ -567,32 +632,32 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
               className="grid gap-3 px-6 text-xs font-semibold uppercase tracking-wide text-neutral-500"
               style={{ gridTemplateColumns: HISTORY_GRID }}
             >
-              <span>Order</span>
-              <span>Buyer</span>
-              <span>Action</span>
-              <span>Duration</span>
-              <span>Date</span>
-              <span>Workspace</span>
+              <span>{tr("Order", "?????")}</span>
+              <span>{tr("Buyer", "??????????")}</span>
+              <span>{tr("Action", "????????")}</span>
+              <span>{tr("Duration", "????????????")}</span>
+              <span>{tr("Date", "????")}</span>
+              <span>{tr("Workspace", "??????? ????????????")}</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "420px" }}>
               {historyLoading ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading history...
+                  {tr("Loading history...", "????????? ???????...")}
                 </div>
               ) : selectedAccount ? (
                 selectedHistory.length ? (
                   selectedHistory.map((item, idx) => {
-                    const pill = orderActionPill(item.action);
+                    const pill = orderActionPill(item.action, tr);
                     const subLabel = item.lot_number
-                      ? `Lot ${item.lot_number}`
+                      ? tr("Lot {num}", "??? {num}", { num: item.lot_number })
                       : item.account_id
                         ? `ID ${item.account_id}`
                         : "-";
                     const workspaceLabel = item.workspace_id
                       ? item.workspace_name
                         ? `${item.workspace_name} (ID ${item.workspace_id})`
-                        : formatWorkspaceLabel(item.workspace_id, null, workspaces)
-                      : "Global";
+                        : formatWorkspaceLabel(item.workspace_id, null, workspaces, tr)
+                      : tr("Global", "?????????");
                     return (
                       <div
                         key={item.id ?? idx}
@@ -619,7 +684,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                           {pill.label}
                         </span>
                         <span className="min-w-0 truncate font-mono text-xs text-neutral-700">
-                          {formatMinutesLabel(item.rental_minutes)}
+                          {formatMinutesLabel(item.rental_minutes, tr)}
                         </span>
                         <span className="min-w-0 truncate text-xs text-neutral-500">
                           {formatMoscowDateTime(item.created_at)}
@@ -630,12 +695,12 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                   })
                 ) : (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    No history for this account yet.
+                    {tr("No history for this account yet.", "??? ????? ???????? ???? ??? ???????.")}
                   </div>
                 )
               ) : (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  Select an account to view history.
+                  {tr("Select an account to view history.", "???????? ???????, ????? ??????? ???????.")}
                 </div>
               )}
             </div>

@@ -81,20 +81,25 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
 
 const statusPill = (status?: string) => {
   const lower = (status || "").toLowerCase();
-  if (lower.includes("frozen")) return { className: "bg-slate-100 text-slate-700", label: "Frozen" };
-  if (lower.includes("demo")) return { className: "bg-amber-50 text-amber-700", label: "Demo Hero" };
-  if (lower.includes("bot")) return { className: "bg-amber-50 text-amber-700", label: "Bot Match" };
-  if (lower.includes("custom"))
-    return { className: "bg-amber-50 text-amber-600", label: "Custom Game" };
-  if (lower.includes("match")) return { className: "bg-emerald-50 text-emerald-600", label: "In match" };
-  if (lower.includes("game")) return { className: "bg-amber-50 text-amber-600", label: "In game" };
-  if (lower.includes("online") || lower === "1" || lower === "true")
-    return { className: "bg-emerald-50 text-emerald-600", label: "Online" };
-  if (lower.includes("idle") || lower.includes("away"))
-    return { className: "bg-amber-50 text-amber-600", label: "Idle" };
-  if (lower.includes("off") || lower === "" || lower === "0")
-    return { className: "bg-rose-50 text-rose-600", label: "Offline" };
-  return { className: "bg-neutral-100 text-neutral-600", label: status || "Unknown" };
+  if (lower.includes("frozen") || lower.includes("заморож"))
+    return { className: "bg-slate-100 text-slate-700", label: "Заморожен" };
+  if (lower.includes("demo") || lower.includes("демо"))
+    return { className: "bg-amber-50 text-amber-700", label: "Демо-герой" };
+  if (lower.includes("bot") || lower.includes("бот"))
+    return { className: "bg-amber-50 text-amber-700", label: "Матч с ботами" };
+  if (lower.includes("custom") || lower.includes("пользовател"))
+    return { className: "bg-amber-50 text-amber-600", label: "Пользовательская игра" };
+  if (lower.includes("match") || lower.includes("матч"))
+    return { className: "bg-emerald-50 text-emerald-600", label: "В матче" };
+  if (lower.includes("game") || lower.includes("игра"))
+    return { className: "bg-amber-50 text-amber-600", label: "В игре" };
+  if (lower.includes("online") || lower.includes("в сети") || lower === "1" || lower === "true")
+    return { className: "bg-emerald-50 text-emerald-600", label: "В сети" };
+  if (lower.includes("idle") || lower.includes("away") || lower.includes("отош"))
+    return { className: "bg-amber-50 text-amber-600", label: "Отошёл" };
+  if (lower.includes("off") || lower.includes("не в сети") || lower === "" || lower === "0")
+    return { className: "bg-rose-50 text-rose-600", label: "Не в сети" };
+  return { className: "bg-neutral-100 text-neutral-600", label: status || "Неизвестно" };
 };
 
 const makeAccountKey = (workspaceId: number | null | undefined, id: number) =>
@@ -162,7 +167,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   mmr: item.mmr ?? "-",
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
-  rentalDuration: item.rental_duration ?? 0,
+  rentalДлительность: item.rental_duration ?? 0,
   rentalDurationMinutes: item.rental_duration_minutes ?? null,
   accountFrozen: !!item.account_frozen,
   rentalFrozen: !!item.rental_frozen,
@@ -219,7 +224,7 @@ const formatDuration = (minutesTotal: number | null | undefined) => {
   const minutes = Math.max(0, Math.floor(minutesTotal));
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
-  return `${hours}h ${rem}m`;
+  return `${hours} ч ${rem} мин`;
 };
 
 const parseUtcMs = (value?: string | null) => {
@@ -279,8 +284,8 @@ const resolveWorkspaceName = (
   }
   const fallback = workspaces.find((item) => item.is_default);
   if (fallback) return fallback.name;
-  if (workspaceId) return `Workspace ${workspaceId}`;
-  return "Workspace";
+  if (workspaceId) return `Рабочее пространство ${workspaceId}`;
+  return "Рабочее пространство";
 };
 
 const formatWorkspaceLabel = (
@@ -352,10 +357,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       return startMs !== null && now - startMs <= 24 * 60 * 60 * 1000;
     }).length;
     return [
-      { label: "Total Accounts", value: totalAccounts, icon: <CardUsersIcon /> },
-      { label: "Active Rentals", value: activeRentals, icon: <CardUsersIcon /> },
-      { label: "Free Accounts", value: freeAccounts, icon: <CardCloudCheckIcon /> },
-      { label: "Past 24h", value: past24h, icon: <CardBarsIcon /> },
+      { label: "Всего аккаунтов", value: totalAccounts, icon: <CardUsersIcon /> },
+      { label: "Активные аренды", value: activeRentals, icon: <CardUsersIcon /> },
+      { label: "Свободные аккаунты", value: freeAccounts, icon: <CardCloudCheckIcon /> },
+      { label: "За 24 часа", value: past24h, icon: <CardBarsIcon /> },
     ];
   }, [filteredAccounts, filteredRentals, now]);
 
@@ -436,31 +441,31 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     );
   }, [selectedAccount]);
 
-  const emptyAccountMessage = loadingAccounts ? "Loading accounts..." : "No accounts loaded yet.";
-  const emptyRentalMessage = loadingRentals ? "Loading rentals..." : "No active rentals yet.";
+  const emptyAccountMessage = loadingAccounts ? "Загрузка аккаунтов..." : "Пока нет аккаунтов.";
+  const emptyRentalMessage = loadingRentals ? "Загрузка аренд..." : "Нет активных аренд.";
   const inventoryAccounts = accountWorkspaceId === "all" ? allAccounts : filteredAccounts;
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
     if (selectedAccount.lowPriority) {
-      onToast?.("Remove low priority before assigning a buyer.", true);
+      onToast?.("Сначала снимите низкий приоритет перед назначением покупателя.", true);
       return;
     }
     if (selectedAccount.accountFrozen) {
-      onToast?.("Unfreeze the account before assigning a buyer.", true);
+      onToast?.("Разморозьте аккаунт перед назначением покупателя.", true);
       return;
     }
     if (selectedAccount.owner) {
-      onToast?.("Release the account first.", true);
+      onToast?.("Сначала освободите аккаунт.", true);
       return;
     }
     const owner = assignOwner.trim();
     if (!owner) {
-      onToast?.("Enter a buyer username.", true);
+      onToast?.("Введите имя пользователя покупателя.", true);
       return;
     }
     setAccountActionBusy(true);
@@ -470,11 +475,11 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.assignAccount(selectedAccount.id, owner, workspaceId);
-      onToast?.("Rental assigned.");
+      onToast?.("Аренда назначена.");
       setAssignOwner("");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to assign rental.";
+      const message = (err as { message?: string })?.message || "Не удалось назначить аренду.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -483,7 +488,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleUpdateAccount = async () => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
@@ -499,14 +504,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     if (mmrRaw) {
       const mmr = Number(mmrRaw);
       if (!Number.isFinite(mmr) || mmr < 0) {
-        onToast?.("MMR must be 0 or higher.", true);
+        onToast?.("MMR должен быть 0 или выше.", true);
         return;
       }
       if (String(mmr) !== String(selectedAccount.mmr ?? "")) payload.mmr = mmr;
     }
 
     if (!Object.keys(payload).length) {
-      onToast?.("No changes to save.", true);
+      onToast?.("Нет изменений для сохранения.", true);
       return;
     }
 
@@ -517,10 +522,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.updateAccount(selectedAccount.id, payload, workspaceId);
-      onToast?.("Account updated.");
+      onToast?.("Аккаунт обновлён.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update account.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить аккаунт.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -529,18 +534,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleExtendRental = async () => {
     if (!selectedRental || !selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     const hours = Number(rentalExtendHours || 0);
     const minutes = Number(rentalExtendMinutes || 0);
     if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
-      onToast?.("Enter valid hours and minutes.", true);
+      onToast?.("Введите корректные часы и минуты.", true);
       return;
     }
     if (hours * 60 + minutes <= 0) {
-      onToast?.("Extension must be greater than 0.", true);
+      onToast?.("Продление должно быть больше 0.", true);
       return;
     }
     setRentalActionBusy(true);
@@ -550,12 +555,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.extendAccount(selectedAccount.id, hours, minutes, workspaceId);
-      onToast?.("Rental extended.");
+      onToast?.("Аренда продлена.");
       setRentalExtendHours("");
       setRentalExtendMinutes("");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to extend rental.";
+      const message = (err as { message?: string })?.message || "Не удалось продлить аренду.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -564,7 +569,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleReleaseRental = async () => {
     if (!selectedRental || !selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
@@ -575,10 +580,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.releaseAccount(selectedAccount.id, workspaceId);
-      onToast?.("Rental released.");
+      onToast?.("Аренда завершена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to release rental.";
+      const message = (err as { message?: string })?.message || "Не удалось завершить аренду.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -587,7 +592,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleToggleRentalFreeze = async (nextFrozen: boolean) => {
     if (!selectedRental || !selectedAccount) {
-      onToast?.("Select a rental first.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
@@ -598,10 +603,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.lastRentedWorkspaceId ?? selectedAccount.workspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.freezeRental(selectedAccount.id, nextFrozen, workspaceId);
-      onToast?.(nextFrozen ? "Rental frozen." : "Rental unfrozen.");
+      onToast?.(nextFrozen ? "Аренда заморожена." : "Аренда разморожена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update rental freeze state.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить статус заморозки аренды.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -610,7 +615,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleToggleLowPriority = async (nextLowPriority: boolean) => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
@@ -621,10 +626,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.setLowPriority(selectedAccount.id, nextLowPriority, workspaceId);
-      onToast?.(nextLowPriority ? "Marked as low priority." : "Low priority removed.");
+      onToast?.(nextLowPriority ? "Помечено как низкий приоритет." : "Низкий приоритет снят.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update low priority.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить низкий приоритет.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -633,7 +638,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleToggleAccountFreeze = async (nextFrozen: boolean) => {
     if (!selectedAccount) {
-      onToast?.("Select an account first.", true);
+      onToast?.("Сначала выберите аккаунт.", true);
       return;
     }
     if (accountActionBusy) return;
@@ -644,10 +649,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
           : (accountWorkspaceId as number);
       await api.freezeAccount(selectedAccount.id, nextFrozen, workspaceId);
-      onToast?.(nextFrozen ? "Account frozen." : "Account unfrozen.");
+      onToast?.(nextFrozen ? "Аккаунт заморожен." : "Аккаунт разморожен.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to update account freeze state.";
+      const message = (err as { message?: string })?.message || "Не удалось обновить статус заморозки аккаунта.";
       onToast?.(message, true);
     } finally {
       setAccountActionBusy(false);
@@ -658,15 +663,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-neutral-900">Account actions</h3>
-          <span className="text-xs text-neutral-500">{selectedAccount ? "Ready" : "Select an account"}</span>
+          <h3 className="text-lg font-semibold text-neutral-900">Действия с аккаунтом</h3>
+          <span className="text-xs text-neutral-500">{selectedAccount ? "Готово" : "Выберите аккаунт"}</span>
         </div>
         {selectedAccount ? (
           (() => {
             const rented = !!selectedAccount.owner;
             const frozen = !!selectedAccount.accountFrozen;
             const lowPriority = !!selectedAccount.lowPriority;
-            const stateLabel = lowPriority ? "Low Priority" : frozen ? "Frozen" : rented ? "Rented out" : "Available";
+            const stateLabel = lowPriority ? "Низкий приоритет" : frozen ? "Заморожен" : rented ? "В аренде" : "Свободен";
             const stateClass = lowPriority
               ? "bg-rose-50 text-rose-600"
               : frozen
@@ -684,7 +689,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
               ? workspaces.find((item) => item.id === selectedAccount.workspaceId)
               : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
-              ? `${workspaceLabel} (Default)`
+              ? `${workspaceLabel} (По умолчанию)`
               : workspaceLabel;
             const lastRentedLabel = selectedAccount.lastRentedWorkspaceId
               ? formatWorkspaceLabel(
@@ -697,7 +702,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
               ? workspaces.find((item) => item.id === selectedAccount.lastRentedWorkspaceId)
               : null;
             const lastRentedDisplay = lastRentedRecord?.is_default
-              ? `${lastRentedLabel} (Default)`
+              ? `${lastRentedLabel} (По умолчанию)`
               : lastRentedLabel;
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
@@ -725,14 +730,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         Selected account
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
-                        {selectedAccount.name || "Account"}
+                        {selectedAccount.name || "Аккаунт"}
                       </div>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>{stateLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
                     <span>
-                      Login:{" "}
+                      Логин:{" "}
                       {stratzUrl(selectedAccount.steamId) ? (
                         <a
                           href={stratzUrl(selectedAccount.steamId)!}
@@ -747,21 +752,21 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       )}
                     </span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
-                    <span>Owner: {ownerLabel}</span>
-                    <span>Home workspace: {workspaceDisplay}</span>
-                    <span>Last rented: {lastRentedDisplay}</span>
-                    <span>Rental start: {selectedAccount.rentalStart || "-"}</span>
-                    <span>Duration: {hoursLabel}</span>
+                    <span>Покупатель: {ownerLabel}</span>
+                    <span>Основное рабочее пространство: {workspaceDisplay}</span>
+                    <span>Последняя аренда: {lastRentedDisplay}</span>
+                    <span>Начало аренды: {selectedAccount.rentalStart || "-"}</span>
+                    <span>Длительность: {hoursLabel}</span>
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Assign rental</div>
-                  <p className="text-xs text-neutral-500">The countdown starts after the buyer requests the code.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Назначить аренду</div>
+                  <p className="text-xs text-neutral-500">Отсчёт начинается после запроса кода покупателем.</p>
                   <div className="mt-3 space-y-3">
                     <input
                       value={assignOwner}
                       onChange={(e) => setAssignOwner(e.target.value)}
-                      placeholder="Buyer username"
+                      placeholder="Логин покупателя"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                     />
                     <button
@@ -769,44 +774,44 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       disabled={accountActionBusy || !assignOwner.trim() || !canAssign}
                       className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                     >
-                      Assign rental
+                      Назначить аренду
                     </button>
                     {!canAssign && (
                       <div className="text-xs text-neutral-500">
                         {lowPriority
-                          ? "Remove low priority before assigning a buyer."
+                          ? "Сначала снимите низкий приоритет перед назначением покупателя."
                           : frozen
-                            ? "Unfreeze the account before assigning a buyer."
-                            : "Release the account first."}
+                            ? "Разморозьте аккаунт перед назначением покупателя."
+                            : "Сначала освободите аккаунт."}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Update account</div>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Обновить аккаунт</div>
                   <div className="grid gap-3">
                     <input
                       value={accountEditName}
                       onChange={(e) => setAccountEditName(e.target.value)}
-                      placeholder="Account name"
+                      placeholder="Название аккаунта"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                     />
                     <div className="grid gap-3 md:grid-cols-2">
                       <input
                         value={accountEditLogin}
                         onChange={(e) => setAccountEditLogin(e.target.value)}
-                        placeholder="Login"
+                        placeholder="Логин"
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                       />
                       <input
                         value={accountEditPassword}
                         onChange={(e) => setAccountEditPassword(e.target.value)}
-                        placeholder="Password"
+                        placeholder="Пароль"
                         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Workspace</label>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Рабочее пространство</label>
                       <select
                         value={workspaceDisplay}
                         disabled
@@ -825,18 +830,18 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     />
                   </div>
                   {!editMmrValid && (
-                    <div className="mt-2 text-xs text-rose-500">MMR must be 0 or higher.</div>
+                    <div className="mt-2 text-xs text-rose-500">ММР должен быть 0 или выше.</div>
                   )}
                   <button
                     onClick={handleUpdateAccount}
                     disabled={accountActionBusy || !hasChanges || !editMmrValid}
                     className="mt-3 w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                   >
-                    Save changes
+                    Сохранить изменения
                   </button>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Account status</div>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Статус аккаунта</div>
                   <p className="text-xs text-neutral-500">
                     Low priority accounts stay out of stock lists until you restore them.
                   </p>
@@ -850,7 +855,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                           : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                       }`}
                     >
-                      {frozen ? "Unfreeze account" : "Freeze account"}
+                      {frozen ? "Разморозить аккаунт" : "Заморозить аккаунт"}
                     </button>
                     <button
                       onClick={() => handleToggleLowPriority(!lowPriority)}
@@ -861,7 +866,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                           : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                       }`}
                     >
-                      {lowPriority ? "Remove low priority" : "Mark low priority"}
+                      {lowPriority ? "Снять низкий приоритет" : "Пометить низким приоритетом"}
                     </button>
                   </div>
                 </div>
@@ -870,7 +875,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           })()
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-            Select an account to unlock account actions.
+            Выберите аккаунт, чтобы открыть действия.
           </div>
         )}
       </div>
@@ -881,13 +886,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-neutral-900">Rental actions</h3>
-          <span className="text-xs text-neutral-500">{selectedRental ? "Ready" : "Select a rental"}</span>
+          <h3 className="text-lg font-semibold text-neutral-900">Действия с арендой</h3>
+          <span className="text-xs text-neutral-500">{selectedRental ? "Готово" : "Выберите аренду"}</span>
         </div>
         {selectedRental ? (
           (() => {
             const frozen = !!selectedAccount?.rentalFrozen;
-            const pill = statusPill(frozen ? "Frozen" : selectedRental.status);
+            const pill = statusPill(frozen ? "Заморожен" : selectedRental.status);
             const presenceLabel = pill.label;
             const workspaceLabel = resolveWorkspaceName(
               selectedAccount?.workspaceId ?? selectedRental?.workspaceId,
@@ -900,7 +905,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 ? workspaces.find((item) => item.id === selectedRental.workspaceId)
               : workspaces.find((item) => item.is_default) ?? null;
             const workspaceDisplay = workspaceRecord?.is_default
-              ? `${workspaceLabel} (Default)`
+              ? `${workspaceLabel} (По умолчанию)`
               : workspaceLabel;
             return (
               <div className="space-y-4">
@@ -911,15 +916,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         Selected rental
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
-                        {selectedRental.account || "Rental"}
+                        {selectedRental.account || "Аренда"}
                       </div>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>{presenceLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Buyer: {selectedRental.buyer || "-"}</span>
+                    <span>Покупатель: {selectedRental.buyer || "-"}</span>
                     <span>
-                      Time left:{" "}
+                      Осталось:{" "}
                       {selectedRental
                         ? getCountdownLabel(
                             accountById.get(selectedRental.id),
@@ -928,16 +933,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                           )
                         : "-"}
                     </span>
-                    <span>Match time: {getMatchTimeLabel(selectedRental, now)}</span>
-                    <span>Hero: {selectedRental.hero || "-"}</span>
-                    <span>Workspace: {workspaceDisplay}</span>
-                    <span>Started: {selectedRental.started || "-"}</span>
-                    {frozen && <span className="text-rose-600">Frozen: timer paused until you unfreeze.</span>}
+                    <span>Время матча: {getMatchTimeLabel(selectedRental, now)}</span>
+                    <span>Герой: {selectedRental.hero || "-"}</span>
+                    <span>Рабочее пространство: {workspaceDisplay}</span>
+                    <span>Начало: {selectedRental.started || "-"}</span>
+                    {frozen && <span className="text-rose-600">Заморожено: таймер приостановлен до разморозки.</span>}
                   </div>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Freeze rental</div>
-                  <p className="text-xs text-neutral-500">Freezing pauses the timer and kicks the user from Steam.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Заморозить аренду</div>
+                  <p className="text-xs text-neutral-500">Заморозка ставит таймер на паузу и выгоняет пользователя из Steam.</p>
                   <button
                     onClick={() => handleToggleRentalFreeze(!frozen)}
                     disabled={rentalActionBusy}
@@ -947,16 +952,16 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                     }`}
                   >
-                    {frozen ? "Unfreeze rental" : "Freeze rental"}
+                    {frozen ? "Разморозить аренду" : "Заморозить аренду"}
                   </button>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">Extend rental</div>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Продлить аренду</div>
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       value={rentalExtendHours}
                       onChange={(e) => setRentalExtendHours(e.target.value)}
-                      placeholder="Hours"
+                      placeholder="Часы"
                       type="number"
                       min="0"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -964,7 +969,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     <input
                       value={rentalExtendMinutes}
                       onChange={(e) => setRentalExtendMinutes(e.target.value)}
-                      placeholder="Minutes"
+                      placeholder="Минуты"
                       type="number"
                       min="0"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
@@ -979,8 +984,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   </button>
                 </div>
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                  <div className="mb-2 text-sm font-semibold text-neutral-800">End rental</div>
-                  <p className="text-xs text-neutral-500">Stops the rental and releases the account.</p>
+                  <div className="mb-2 text-sm font-semibold text-neutral-800">Завершить аренду</div>
+                  <p className="text-xs text-neutral-500">Останавливает аренду и освобождает аккаунт.</p>
                   <button
                     onClick={handleReleaseRental}
                     disabled={rentalActionBusy}
@@ -1012,7 +1017,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-neutral-900">Inventory</h3>
+            <h3 className="text-lg font-semibold text-neutral-900">Инвентарь</h3>
           </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
@@ -1022,19 +1027,19 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   style={{ gridTemplateColumns: INVENTORY_GRID }}
                 >
                   <span>ID</span>
-                  <span>Name</span>
-                  <span>Login</span>
-                  <span>Password</span>
+                  <span>Название</span>
+                  <span>Логин</span>
+                  <span>Пароль</span>
                   <span>Steam ID</span>
                   <span>MMR</span>
-                  <span className="text-center">State</span>
+                  <span className="text-center">Статус</span>
                 </div>
                 <div className="mt-3 space-y-3">
                   {inventoryAccounts.map((acc, idx) => {
                     const rented = !!acc.owner;
                     const frozen = !!acc.accountFrozen;
                     const lowPriority = !!acc.lowPriority;
-                  const stateLabel = lowPriority ? "Low Priority" : frozen ? "Frozen" : rented ? "Rented out" : "Available";
+                  const stateLabel = lowPriority ? "Низкий приоритет" : frozen ? "Заморожен" : rented ? "В аренде" : "Свободен";
                   const stateClass = lowPriority
                     ? "bg-rose-50 text-rose-600"
                     : frozen
@@ -1047,7 +1052,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     ? workspaces.find((item) => item.id === acc.workspaceId)
                     : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
-                    ? `${workspaceLabel} (Default)`
+                    ? `${workspaceLabel} (По умолчанию)`
                     : workspaceLabel;
                   const lastRentedLabel = acc.lastRentedWorkspaceId
                     ? formatWorkspaceLabel(
@@ -1060,7 +1065,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     ? workspaces.find((item) => item.id === acc.lastRentedWorkspaceId)
                     : null;
                   const lastRentedBadge = lastRentedRecord?.is_default
-                    ? `${lastRentedLabel} (Default)`
+                    ? `${lastRentedLabel} (По умолчанию)`
                     : lastRentedLabel;
                   const rowKey = acc.rowKey || `acc:${idx}`;
                   const isSelected = selectedRowKey === rowKey;
@@ -1095,15 +1100,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         {acc.id}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate font-semibold leading-tight text-neutral-900" title={acc.name || "Account"}>
-                          {acc.name || "Account"}
+                        <div className="truncate font-semibold leading-tight text-neutral-900" title={acc.name || "Аккаунт"}>
+                          {acc.name || "Аккаунт"}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                            Home: {workspaceBadge}
+                            Основной: {workspaceBadge}
                           </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                            Last rented: {lastRentedBadge}
+                            Последняя аренда: {lastRentedBadge}
                           </span>
                         </div>
                       </div>
@@ -1150,8 +1155,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
         <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-neutral-900">Active rentals</h3>
-            <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Status</button>
+            <h3 className="text-lg font-semibold text-neutral-900">Активные аренды</h3>
+            <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Статус</button>
           </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
@@ -1161,13 +1166,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   style={{ gridTemplateColumns: RENTALS_GRID }}
                 >
                   <span>ID</span>
-                  <span>Account</span>
-                  <span>Buyer</span>
-                  <span>Started</span>
-                  <span>Time Left</span>
-                  <span>Match Time</span>
-                  <span>Hero</span>
-                  <span className="text-center">Status</span>
+                  <span>Аккаунт</span>
+                  <span>Покупатель</span>
+                  <span>Начало</span>
+                  <span>Осталось</span>
+                  <span>Время матча</span>
+                  <span>Герой</span>
+                  <span className="text-center">Статус</span>
                 </div>
                 <div className="mt-3 space-y-3">
                   {filteredRentals.map((row, idx) => {
@@ -1183,7 +1188,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     ? workspaces.find((item) => item.id === row.workspaceId)
                     : workspaces.find((item) => item.is_default) ?? null;
                   const workspaceBadge = workspaceRecord?.is_default
-                    ? `${workspaceLabel} (Default)`
+                    ? `${workspaceLabel} (По умолчанию)`
                     : workspaceLabel;
                   return (
                     <motion.div

@@ -16,16 +16,18 @@ import ChatsPage from "./components/chats/ChatsPage";
 import LowPriorityAccountsPage from "./components/lowPriority/LowPriorityAccountsPage";
 import NotificationsPage from "./components/notifications/NotificationsPage";
 import PluginsPage from "./components/plugins/PluginsPage";
+import { PreferencesProvider } from "./context/PreferencesContext";
+import { useI18n } from "./i18n/useI18n";
 
 type Toast = { message: string; isError?: boolean } | null;
 
 type User = AuthResponse;
 
-const DashboardPlaceholder: React.FC<{ title: string }> = ({ title }) => {
+const DashboardPlaceholder: React.FC<{ title: string; description: string }> = ({ title, description }) => {
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-8 text-sm text-neutral-500 shadow-sm">
       <div className="text-lg font-semibold text-neutral-900">{title}</div>
-      <p className="mt-2">Protected content will live here.</p>
+      <p className="mt-2">{description}</p>
     </div>
   );
 };
@@ -58,6 +60,7 @@ const ProtectedRoute: React.FC<{ user: User | null; loading: boolean; children: 
 };
 
 const AppRoutes: React.FC = () => {
+  const { tr } = useI18n();
   const [toast, setToast] = useState<Toast>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,10 +95,10 @@ const AppRoutes: React.FC = () => {
     try {
       const me = await api.login(payload);
       setUser(me);
-      showToast("Logged in.");
+      showToast(tr("Logged in.", "Вход выполнен."));
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Login failed";
+      const message = (err as { message?: string })?.message || tr("Login failed", "Не удалось войти");
       showToast(message, true);
       throw err;
     }
@@ -105,10 +108,10 @@ const AppRoutes: React.FC = () => {
     try {
       const me = await api.register(payload);
       setUser(me);
-      showToast("Account created.");
+      showToast(tr("Account created.", "Аккаунт создан."));
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Registration failed";
+      const message = (err as { message?: string })?.message || tr("Registration failed", "Не удалось зарегистрироваться");
       showToast(message, true);
       throw err;
     }
@@ -149,7 +152,15 @@ const AppRoutes: React.FC = () => {
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
           <Route path="rentals" element={<ActiveRentalsPage onToast={showToast} />} />
           <Route path="orders" element={<OrdersHistoryPage onToast={showToast} />} />
-          <Route path="tickets" element={<DashboardPlaceholder title="Tickets (FunPay)" />} />
+          <Route
+            path="tickets"
+            element={
+              <DashboardPlaceholder
+                title={tr("Tickets (FunPay)", "Тикеты (FunPay)")}
+                description={tr("Protected content will live here.", "Здесь будет защищённый контент.")}
+              />
+            }
+          />
           <Route path="blacklist" element={<BlacklistPage onToast={showToast} />} />
           <Route path="inventory" element={<InventoryPage onToast={showToast} />} />
           <Route path="low-priority" element={<LowPriorityAccountsPage onToast={showToast} />} />
@@ -157,7 +168,15 @@ const AppRoutes: React.FC = () => {
           <Route path="chats" element={<ChatsPage />} />
           <Route path="chats/:chatId" element={<ChatsPage />} />
           <Route path="add-account" element={<AddAccountPage />} />
-          <Route path="automations" element={<DashboardPlaceholder title="Automations" />} />
+          <Route
+            path="automations"
+            element={
+              <DashboardPlaceholder
+                title={tr("Automations", "Автоматизации")}
+                description={tr("Protected content will live here.", "Здесь будет защищённый контент.")}
+              />
+            }
+          />
           <Route path="notifications" element={<NotificationsPage onToast={showToast} />} />
           <Route path="plugins" element={<PluginsPage onToast={showToast} />} />
           <Route path="settings" element={<SettingsPage onToast={showToast} />} />
@@ -174,9 +193,11 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <PreferencesProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </PreferencesProvider>
   );
 };
 

@@ -4,36 +4,40 @@ import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import { AuthResponse } from "../../services/api";
 import { WorkspaceProvider } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
+import type { TranslationKey } from "../../i18n/translations";
 
 type LayoutProps = {
   user: AuthResponse;
   onLogout: () => Promise<void>;
 };
 
-const titles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/funpay-stats": "Funpay Statistics",
-  "/rentals": "Active Rentals",
-  "/orders": "Orders History",
-  "/tickets": "Tickets (FunPay)",
-  "/blacklist": "Blacklist",
-  "/low-priority": "Low Priority Accounts",
-  "/inventory": "Inventory",
-  "/lots": "Lots",
-  "/chats": "Chats",
-  "/add-account": "Add Account",
-  "/automations": "Automations",
-  "/notifications": "Notifications",
-  "/plugins": "Plugins",
-  "/settings": "Settings",
+const titles: Record<string, TranslationKey> = {
+  "/dashboard": "title.dashboard",
+  "/funpay-stats": "title.funpayStats",
+  "/rentals": "title.rentals",
+  "/orders": "title.orders",
+  "/tickets": "title.tickets",
+  "/blacklist": "title.blacklist",
+  "/low-priority": "title.lowPriority",
+  "/inventory": "title.inventory",
+  "/lots": "title.lots",
+  "/chats": "title.chats",
+  "/add-account": "title.addAccount",
+  "/automations": "title.automations",
+  "/notifications": "title.notifications",
+  "/plugins": "title.plugins",
+  "/settings": "title.settings",
 };
 
 const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const location = useLocation();
+  const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const title =
+  const titleKey =
     titles[location.pathname] ||
-    (location.pathname.startsWith("/chats") ? "Chats" : "Dashboard");
+    (location.pathname.startsWith("/chats") ? "title.chats" : "title.dashboard");
+  const title = t(titleKey);
   const initial = user.username?.[0]?.toUpperCase() || "U";
   const hideWorkspaceControls =
     location.pathname === "/inventory" ||

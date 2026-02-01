@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import { api, TelegramStatus, WorkspaceItem, WorkspaceProxyCheck, WorkspaceStatusItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import { usePreferences } from "../../context/PreferencesContext";
+import { useI18n } from "../../i18n/useI18n";
 
 type SettingsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -45,7 +47,7 @@ const splitProxyCredentials = (raw: string) => {
 };
 
 const statusKey = (workspaceId: number | null | undefined, platform?: string | null) =>
-  `${workspaceId ?? "none"}:${(platform || "funpay").toLowerCase()}`;
+  `${workspaceId ? "none"}:${(platform || "funpay").toLowerCase()}`;
 const normalizeStatus = (value?: string | null) => (value || "").toLowerCase();
 const parseUpdatedAt = (value?: string | null) => {
   if (!value) return null;
@@ -62,55 +64,57 @@ const isStatusStale = (status?: WorkspaceStatusItem | null) => {
 const resolveStatusMeta = (status?: WorkspaceStatusItem | null) => {
   if (!status) {
     return {
-      label: "No status",
+      label: "Нет статуса",
       className: "border-neutral-200 bg-white text-neutral-500",
     };
   }
   const normalized = normalizeStatus(status.status);
   if (isStatusStale(status) && ["ok", "online", "connected", "warning", "degraded"].includes(normalized)) {
     return {
-      label: "Offline",
+      label: "Офлайн",
       className: "border-rose-200 bg-rose-50 text-rose-700",
     };
   }
   if (["ok", "online", "connected"].includes(normalized)) {
     return {
-      label: "Online",
+      label: "Онлайн",
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
   }
   if (["warning", "degraded"].includes(normalized)) {
     return {
-      label: "Degraded",
+      label: "Нестабильно",
       className: "border-amber-200 bg-amber-50 text-amber-700",
     };
   }
   if (["unauthorized", "auth", "auth_required", "forbidden"].includes(normalized)) {
     return {
-      label: "Auth required",
+      label: "Требуется авторизация",
       className: "border-rose-200 bg-rose-50 text-rose-700",
     };
   }
   if (["offline"].includes(normalized)) {
     return {
-      label: "Offline",
+      label: "Офлайн",
       className: "border-rose-200 bg-rose-50 text-rose-700",
     };
   }
   if (["error", "failed"].includes(normalized)) {
     return {
-      label: "Error",
+      label: "Ошибка",
       className: "border-rose-200 bg-rose-50 text-rose-700",
     };
   }
   return {
-    label: normalized ? normalized : "Unknown",
+    label: normalized ? normalized : "Неизвестно",
     className: "border-neutral-200 bg-white text-neutral-500",
   };
 };
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const { visibleWorkspaces, loading, refresh, selectedPlatform } = useWorkspace();
+  const { theme, setTheme, language, setLanguage } = usePreferences();
+  const { t } = useI18n();
   const [keyActionBusy, setKeyActionBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPlatform, setNewPlatform] = useState<"funpay" | "playerok">("funpay");
@@ -136,14 +140,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const platformCopy = useMemo(
     () => ({
       funpay: {
-        keyLabel: "FunPay golden key",
-        keyPlaceholder: "Golden key",
-        keyHelper: "Required to authenticate with FunPay.",
+        keyLabel: "Золотой ключ FunPay",
+        keyPlaceholder: "Золотой ключ",
+        keyHelper: "Требуется для авторизации в FunPay.",
       },
       playerok: {
-        keyLabel: "PlayerOk cookies JSON",
-        keyPlaceholder: "Paste cookies JSON array from your browser",
-        keyHelper: "Paste the JSON array of cookies exported from your logged-in PlayerOk session.",
+        keyLabel: "JSON-куки PlayerOk",
+        keyPlaceholder: "Вставьте JSON-массив куки из браузера",
+        keyHelper: "Вставьте JSON-массив куки, экспортированный из вашей авторизованной сессии PlayerOk.",
       },
     }),
     [],
@@ -181,9 +185,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
       const status = await api.createTelegramToken();
       setTelegramStatus(status);
       setTelegramLink(status.start_url || "");
-      onToast?.("Telegram link generated.");
+      onToast?.("Ссылка Telegram создана.");
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to generate Telegram link.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось создать ссылку Telegram.", true);
     } finally {
       setTelegramBusy(false);
     }
@@ -196,9 +200,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
       const status = await api.disconnectTelegram();
       setTelegramStatus(status);
       setTelegramLink("");
-      onToast?.("Telegram disconnected.");
+      onToast?.("Telegram отключён.");
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to disconnect Telegram.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось отключить Telegram.", true);
     } finally {
       setTelegramBusy(false);
     }
@@ -208,9 +212,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     if (!telegramLink) return;
     try {
       await navigator.clipboard.writeText(telegramLink);
-      onToast?.("Link copied to clipboard.");
+      onToast?.("Ссылка скопирована в буфер обмена.");
     } catch {
-      onToast?.("Unable to copy link.", true);
+      onToast?.("Не удалось скопировать ссылку.", true);
     }
   };
 
@@ -236,12 +240,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const handleCreate = async () => {
     if (keyActionBusy) return;
     if (!newName.trim() || !newKey.trim() || !newProxyUrl.trim()) {
-      onToast?.("Workspace name, golden key, and proxy are required.", true);
+      onToast?.("Требуются название рабочего пространства, золотой ключ и прокси.", true);
       return;
     }
     const proxyUrl = mergeProxyCredentials(newProxyUrl, newProxyUsername, newProxyPassword);
     if (!proxyUrl) {
-      onToast?.("Proxy URL is required for every workspace.", true);
+      onToast?.("Для каждого рабочего пространства требуется URL прокси.", true);
       return;
     }
     setKeyActionBusy(true);
@@ -253,11 +257,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         proxy_url: proxyUrl.trim(),
         is_default: newDefault,
       });
-      onToast?.("Workspace added.");
+      onToast?.("Рабочее пространство добавлено.");
       resetCreateForm();
       await refresh();
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to create workspace.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось создать рабочее пространство.", true);
     } finally {
       setKeyActionBusy(false);
     }
@@ -273,17 +277,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
       payload.proxy_url = proxyUrl.trim();
     }
     if (!Object.keys(payload).length) {
-      onToast?.("No changes to save.", true);
+      onToast?.("Нет изменений для сохранения.", true);
       return;
     }
     setKeyActionBusy(true);
     try {
       await api.updateWorkspace(editingId, payload);
-      onToast?.("Workspace updated.");
+      onToast?.("Рабочее пространство обновлено.");
       cancelEdit();
       await refresh();
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to update workspace.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось обновить рабочее пространство.", true);
     } finally {
       setKeyActionBusy(false);
     }
@@ -294,10 +298,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     setKeyActionBusy(true);
     try {
       await api.deleteWorkspace(id);
-      onToast?.("Workspace removed.");
+      onToast?.("Рабочее пространство удалено.");
       await refresh();
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to remove workspace.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось удалить рабочее пространство.", true);
     } finally {
       setKeyActionBusy(false);
     }
@@ -308,10 +312,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
     setKeyActionBusy(true);
     try {
       await api.setDefaultWorkspace(id);
-      onToast?.("Default workspace updated.");
+      onToast?.("Рабочее пространство по умолчанию обновлено.");
       await refresh();
     } catch (err) {
-      onToast?.((err as { message?: string })?.message || "Failed to update default.", true);
+      onToast?.((err as { message?: string })?.message || "Не удалось обновить значение по умолчанию.", true);
     } finally {
       setKeyActionBusy(false);
     }
@@ -331,12 +335,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         },
       }));
       if (!result.ok) {
-        onToast?.(result.error || "Proxy check failed.", true);
+        onToast?.(result.error || "Проверка прокси не прошла.", true);
       } else {
-        onToast?.("Proxy check passed.");
+        onToast?.("Проверка прокси прошла.");
       }
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to check proxy.";
+      const message = (err as { message?: string })?.message || "Не удалось проверить прокси.";
       setProxyChecks((prev) => ({
         ...prev,
         [id]: { status: "error", ok: false, error: message },
@@ -356,7 +360,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         if (!isMounted) return;
         const map: Record<string, WorkspaceStatusItem> = {};
         (res.items || []).forEach((item) => {
-          const key = statusKey(item.workspace_id ?? null, item.platform);
+          const key = statusKey(item.workspace_id ? null, item.platform);
           if (!map[key]) {
             map[key] = item;
           }
@@ -365,7 +369,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         setStatusError(null);
       } catch {
         if (isMounted) {
-          setStatusError("Failed to load status.");
+          setStatusError("Не удалось загрузить статус.");
         }
       }
     };
@@ -379,20 +383,68 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
 
   return (
     <div className="grid gap-6">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-neutral-900">{t("settings.appearanceTitle")}</h3>
+          <p className="text-xs text-neutral-500">{t("settings.appearanceDesc")}</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              {t("settings.themeLabel")}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme("light")}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  theme === "light"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                }`}
+              >
+                {t("settings.themeLight")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme("dark")}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                  theme === "dark"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                }`}
+              >
+                {t("settings.themeDark")}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              {t("settings.languageLabel")}
+            </label>
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as "en" | "ru")}
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+            >
+              <option value="en">{t("settings.languageEnglish")}</option>
+              <option value="ru">{t("settings.languageRussian")}</option>
+            </select>
+          </div>
+        </div>
+      </div>
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 max-h-[calc(100vh-260px)] flex flex-col">
         <div className="mb-4">
-          <h3 className="text-lg font-semibold text-neutral-900">Workspaces</h3>
-          <p className="text-xs text-neutral-500">
-            Connect multiple platform workspaces and switch between them without leaving the dashboard.
-          </p>
+          <h3 className="text-lg font-semibold text-neutral-900">Рабочие пространства</h3>
+          <p className="text-xs text-neutral-500">Подключайте несколько рабочих пространств платформ и переключайтесь между ними, не покидая панель.</p>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-          <div className="mb-3 text-sm font-semibold text-neutral-800">Add workspace</div>
+          <div className="mb-3 text-sm font-semibold text-neutral-800">Добавить рабочее пространство</div>
           <div className="grid gap-3 md:grid-cols-2">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Workspace name (e.g. Seller A)"
+              placeholder="Название рабочего пространства (например, Seller A)"
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
             <select
@@ -431,26 +483,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
             <input
               value={newProxyUrl}
               onChange={(e) => setNewProxyUrl(e.target.value)}
-              placeholder="Proxy URL (e.g. socks5://host:port[:user:pass])"
+              placeholder="URL прокси (например, socks5://host:port[:user:pass])"
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
             />
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 value={newProxyUsername}
                 onChange={(e) => setNewProxyUsername(e.target.value)}
-                placeholder="Proxy username (optional)"
+                placeholder="Логин прокси (необязательно)"
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <input
                 value={newProxyPassword}
                 onChange={(e) => setNewProxyPassword(e.target.value)}
-                placeholder="Proxy password (optional)"
+                placeholder="Пароль прокси (необязательно)"
                 type="password"
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
             </div>
             <p className="text-[11px] text-neutral-500">
-              Proxy is required for every workspace. Bots will not start without it.
+              Прокси нужен для каждого рабочего пространства. Боты не запустятся без него.
             </p>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -458,24 +510,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               <input
                 type="checkbox"
                 checked={newDefault}
-                onChange={(e) => setNewDefault(e.target.checked)}
-                className="h-4 w-4 rounded border-neutral-300 text-neutral-900"
-              />
-              Make default
-            </label>
+                onChange={(e) =>Сделать по умолчанию</label>
             <button
               onClick={handleCreate}
               disabled={keyActionBusy || !newKey.trim() || !newProxyUrl.trim() || !newName.trim()}
               className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
-            >
-              Add workspace
-            </button>
+            >Добавить рабочее пространство</button>
           </div>
         </div>
         <div className="mt-4 space-y-3 overflow-y-auto pr-1">
           {loading ? (
             <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-              Loading workspaces...
+              Загрузка рабочих пространств...
             </div>
           ) : workspaceList.length ? (
             workspaceList.map((item) => {
@@ -494,13 +540,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                       const status = workspaceStatuses[statusKey(item.id, item.platform)];
                       const meta = resolveStatusMeta(status);
                       const updatedAt = parseUpdatedAt(status?.updated_at);
-                      const updatedLabel = updatedAt ? `Updated ${updatedAt.toLocaleString()}` : "";
+                      const updatedLabel = updatedAt ? `Обновлено ${updatedAt.toLocaleString()}` : "";
                       const titleParts = [
-                        status?.message || (status?.status ? `Status: ${status.status}` : ""),
+                        status?.message || (status?.status ? `Статус: ${status.status}` : ""),
                         updatedLabel,
                         statusError ? statusError : "",
                       ].filter(Boolean);
-                      const title = titleParts.length ? titleParts.join(" | ") : "No status yet.";
+                      const title = titleParts.length ? titleParts.join(" | ") : "Статуса пока нет.";
                       return (
                         <span
                           title={title}
@@ -512,9 +558,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                     })()}
                   </div>
                   <div className="text-xs text-neutral-500">
-                        {item.is_default ? "Default workspace" : "Workspace"}
-                        {item.created_at ? ` Â· Added ${new Date(item.created_at).toLocaleDateString()}` : ""}
-                        {item.key_hint ? ` Â· Key ${item.key_hint}` : ""}
+                        {item.is_default ? "Рабочее пространство по умолчанию" : "Рабочее пространство"}
+                        {item.created_at ? ` · Добавлено ${new Date(item.created_at).toLocaleDateString()}` : ""}
+                        {item.key_hint ? ` · Ключ ${item.key_hint}` : ""}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -523,7 +569,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                           onClick={() => handleSetDefault(item.id)}
                           className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
                         >
-                          Set default
+                          Сделать по умолчанию
                         </button>
                       )}
                       <button
@@ -531,19 +577,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         disabled={proxyCheck?.status === "loading"}
                         className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {proxyCheck?.status === "loading" ? "Checking..." : "Check proxy"}
+                        {proxyCheck?.status === "loading" ? "Проверяем..." : "Проверить прокси"}
                       </button>
                       <button
                         onClick={() => (editing ? cancelEdit() : startEdit(item))}
                         className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
                       >
-                        {editing ? "Close" : "Edit"}
+                        {editing ? "Закрыть" : "Редактировать"}
                       </button>
                       <button
                         onClick={() => handleDelete(item.id)}
                         className="rounded-lg border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600"
                       >
-                        Remove
+                        Удалить
                       </button>
                     </div>
                   </div>
@@ -556,10 +602,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                       }`}
                     >
                       <div className="font-semibold">
-                        {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
+                        {proxyCheck.ok ? "Прокси работает." : "Проверка прокси не прошла."}
                       </div>
-                      <div>Before: {proxyCheck.direct_ip || "â€”"}</div>
-                      <div>After: {proxyCheck.proxy_ip || "â€”"}</div>
+                      <div>До: {proxyCheck.direct_ip || "?"}</div>
+                      <div>После: {proxyCheck.proxy_ip || "?"}</div>
                       {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
                     </div>
                   )}
@@ -569,7 +615,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         <input
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          placeholder="Workspace name"
+                          placeholder="Название рабочего пространства"
                           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                         />
                         <div className="grid gap-2">
@@ -580,7 +626,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                             <textarea
                               value={editKey}
                               onChange={(e) => setEditKey(e.target.value)}
-                              placeholder="New PlayerOk cookies JSON (optional)"
+                              placeholder="Новый JSON-куки PlayerOk (необязательно)"
                               rows={3}
                               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                             />
@@ -588,14 +634,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                             <input
                               value={editKey}
                               onChange={(e) => setEditKey(e.target.value)}
-                              placeholder="New golden key (optional)"
+                              placeholder="Новый золотой ключ (необязательно)"
                               type="password"
                               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                             />
                           )}
                           {item.platform === "playerok" ? (
                             <p className="text-[11px] text-neutral-500">
-                              Paste the updated cookie JSON array to re-authenticate PlayerOk.
+                              Вставьте обновлённый JSON-массив куки, чтобы повторно авторизовать PlayerOk.
                             </p>
                           ) : null}
                         </div>
@@ -604,26 +650,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                         <input
                           value={editProxyUrl}
                           onChange={(e) => setEditProxyUrl(e.target.value)}
-                          placeholder="Proxy URL (socks5://host:port)"
+                          placeholder="URL прокси (socks5://host:port)"
                           className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                         />
                         <div className="grid gap-3 md:grid-cols-2">
                           <input
                             value={editProxyUsername}
                             onChange={(e) => setEditProxyUsername(e.target.value)}
-                            placeholder="Proxy username"
+                            placeholder="Логин прокси"
                             className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                           />
                           <input
                             value={editProxyPassword}
                             onChange={(e) => setEditProxyPassword(e.target.value)}
-                            placeholder="Proxy password"
+                            placeholder="Пароль прокси"
                             type="password"
                             className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
                           />
                         </div>
                         <p className="text-[11px] text-neutral-500">
-                          Proxy must stay valid or bots will pause for this workspace.
+                          Прокси должен оставаться действительным, иначе боты будут паузированы для этого пространства.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -631,20 +677,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                           onClick={handleSaveEdit}
                           className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white"
                         >
-                          Save changes
+                          Сохранить изменения
                         </button>
                         <button
                           onClick={cancelEdit}
                           className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600"
                         >
-                          Cancel
+                          Отмена
                         </button>
                         <button
                           onClick={() => handleCheckProxy(item.id)}
                           disabled={proxyCheck?.status === "loading"}
                           className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {proxyCheck?.status === "loading" ? "Checking..." : "Check proxy"}
+                          {proxyCheck?.status === "loading" ? "Проверяем..." : "Проверить прокси"}
                         </button>
                       </div>
                       {proxyCheck?.status && proxyCheck.status !== "loading" && (
@@ -656,10 +702,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                           }`}
                         >
                           <div className="font-semibold">
-                            {proxyCheck.ok ? "Proxy looks good." : "Proxy check failed."}
+                            {proxyCheck.ok ? "Прокси работает." : "Проверка прокси не прошла."}
                           </div>
-                          <div>Before: {proxyCheck.direct_ip || "â€”"}</div>
-                          <div>After: {proxyCheck.proxy_ip || "â€”"}</div>
+                          <div>До: {proxyCheck.direct_ip || "?"}</div>
+                          <div>После: {proxyCheck.proxy_ip || "?"}</div>
                           {!proxyCheck.ok && proxyCheck.error ? <div>{proxyCheck.error}</div> : null}
                         </div>
                       )}
@@ -670,24 +716,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
             })
           ) : (
             <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-              No workspaces connected yet.
+              Рабочие пространства ещё не подключены.
             </div>
           )}
         </div>
       </div>
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4">
-          <h3 className="text-lg font-semibold text-neutral-900">Telegram notifications</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">Уведомления Telegram</h3>
           <p className="text-xs text-neutral-500">
-            Get an instant Telegram alert any time a buyer calls admin in any workspace, including a direct chat link.
+            Получайте мгновенное уведомление в Telegram, когда покупатель вызывает админа в любом рабочем пространстве, включая прямую ссылку на чат.
           </p>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-neutral-800">Connection status</div>
+              <div className="text-sm font-semibold text-neutral-800">Статус подключения</div>
               <p className="text-xs text-neutral-500">
-                Secure your personal link to tie Telegram to this account.
+                Закрепите личную ссылку, чтобы связать Telegram с этим аккаунтом.
               </p>
             </div>
             <span
@@ -697,32 +743,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                   : "border-neutral-200 bg-white text-neutral-600"
               }`}
             >
-              {telegramStatus?.connected ? "Connected" : "Not connected"}
+              {telegramStatus?.connected ? "Подключено" : "Не подключено"}
             </span>
           </div>
           {telegramStatus?.connected ? (
             <div className="text-xs text-neutral-500">
-              Linked chat ID {telegramStatus.chat_id || "—"}.
+              Привязан ID чата {telegramStatus.chat_id || "—"}.
               {telegramStatus.verified_at
-                ? ` Verified ${new Date(telegramStatus.verified_at).toLocaleString()}.`
+                ? ` Проверено ${new Date(telegramStatus.verified_at).toLocaleString()}.`
                 : ""}
             </div>
           ) : (
             <div className="text-xs text-neutral-500">
               {telegramStatus?.token_hint
-                ? `Last generated key ended in ${telegramStatus.token_hint}.`
-                : "No Telegram link generated yet."}
+                ? `Последний сгенерированный ключ оканчивается на ${telegramStatus.token_hint}.`
+                : "Ссылка Telegram ещё не создана."}
             </div>
           )}
           <ol className="list-decimal pl-5 text-xs text-neutral-600 space-y-1">
-            <li>Generate your personal verification link.</li>
-            <li>Open it in Telegram and tap Start.</li>
-            <li>Done! Admin call alerts will show up here with a chat link.</li>
+            <li>Сгенерируйте личную ссылку для подтверждения.</li>
+            <li>Откройте её в Telegram и нажмите Start.</li>
+            <li>Готово! Здесь появятся оповещения о вызове админа с ссылкой на чат.</li>
           </ol>
           {telegramLink ? (
             <div className="grid gap-2">
               <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                Verification link
+                Ссылка для подтверждения
               </label>
               <div className="flex flex-wrap gap-2">
                 <input
@@ -734,7 +780,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                   onClick={handleCopyTelegramLink}
                   className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600"
                 >
-                  Copy link
+                  Скопировать ссылку
                 </button>
                 <a
                   href={telegramLink}
@@ -742,11 +788,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                   rel="noreferrer"
                   className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white"
                 >
-                  Open Telegram
+                  Открыть Telegram
                 </a>
               </div>
               <p className="text-[11px] text-neutral-500">
-                Each link is unique. Generate a new one any time you need to re-connect.
+                Каждая ссылка уникальна. Создавайте новую, когда нужно переподключиться.
               </p>
             </div>
           ) : null}
@@ -756,7 +802,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
               disabled={telegramBusy}
               className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-neutral-300"
             >
-              {telegramBusy ? "Working..." : "Generate link"}
+              {telegramBusy ? "Работаем..." : "Создать ссылку"}
             </button>
             {telegramStatus?.connected ? (
               <button
@@ -764,7 +810,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                 disabled={telegramBusy}
                 className="rounded-lg border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Disconnect
+                Отключить
               </button>
             ) : null}
           </div>

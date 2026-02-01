@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "../../i18n/useI18n";
 
 type DeltaTone = "up" | "down";
 
@@ -68,16 +69,17 @@ const blankCard = (minHeight = 260) => (
 );
 
 const FunpayStatsPage: React.FC = () => {
+  const { tr } = useI18n();
   const stats: Stat[] = [
-    { label: "Total Accounts", value: 20, delta: "+12%", deltaTone: "up", icon: <CardUsersIcon /> },
-    { label: "Active Rentals", value: 0, delta: "-3%", deltaTone: "down", icon: <CardUsersIcon /> },
-    { label: "Free Accounts", value: 20, delta: "+6%", deltaTone: "up", icon: <CardCloudCheckIcon /> },
-    { label: "Past 24h", value: 0, delta: "+2%", deltaTone: "up", icon: <CardBarsIcon /> },
+    { label: tr("Total Accounts", "Всего аккаунтов"), value: 20, delta: "+12%", deltaTone: "up", icon: <CardUsersIcon /> },
+    { label: tr("Active Rentals", "Активные аренды"), value: 0, delta: "-3%", deltaTone: "down", icon: <CardUsersIcon /> },
+    { label: tr("Free Accounts", "Свободные аккаунты"), value: 20, delta: "+6%", deltaTone: "up", icon: <CardCloudCheckIcon /> },
+    { label: tr("Past 24h", "За 24 часа"), value: 0, delta: "+2%", deltaTone: "up", icon: <CardBarsIcon /> },
   ];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-neutral-900">Funpay Statistics</h1>
+      <h1 className="text-2xl font-semibold text-neutral-900">{tr("Funpay Statistics", "Статистика FunPay")}</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
