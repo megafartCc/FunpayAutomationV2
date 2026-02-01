@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 
 import { api, AccountItem, ActiveRentalItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
-import InteractiveSphere from "./InteractiveSphere";
 
 type DeltaTone = "up" | "down";
 
@@ -1009,8 +1008,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           <StatCard key={card.label} {...card} />
         ))}
       </div>
-
-      <InteractiveSphere />
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
