@@ -360,7 +360,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
         if (!isMounted) return;
         const map: Record<string, WorkspaceStatusItem> = {};
         (res.items || []).forEach((item) => {
-          const key = statusKey(item.workspace_id ? null, item.platform);
+          const key = statusKey(item.workspace_id ?? null, item.platform);
           if (!map[key]) {
             map[key] = item;
           }
@@ -821,3 +821,4 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
 };
 
 export default SettingsPage;
+
