@@ -41,7 +41,7 @@ type AccountRow = {
 };
 
 const RENTALS_GRID =
-  "minmax(64px,0.5fr) minmax(240px,1.5fr) minmax(180px,1.1fr) minmax(150px,0.9fr) minmax(190px,1fr) minmax(170px,0.9fr) minmax(260px,1.4fr) minmax(140px,0.7fr)";
+  "minmax(0,0.55fr) minmax(0,1.35fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.2fr) minmax(0,0.7fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const statusPill = (status?: string) => {
@@ -751,8 +751,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-        <div className="overflow-x-auto">
-          <div className="min-w-[1100px]">
+        <div className="overflow-x-hidden">
+          <div className="min-w-0">
             <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
               <span>ID</span>
               <span>Account</span>
@@ -761,7 +761,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
               <span className="text-right">Time Left</span>
               <span className="text-right">Match Time</span>
               <span>Hero</span>
-              <span className="justify-self-end">Status</span>
+              <span className="text-center">Status</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
               {rentals.map((row, idx) => {
@@ -820,8 +820,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                       {getMatchTimeLabel(row, now)}
                     </span>
                     <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
+                    <div className="flex items-center justify-center">
+                      <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
                         {pill.label}
                       </span>
                     </div>

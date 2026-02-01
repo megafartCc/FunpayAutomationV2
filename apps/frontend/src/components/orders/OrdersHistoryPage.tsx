@@ -8,7 +8,7 @@ type OrdersHistoryPageProps = {
 };
 
 const ORDERS_GRID =
-  "minmax(120px,0.9fr) minmax(180px,1.1fr) minmax(220px,1.3fr) minmax(180px,1fr) minmax(140px,0.7fr) minmax(120px,0.7fr) minmax(140px,0.8fr) minmax(160px,0.9fr) minmax(160px,0.9fr)";
+  "minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,1fr)";
 
 const formatMinutesLabel = (minutes?: number | null) => {
   const numeric = typeof minutes === "number" ? minutes : Number(minutes);
@@ -166,8 +166,8 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
               : "Workspace scoped."}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <div className="min-w-[1180px]">
+        <div className="overflow-x-hidden">
+          <div className="min-w-0">
             <div
               className="grid gap-3 px-6 text-xs font-semibold text-neutral-500"
               style={{ gridTemplateColumns: ORDERS_GRID }}
@@ -178,7 +178,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
               <span>Steam ID</span>
               <span>Duration</span>
               <span>Price</span>
-              <span>Action</span>
+              <span className="text-center">Action</span>
               <span>Date</span>
               <span>Workspace</span>
             </div>
@@ -225,9 +225,11 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                         {formatMinutesLabel(order.rental_minutes)}
                       </span>
                       <span className="min-w-0 truncate font-semibold text-neutral-900">{priceLabel}</span>
-                      <span className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
-                        {pill.label}
-                      </span>
+                      <div className="flex items-center justify-center">
+                        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
+                          {pill.label}
+                        </span>
+                      </div>
                       <span className="min-w-0 truncate text-xs text-neutral-500">
                         {formatMoscowDateTime(order.created_at)}
                       </span>

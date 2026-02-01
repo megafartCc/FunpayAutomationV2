@@ -25,7 +25,7 @@ type AccountRow = {
 };
 
 const INVENTORY_GRID =
-  "minmax(60px,0.5fr) minmax(150px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) minmax(150px,1.1fr) minmax(70px,0.6fr) minmax(90px,0.6fr)";
+  "minmax(0,0.45fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.25fr) minmax(0,0.6fr) minmax(0,0.7fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const mapAccount = (item: AccountItem): AccountRow => ({
@@ -598,7 +598,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
               )}
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-hidden">
             <div className="min-w-0">
               <div className="grid gap-3 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
                 <span>ID</span>
@@ -607,7 +607,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 <span>Password</span>
                 <span>Steam ID</span>
                 <span>MMR</span>
-                <span className="text-right">State</span>
+                <span className="text-center">State</span>
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {accounts.map((acc, idx) => {
@@ -640,7 +640,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                       }
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
-                      className={`grid min-w-full items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                      className={`grid items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
                           : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
@@ -693,7 +693,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-neutral-700" title={String(acc.mmr ?? "")}>
                         {acc.mmr ?? ""}
                       </span>
-                      <span className={`justify-self-end rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>
+                      <span className={`justify-self-center rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>
                         {stateLabel}
                       </span>
                     </motion.div>

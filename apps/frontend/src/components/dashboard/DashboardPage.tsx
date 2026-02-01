@@ -143,9 +143,9 @@ type RentalRow = {
 };
 
 const INVENTORY_GRID =
-  "minmax(60px,0.5fr) minmax(150px,1.2fr) minmax(120px,1fr) minmax(120px,1fr) minmax(150px,1.1fr) minmax(70px,0.6fr) minmax(90px,0.6fr)";
+  "minmax(0,0.45fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.25fr) minmax(0,0.6fr) minmax(0,0.7fr)";
 const RENTALS_GRID =
-  "minmax(52px,0.5fr) minmax(170px,1.3fr) minmax(130px,1fr) minmax(110px,0.9fr) minmax(130px,0.9fr) minmax(110px,0.8fr) minmax(140px,1fr) minmax(90px,0.6fr)";
+  "minmax(0,0.5fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) minmax(0,0.7fr)";
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
@@ -1014,7 +1014,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-neutral-900">Inventory</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-hidden">
             <div className="min-w-0">
               <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: INVENTORY_GRID }}>
                 <span>ID</span>
@@ -1023,7 +1023,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>Password</span>
                 <span>Steam ID</span>
                 <span>MMR</span>
-                <span className="text-right">State</span>
+                <span className="text-center">State</span>
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {inventoryAccounts.map((acc, idx) => {
@@ -1080,7 +1080,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       }
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
-                      className={`grid min-w-full items-center gap-4 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
+                      className={`grid items-center gap-4 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
                           : "border-neutral-100 bg-neutral-50 hover:border-neutral-200"
@@ -1127,7 +1127,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-neutral-700" title={String(acc.mmr ?? "")}>
                         {acc.mmr ?? ""}
                       </span>
-                      <span className={`justify-self-end rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>
+                      <span className={`justify-self-center rounded-full px-3 py-1 text-xs font-semibold ${stateClass}`}>
                         {stateLabel}
                       </span>
                     </motion.div>
@@ -1148,17 +1148,17 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
             <h3 className="text-lg font-semibold text-neutral-900">Active rentals</h3>
             <button className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Status</button>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-hidden">
             <div className="min-w-0">
               <div className="grid gap-4 px-6 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: RENTALS_GRID }}>
                 <span>ID</span>
                 <span>Account</span>
                 <span>Buyer</span>
                 <span>Started</span>
-                  <span className="text-right">Time Left</span>
-                  <span className="text-right">Match Time</span>
-                  <span>Hero</span>
-                  <span className="justify-self-end">Status</span>
+                <span className="text-right">Time Left</span>
+                <span className="text-right">Match Time</span>
+                <span>Hero</span>
+                <span className="text-center">Status</span>
               </div>
               <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
                 {filteredRentals.map((row, idx) => {
@@ -1219,8 +1219,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         {getMatchTimeLabel(row, now)}
                       </span>
                       <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
-                      <div className="flex items-center justify-end gap-2">
-                        <span className={`inline-flex w-fit justify-self-start rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
+                      <div className="flex items-center justify-center">
+                        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
                           {pill.label}
                         </span>
                       </div>
