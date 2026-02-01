@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, RaiseCategoryItem } from "../../services/api";
+import { api, AutoRaiseLogItem, RaiseCategoryItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -56,8 +56,8 @@ const Switch: React.FC<{
   </div>
 );
 
-const PluginsPage: React.FC<PluginsPageProps> = () => {
-  const { workspaces, selectedId } = useWorkspace();
+const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
+  const { workspaces } = useWorkspace();
   const { t } = useI18n();
 
   const [enabled, setEnabled] = useState(false);
@@ -67,8 +67,9 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
   const [categories, setCategories] = useState<RaiseCategoryItem[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
-
-  const selectedWorkspaceId = selectedId === "all" ? undefined : selectedId;
+  const [logs, setLogs] = useState<AutoRaiseLogItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
 
   const workspaceMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -132,6 +133,36 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     void loadCategories();
   }, [loadCategories]);
 
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    setLogsError(null);
+    try {
+      const res = await api.listAutoRaiseLogs(null, 200);
+      setLogs(res.items || []);
+    } catch (err) {
+      const message = (err as { message?: string })?.message;
+      setLogsError(message || t("plugins.autoRaise.logsError"));
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadLogs();
+  }, [loadLogs]);
+
+  const handleManualRaise = async () => {
+    try {
+      const res = await api.requestAutoRaise(null);
+      const message = t("plugins.autoRaise.manualSuccess", { count: res.created });
+      onToast?.(message);
+      void loadLogs();
+    } catch (err) {
+      const message = (err as { message?: string })?.message || t("plugins.autoRaise.manualError");
+      onToast?.(message, true);
+    }
+  };
+
   const sortedCategories = useMemo(() => {
     const items = [...categories];
     items.sort((a, b) => {
@@ -155,6 +186,28 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
 
   const handleIntervalChange = useCallback((value: number) => {
     setIntervalMinutes(clampInterval(value));
+  }, []);
+
+  const formatLogTimestamp = useCallback((value?: string | null) => {
+    if (!value) return "--";
+    const ts = Date.parse(String(value));
+    if (Number.isNaN(ts)) return String(value);
+    const formatted = new Date(ts).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+    const parts = formatted.split(", ");
+    if (parts.length !== 2) return formatted;
+    const [datePart, timePart] = parts;
+    const dateBits = datePart.split(".");
+    if (dateBits.length !== 3) return `${datePart} ${timePart}`;
+    const [day, month, year] = dateBits;
+    return `${day}.${month}.${year.slice(-2)} ${timePart}`;
+  }, []);
+
+  const formatLogLevel = useCallback((level?: string | null) => {
+    const normalized = (level || "").toLowerCase();
+    if (normalized.startsWith("warn")) return "W";
+    if (normalized.startsWith("err") || normalized.startsWith("fail")) return "E";
+    if (normalized.startsWith("debug")) return "D";
+    return "I";
   }, []);
 
   const handleReset = () => {
@@ -240,13 +293,22 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
           <span>{t("plugins.autoRaise.localNotice")}</span>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 transition hover:border-neutral-300"
-          >
-            {t("plugins.autoRaise.reset")}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleManualRaise}
+              className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 transition hover:border-neutral-300"
+            >
+              {t("plugins.autoRaise.manualRaise")}
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 transition hover:border-neutral-300"
+            >
+              {t("plugins.autoRaise.reset")}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -400,6 +462,70 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">{t("plugins.autoRaise.logsTitle")}</h3>
+            <p className="text-sm text-neutral-500">{t("plugins.autoRaise.logsDesc")}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+              {t("plugins.autoRaise.logsCount", { count: logs.length })}
+            </span>
+            <button
+              type="button"
+              onClick={loadLogs}
+              disabled={logsLoading}
+              className={`rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-semibold text-neutral-600 transition ${
+                logsLoading ? "cursor-not-allowed opacity-60" : "hover:border-neutral-300"
+              }`}
+            >
+              {t("plugins.autoRaise.logsRefresh")}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2 overflow-y-auto pr-1" style={{ maxHeight: "420px" }}>
+          {logsLoading && (
+            <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+              {t("plugins.autoRaise.logsLoading")}
+            </div>
+          )}
+          {!logsLoading && logsError && (
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-6 text-center text-sm text-rose-600">
+              {logsError}
+            </div>
+          )}
+          {!logsLoading &&
+            !logsError &&
+            logs.map((log) => {
+              const level = formatLogLevel(log.level);
+              const source = log.source || "auto_raise";
+              const line = log.line ?? "--";
+              const timeLabel = formatLogTimestamp(log.created_at);
+              const wsLabel =
+                log.workspace_id !== null && log.workspace_id !== undefined
+                  ? workspaceMap.get(log.workspace_id) || `${t("common.workspace")} ${log.workspace_id}`
+                  : t("common.allWorkspaces");
+              const lineText = `[${timeLabel}][${source}][${line}]> ${level}: ${log.message}`;
+              return (
+                <div
+                  key={log.id}
+                  className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-xs text-neutral-600"
+                >
+                  <span className="break-all font-mono text-[11px] text-neutral-700">{lineText}</span>
+                  <span className="text-[10px] text-neutral-400">{wsLabel}</span>
+                </div>
+              );
+            })}
+          {!logsLoading && !logsError && logs.length === 0 && (
+            <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+              {t("plugins.autoRaise.logsEmpty")}
+            </div>
+          )}
         </div>
       </div>
     </div>

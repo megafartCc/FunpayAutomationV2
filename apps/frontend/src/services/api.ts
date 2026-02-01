@@ -71,6 +71,16 @@ export type RaiseCategoryItem = {
   updated_at?: string | null;
 };
 
+export type AutoRaiseLogItem = {
+  id: number;
+  level: string;
+  source?: string | null;
+  line?: number | null;
+  message: string;
+  workspace_id?: number | null;
+  created_at?: string | null;
+};
+
 export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
@@ -348,6 +358,21 @@ export const api = {
       { method: "GET" },
     );
   },
+  listAutoRaiseLogs: (workspaceId?: number | null, limit: number = 200) => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: AutoRaiseLogItem[] }>(
+      `/auto-raise/logs${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
+  requestAutoRaise: (workspaceId?: number | null) =>
+    request<{ created: number }>("/auto-raise/manual", {
+      method: "POST",
+      body: workspaceId ? { workspace_id: workspaceId } : {},
+    }),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
   updateLot: (lotNumber: number, payload: Partial<LotCreatePayload> & { display_name?: string | null }, workspaceId?: number) =>
     request<LotItem>(

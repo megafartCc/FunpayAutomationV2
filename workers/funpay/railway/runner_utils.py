@@ -37,7 +37,7 @@ from .notifications_utils import upsert_workspace_status
 from .order_utils import apply_review_bonus_for_order, handle_order_purchased, revert_review_bonus_for_order
 from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
-from .raise_utils import sync_raise_categories
+from .raise_utils import auto_raise_loop, sync_raise_categories
 from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
 from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
@@ -701,6 +701,8 @@ def run_single_user(logger: logging.Logger) -> None:
     user_agent = os.getenv("FUNPAY_USER_AGENT")
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
     raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
+    raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
+    auto_raise_enabled = lambda: env_bool("FUNPAY_AUTO_RAISE", False)
     raise_sync_last = 0.0
 
     logger.info("Initializing FunPay account...")
@@ -708,7 +710,33 @@ def run_single_user(logger: logging.Logger) -> None:
     account.get()
     logger.info("Bot started for %s.", account.username or "unknown")
 
+    stop_event = threading.Event()
+    mysql_cfg = None
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        mysql_cfg = None
+    user_id = None
+    if mysql_cfg and account.username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, account.username)
+        except Exception:
+            user_id = None
     threading.Thread(target=refresh_session_loop, args=(account, 3600, None), daemon=True).start()
+    threading.Thread(
+        target=auto_raise_loop,
+        args=(),
+        kwargs={
+            "account": account,
+            "mysql_cfg": mysql_cfg,
+            "user_id": user_id,
+            "workspace_id": None,
+            "enabled_fn": auto_raise_enabled,
+            "stop_event": stop_event,
+            "profile_sync_seconds": raise_profile_sync,
+        },
+        daemon=True,
+    ).start()
 
     runner = Runner(account, disable_message_requests=False)
     logger.info("Listening for new messages...")
@@ -771,6 +799,8 @@ def workspace_worker_loop(
         mysql_cfg = None
     last_status_ping = 0.0
     status_platform = (workspace.get("platform") or "funpay").lower()
+    auto_raise_enabled = lambda: env_bool("FUNPAY_AUTO_RAISE", False)
+    raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
     while not stop_event.is_set():
         try:
             if not golden_key:
@@ -821,6 +851,21 @@ def workspace_worker_loop(
                     raise_sync_last = time.time()
                 except Exception:
                     logger.debug("%s Raise categories sync failed.", label, exc_info=True)
+
+            threading.Thread(
+                target=auto_raise_loop,
+                args=(),
+                kwargs={
+                    "account": account,
+                    "mysql_cfg": mysql_cfg,
+                    "user_id": int(user_id) if user_id is not None else None,
+                    "workspace_id": int(workspace_id) if workspace_id is not None else None,
+                    "enabled_fn": auto_raise_enabled,
+                    "stop_event": stop_event,
+                    "profile_sync_seconds": raise_profile_sync,
+                },
+                daemon=True,
+            ).start()
 
             threading.Thread(
                 target=refresh_session_loop,
