@@ -263,7 +263,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
       className={`relative flex h-screen w-[280px] shrink-0 flex-col border-r border-neutral-100 bg-white px-6 pb-10 pt-10 shadow-[12px_0_40px_-32px_rgba(0,0,0,0.15)] ${className || ""}`}
     >
       <div className="flex items-center justify-between">
-        <div className="text-lg font-semibold tracking-tight text-neutral-900">Funpay Automation</div>
+        <div className="text-lg font-semibold tracking-tight text-neutral-900">Автоматизация FunPay</div>
         {isMobile ? (
           <button
             type="button"

@@ -733,7 +733,7 @@ const ChatsPage: React.FC = () => {
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
             onClick={() => loadChats(chatSearch, { silent: true, incremental: !chatSearch.trim() })}
           >
-            Refresh
+            Обновить
           </button>
         </div>
         <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
@@ -782,13 +782,13 @@ const ChatsPage: React.FC = () => {
                 type="button"
                 onClick={() => loadChats(chatSearch)}
               >
-                Update
+                Обновить
               </button>
             </div>
             <div className="mt-4 flex-1 space-y-2 overflow-y-auto pr-1">
               {chatListLoading ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading chats...
+                  Загружаем чаты...
                 </div>
               ) : chats.length ? (
                 chats.map((chat) => {
@@ -853,7 +853,7 @@ const ChatsPage: React.FC = () => {
                 })
               ) : (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                  No chats found.
+                  Чаты не найдены.
                 </div>
               )}
             </div>
@@ -891,7 +891,7 @@ const ChatsPage: React.FC = () => {
               <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-4">
                 {chatLoading ? (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                    Loading messages...
+                    Загружаем сообщения...
                   </div>
                 ) : messages.length ? (
                   <div
@@ -936,11 +936,11 @@ const ChatsPage: React.FC = () => {
                   </div>
                 ) : selectedChatId ? (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                    No stored messages yet. New messages will appear automatically.
+                    Пока нет сохранённых сообщений. Новые сообщения появятся автоматически.
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
-                    Select a chat to view messages.
+                    Выберите чат, чтобы посмотреть сообщения.
                   </div>
                 )}
               </div>
@@ -1043,7 +1043,7 @@ const ChatsPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="mt-3 rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-4 text-center text-xs text-neutral-500">
-                  Select a rental to manage it.
+                  Выберите аренду, чтобы управлять ею.
                 </div>
               )}
             </div>
@@ -1069,13 +1069,13 @@ const ChatsPage: React.FC = () => {
                   onClick={() => loadRentals()}
                   disabled={rentalsLoading}
                 >
-                  Refresh
+                  Обновить
                 </button>
               </div>
               <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {rentalsLoading ? (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                    Loading rentals...
+                    Загружаем аренды...
                   </div>
                 ) : selectedChat ? (
                   rentalsForBuyer.length ? (
@@ -1110,12 +1110,12 @@ const ChatsPage: React.FC = () => {
                     })
                   ) : (
                     <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                      No active rentals for this buyer.
+                      Нет активных аренд для этого покупателя.
                     </div>
                   )
                 ) : (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-xs text-neutral-500">
-                    Select a chat to view rentals.
+                    Выберите чат, чтобы увидеть аренды.
                   </div>
                 )}
               </div>

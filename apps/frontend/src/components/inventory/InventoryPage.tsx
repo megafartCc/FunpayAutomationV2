@@ -162,10 +162,10 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   }, [selectedAccount]);
 
   const emptyMessage = loading
-    ? "Loading accounts..."
+    ? "Загружаем аккаунты..."
     : error
       ? `Не удалось загрузить аккаунты: ${error}`
-      : "No accounts loaded yet.";
+      : "Аккаунты ещё не загружены.";
 
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
@@ -237,7 +237,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     }
 
     if (!Object.keys(payload).length) {
-      onToast?.("No changes to save.", true);
+      onToast?.("Нет изменений для сохранения.", true);
       return;
     }
 
@@ -492,7 +492,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                     disabled={accountActionBusy || !hasChanges || !editMmrValid}
                     className="mt-3 w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                   >
-                    Save changes
+                    Сохранить изменения
                   </button>
                 </div>
               </div>
@@ -549,7 +549,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                     : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                 }`}
               >
-                {lowPriority ? "Remove low priority" : "Mark low priority"}
+                {lowPriority ? "Снять низкий приоритет" : "Пометить низкий приоритет"}
               </button>
             </div>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
@@ -593,7 +593,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                 </span>
               ) : (
                 <span className="text-xs rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">
-                  No account selected
+                  Аккаунт не выбран
                 </span>
               )}
             </div>

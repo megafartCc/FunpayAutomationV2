@@ -23,23 +23,23 @@ const statusPill = (status?: string | null) => {
     return { label: "OK", className: "bg-emerald-50 text-emerald-700" };
   }
   if (normalized === "failed" || normalized === "error") {
-    return { label: "Failed", className: "bg-rose-50 text-rose-700" };
+    return { label: "Ошибка", className: "bg-rose-50 text-rose-700" };
   }
   if (normalized === "warning") {
-    return { label: "Warning", className: "bg-amber-50 text-amber-700" };
+    return { label: "Предупреждение", className: "bg-amber-50 text-amber-700" };
   }
   if (normalized === "info") {
-    return { label: "Info", className: "bg-sky-50 text-sky-700" };
+    return { label: "Инфо", className: "bg-sky-50 text-sky-700" };
   }
   return { label: status || "-", className: "bg-neutral-100 text-neutral-600" };
 };
 
 const eventLabel = (eventType?: string | null) => {
   const normalized = (eventType || "").toLowerCase();
-  if (normalized === "purchase") return "Purchase";
-  if (normalized === "deauthorize") return "Steam deauthorize";
-  if (normalized === "rental_expired") return "Rental expired";
-  if (normalized === "replacement") return "Replacement";
+  if (normalized === "purchase") return "Покупка";
+  if (normalized === "deauthorize") return "Деавторизация Steam";
+  if (normalized === "rental_expired") return "Аренда истекла";
+  if (normalized === "replacement") return "Замена";
   return eventType || "-";
 };
 
@@ -47,9 +47,9 @@ const formatWorkspaceLabel = (
   workspaceId: number | null | undefined,
   workspaceName: string | null | undefined,
 ) => {
-  if (!workspaceId) return "Global";
+  if (!workspaceId) return "Глобально";
   if (workspaceName) return `${workspaceName} (ID ${workspaceId})`;
-  return `Workspace ${workspaceId}`;
+  return `Рабочее пространство ${workspaceId}`;
 };
 
 const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
@@ -66,7 +66,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
       const res = await api.listNotifications(workspaceId ?? undefined, 300);
       setNotifications(res.items || []);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load notifications.";
+      const message = (err as { message?: string })?.message || "Не удалось загрузить уведомления.";
       onToast?.(message, true);
     } finally {
       setLoading(false);
@@ -83,7 +83,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
   }, [notifications, eventFilter]);
 
   const totalLabel = useMemo(
-    () => `${filteredNotifications.length} events`,
+    () => `${filteredNotifications.length} событий`,
     [filteredNotifications.length],
   );
 
@@ -91,22 +91,22 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-neutral-900">Notifications</h3>
-          <p className="text-sm text-neutral-500">Purchase, deauthorize, and rental expiration events in one feed.</p>
+          <h3 className="text-lg font-semibold text-neutral-900">Уведомления</h3>
+          <p className="text-sm text-neutral-500">Покупки, деавторизация и истечение аренды в одном списке.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-            <span className="font-semibold text-neutral-500">Filter</span>
+            <span className="font-semibold text-neutral-500">Фильтр</span>
             <select
               value={eventFilter}
               onChange={(event) => setEventFilter(event.target.value)}
               className="bg-transparent text-xs font-semibold text-neutral-700 outline-none"
             >
-              <option value="all">All events</option>
-              <option value="purchase">Purchase</option>
-              <option value="replacement">Replacement</option>
-              <option value="deauthorize">Deauthorize</option>
-              <option value="rental_expired">Rental expired</option>
+              <option value="all">Все события</option>
+              <option value="purchase">Покупка</option>
+              <option value="replacement">Замена</option>
+              <option value="deauthorize">Деавторизация</option>
+              <option value="rental_expired">Аренда истекла</option>
             </select>
           </div>
           <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
@@ -116,14 +116,14 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
             onClick={loadNotifications}
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
           >
-            Refresh
+            Обновить
           </button>
         </div>
       </div>
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
-          <span>{selectedWorkspaceId === "all" ? "All workspaces combined." : "Workspace scoped."}</span>
-          <span>Newest events appear first.</span>
+          <span>{selectedWorkspaceId === "all" ? "Все рабочие пространства вместе." : "Фильтр по рабочему пространству."}</span>
+          <span>Сначала новые события.</span>
         </div>
         <div className="overflow-x-auto">
           <div className="min-w-[980px]">
@@ -131,18 +131,18 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
               className="grid gap-3 px-6 text-xs font-semibold text-neutral-500"
               style={{ gridTemplateColumns: NOTIFICATIONS_GRID }}
             >
-              <span>Event</span>
-              <span>Status</span>
-              <span>Details</span>
-              <span>Account / Buyer</span>
-              <span>Order</span>
-              <span>Date</span>
-              <span>Workspace</span>
+              <span>Событие</span>
+              <span>Статус</span>
+              <span>Детали</span>
+              <span>Аккаунт / Покупатель</span>
+              <span>Заказ</span>
+              <span>Дата</span>
+              <span>Рабочее пространство</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
               {loading && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  Loading notifications...
+                  Загружаем уведомления...
                 </div>
               )}
               {!loading &&
@@ -151,7 +151,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                   const details = notification.message || "-";
                   const accountLabel =
                     notification.account_name ||
-                    (notification.account_id ? `Account ${notification.account_id}` : "-");
+                    (notification.account_id ? `Аккаунт ${notification.account_id}` : "-");
                   const ownerLabel = notification.owner || "-";
                   return (
                     <div
@@ -171,7 +171,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                       <span className="min-w-0 truncate text-xs text-neutral-600">{details}</span>
                       <div className="min-w-0">
                         <div className="truncate font-semibold text-neutral-800">{accountLabel}</div>
-                        <div className="text-xs text-neutral-400">Buyer: {ownerLabel}</div>
+                        <div className="text-xs text-neutral-400">Покупатель: {ownerLabel}</div>
                       </div>
                       <span className="min-w-0 truncate font-mono text-xs text-neutral-700">
                         {notification.order_id || "-"}
@@ -187,7 +187,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
                 })}
               {!loading && filteredNotifications.length === 0 && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  No notification events yet.
+                  Пока нет событий уведомлений.
                 </div>
               )}
             </div>

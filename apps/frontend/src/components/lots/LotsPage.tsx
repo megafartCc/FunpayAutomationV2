@@ -31,14 +31,14 @@ const LotsPage: React.FC = () => {
   );
 
   const currentWorkspaceLabel = useMemo(() => {
-    if (selectedWorkspaceId === "all") return "Pick a workspace";
+    if (selectedWorkspaceId === "all") return "Выберите рабочее пространство";
     const match = workspaces.find((w) => w.id === selectedWorkspaceId);
-    return match ? match.name : "Workspace";
+    return match ? match.name : "Рабочее пространство";
   }, [selectedWorkspaceId, workspaces]);
 
   useEffect(() => {
     if (selectedWorkspaceId === "all") {
-      setStatus({ message: "Select a workspace to edit lots.", isError: true });
+      setStatus({ message: "Выберите рабочее пространство, чтобы редактировать лоты.", isError: true });
       setAccounts([]);
       setLots([]);
       setLoading(false);
@@ -56,7 +56,7 @@ const LotsPage: React.FC = () => {
       .catch((err) => {
         if (!mounted) return;
         setStatus({
-          message: (err as { message?: string })?.message || "Failed to load lots.",
+          message: (err as { message?: string })?.message || "Не удалось загрузить лоты.",
           isError: true,
         });
       })
@@ -76,7 +76,7 @@ const LotsPage: React.FC = () => {
 
   const handleSaveDisplay = async () => {
     if (selectedWorkspaceId === "all" || editingLot === null) {
-      setStatus({ message: "Select a workspace first.", isError: true });
+      setStatus({ message: "Сначала выберите рабочее пространство.", isError: true });
       return;
     }
     try {
@@ -88,12 +88,12 @@ const LotsPage: React.FC = () => {
       setLots((prev) =>
         prev.map((item) => (item.lot_number === editingLot ? { ...item, ...updated } : item)),
       );
-      setStatus({ message: "Lot name updated." });
+      setStatus({ message: "Название лота обновлено." });
       setEditingLot(null);
       setDisplayName("");
     } catch (err) {
       setStatus({
-        message: (err as { message?: string })?.message || "Failed to update lot.",
+        message: (err as { message?: string })?.message || "Не удалось обновить лот.",
         isError: true,
       });
     }
@@ -102,18 +102,18 @@ const LotsPage: React.FC = () => {
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
     if (selectedWorkspaceId === "all") {
-      setStatus({ message: "Select a workspace first.", isError: true });
+      setStatus({ message: "Сначала выберите рабочее пространство.", isError: true });
       return;
     }
     setStatus(null);
     const number = Number(lotNumber);
     const account = Number(accountId);
     if (!number || !account) {
-      setStatus({ message: "Provide lot number and account.", isError: true });
+      setStatus({ message: "Укажите номер лота и аккаунт.", isError: true });
       return;
     }
     if (!lotUrl.trim()) {
-      setStatus({ message: "Lot URL is required.", isError: true });
+      setStatus({ message: "Нужна ссылка на лот.", isError: true });
       return;
     }
     try {
@@ -131,10 +131,10 @@ const LotsPage: React.FC = () => {
       setLotNumber("");
       setAccountId("");
       setLotUrl("");
-      setStatus({ message: "Lot saved." });
+      setStatus({ message: "Лот сохранён." });
     } catch (err) {
       setStatus({
-        message: (err as { message?: string })?.message || "Failed to save lot.",
+        message: (err as { message?: string })?.message || "Не удалось сохранить лот.",
         isError: true,
       });
     }
@@ -142,7 +142,7 @@ const LotsPage: React.FC = () => {
 
   const handleDelete = async (lotNum: number) => {
     if (selectedWorkspaceId === "all") {
-      setStatus({ message: "Select a workspace first.", isError: true });
+      setStatus({ message: "Сначала выберите рабочее пространство.", isError: true });
       return;
     }
     try {
@@ -150,7 +150,7 @@ const LotsPage: React.FC = () => {
       setLots((prev) => prev.filter((item) => item.lot_number !== lotNum));
     } catch (err) {
       setStatus({
-        message: (err as { message?: string })?.message || "Failed to delete lot.",
+        message: (err as { message?: string })?.message || "Не удалось удалить лот.",
         isError: true,
       });
     }
@@ -161,11 +161,11 @@ const LotsPage: React.FC = () => {
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Lots mapping</h3>
-            <p className="text-sm text-neutral-500">Workspace-specific. Used by !сток and automation.</p>
+            <h3 className="text-lg font-semibold text-neutral-900">Привязка лотов</h3>
+            <p className="text-sm text-neutral-500">Для выбранного рабочего пространства. Используется для !сток и автоматизации.</p>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
-            <span className="uppercase tracking-wide text-neutral-500">Workspace</span>
+            <span className="uppercase tracking-wide text-neutral-500">Рабочее пространство</span>
             <span className="text-xs font-semibold text-neutral-700">{currentWorkspaceLabel}</span>
           </div>
         </div>
@@ -184,7 +184,7 @@ const LotsPage: React.FC = () => {
 
         <form className="mt-5 grid gap-4 lg:grid-cols-[140px_1fr_1fr_auto]" onSubmit={handleCreate}>
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Lot number</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Номер лота</label>
             <input
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               type="number"
@@ -195,14 +195,14 @@ const LotsPage: React.FC = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Account</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Аккаунт</label>
             <select
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               value={accountId}
               onChange={(event) => setAccountId(event.target.value)}
               required
             >
-              <option value="">Select an account</option>
+              <option value="">Выберите аккаунт</option>
               {accountOptions.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.label}
@@ -211,7 +211,7 @@ const LotsPage: React.FC = () => {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Lot URL</label>
+            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Ссылка на лот</label>
             <input
               className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
               type="url"
@@ -226,7 +226,7 @@ const LotsPage: React.FC = () => {
               className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800"
               type="submit"
             >
-              Save
+              Сохранить
             </button>
           </div>
         </form>
@@ -235,10 +235,10 @@ const LotsPage: React.FC = () => {
           <table className="min-w-[640px] w-full border-separate border-spacing-y-2 text-sm">
             <thead className="text-xs uppercase tracking-wide text-neutral-500">
               <tr>
-                <th className="px-3 py-2 text-left">Lot</th>
-                <th className="px-3 py-2 text-left">Account</th>
-                <th className="px-3 py-2 text-left">Lot URL</th>
-                <th className="px-3 py-2 text-left">Display name</th>
+                <th className="px-3 py-2 text-left">Лот</th>
+                <th className="px-3 py-2 text-left">Аккаунт</th>
+                <th className="px-3 py-2 text-left">Ссылка на лот</th>
+                <th className="px-3 py-2 text-left">Отображаемое имя</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -263,7 +263,7 @@ const LotsPage: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <input
                           className="w-48 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-800 outline-none placeholder:text-neutral-400"
-                          placeholder="Override name"
+                          placeholder="Переопределить имя"
                           value={editingLot === lot.lot_number ? displayName : lot.display_name || ""}
                           onFocus={() => startEdit(lot)}
                           onChange={(e) => {
@@ -277,7 +277,7 @@ const LotsPage: React.FC = () => {
                           onClick={handleSaveDisplay}
                           disabled={editingLot !== lot.lot_number}
                         >
-                          Save
+                          Сохранить
                         </button>
                       </div>
                     </td>
@@ -287,7 +287,7 @@ const LotsPage: React.FC = () => {
                         type="button"
                         onClick={() => handleDelete(lot.lot_number)}
                       >
-                        Delete
+                        Удалить
                       </button>
                     </td>
                   </tr>
@@ -298,7 +298,7 @@ const LotsPage: React.FC = () => {
                     colSpan={4}
                     className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500"
                   >
-                    {loading ? "Loading lots..." : "No lots configured yet."}
+                    {loading ? "Загружаем лоты..." : "Лоты ещё не настроены."}
                   </td>
                 </tr>
               )}

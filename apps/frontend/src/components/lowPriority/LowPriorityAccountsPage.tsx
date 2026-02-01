@@ -610,19 +610,23 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">{tr("Replacement history", "??????? ?????")}</h3>
-            <p className="text-sm text-neutral-500">{tr("Order log for the selected low-priority account.", "?????? ??????? ??? ?????????? ???????? ? ?????? ???????????.")}</p>
+            <h3 className="text-lg font-semibold text-neutral-900">{tr("Replacement history", "История замен")}</h3>
+            <p className="text-sm text-neutral-500">
+              {tr("Order log for the selected low-priority account.", "Журнал заказов для выбранного аккаунта с низким приоритетом.")}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-              {selectedAccount ? `${selectedHistory.length} записей` : "Выбрите аккаунт"}
+              {selectedAccount
+                ? tr("{count} records", "{count} записей", { count: selectedHistory.length })
+                : tr("Select an account", "Выберите аккаунт")}
             </span>
             <button
               onClick={() => loadHistory()}
               className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
               disabled={historyLoading}
             >
-              Refresh logs
+              {tr("Refresh logs", "Обновить журнал")}
             </button>
           </div>
         </div>
@@ -632,24 +636,24 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
               className="grid gap-3 px-6 text-xs font-semibold uppercase tracking-wide text-neutral-500"
               style={{ gridTemplateColumns: HISTORY_GRID }}
             >
-              <span>{tr("Order", "?????")}</span>
-              <span>{tr("Buyer", "??????????")}</span>
-              <span>{tr("Action", "????????")}</span>
-              <span>{tr("Duration", "????????????")}</span>
-              <span>{tr("Date", "????")}</span>
-              <span>{tr("Workspace", "??????? ????????????")}</span>
+              <span>{tr("Order", "Заказ")}</span>
+              <span>{tr("Buyer", "Покупатель")}</span>
+              <span>{tr("Action", "Действие")}</span>
+              <span>{tr("Duration", "Длительность")}</span>
+              <span>{tr("Date", "Дата")}</span>
+              <span>{tr("Workspace", "Рабочее пространство")}</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "420px" }}>
               {historyLoading ? (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  {tr("Loading history...", "????????? ???????...")}
+                  {tr("Loading history...", "Загружаем историю...")}
                 </div>
               ) : selectedAccount ? (
                 selectedHistory.length ? (
                   selectedHistory.map((item, idx) => {
                     const pill = orderActionPill(item.action, tr);
                     const subLabel = item.lot_number
-                      ? tr("Lot {num}", "??? {num}", { num: item.lot_number })
+                      ? tr("Lot {num}", "Лот {num}", { num: item.lot_number })
                       : item.account_id
                         ? `ID ${item.account_id}`
                         : "-";
@@ -657,7 +661,7 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                       ? item.workspace_name
                         ? `${item.workspace_name} (ID ${item.workspace_id})`
                         : formatWorkspaceLabel(item.workspace_id, null, workspaces, tr)
-                      : tr("Global", "?????????");
+                      : tr("Global", "Глобально");
                     return (
                       <div
                         key={item.id ?? idx}
@@ -695,12 +699,12 @@ const LowPriorityAccountsPage: React.FC<LowPriorityAccountsPageProps> = ({ onToa
                   })
                 ) : (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    {tr("No history for this account yet.", "??? ????? ???????? ???? ??? ???????.")}
+                    {tr("No history for this account yet.", "Для этого аккаунта пока нет истории.")}
                   </div>
                 )
               ) : (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                  {tr("Select an account to view history.", "???????? ???????, ????? ??????? ???????.")}
+                  {tr("Select an account to view history.", "Выберите аккаунт, чтобы увидеть историю.")}
                 </div>
               )}
             </div>

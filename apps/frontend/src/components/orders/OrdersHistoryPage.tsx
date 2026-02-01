@@ -16,9 +16,9 @@ const formatMinutesLabel = (minutes?: number | null) => {
   const total = Math.max(0, Math.round(numeric));
   const hours = Math.floor(total / 60);
   const mins = total % 60;
-  if (hours && mins) return `${hours}h ${mins}m`;
-  if (hours) return `${hours}h`;
-  return `${mins}m`;
+  if (hours && mins) return `${hours}ч ${mins}м`;
+  if (hours) return `${hours}ч`;
+  return `${mins}м`;
 };
 
 const formatMoscowDateTime = (value?: string | number | null) => {
@@ -31,17 +31,17 @@ const formatMoscowDateTime = (value?: string | number | null) => {
 const orderActionPill = (action?: string | null) => {
   const lower = (action || "").toLowerCase();
   if (lower.includes("assign") || lower.includes("issued") || lower.includes("paid")) {
-    return { className: "bg-emerald-50 text-emerald-600", label: "Issued" };
+    return { className: "bg-emerald-50 text-emerald-600", label: "Выдан" };
   }
-  if (lower.includes("extend")) return { className: "bg-sky-50 text-sky-600", label: "Extended" };
+  if (lower.includes("extend")) return { className: "bg-sky-50 text-sky-600", label: "Продлён" };
   if (lower.includes("blacklist_comp") || lower.includes("penalty")) {
-    return { className: "bg-amber-50 text-amber-700", label: "Penalty paid" };
+    return { className: "bg-amber-50 text-amber-700", label: "Штраф оплачен" };
   }
-  if (lower.includes("blacklist")) return { className: "bg-neutral-200 text-neutral-700", label: "Blacklisted" };
-  if (lower.includes("busy")) return { className: "bg-amber-50 text-amber-600", label: "Busy" };
-  if (lower.includes("unmapped")) return { className: "bg-neutral-100 text-neutral-600", label: "Unmapped" };
-  if (lower.includes("refund")) return { className: "bg-rose-50 text-rose-600", label: "Refunded" };
-  if (lower.includes("closed")) return { className: "bg-neutral-200 text-neutral-700", label: "Closed" };
+  if (lower.includes("blacklist")) return { className: "bg-neutral-200 text-neutral-700", label: "В чёрном списке" };
+  if (lower.includes("busy")) return { className: "bg-amber-50 text-amber-600", label: "Занят" };
+  if (lower.includes("unmapped")) return { className: "bg-neutral-100 text-neutral-600", label: "Не привязан" };
+  if (lower.includes("refund")) return { className: "bg-rose-50 text-rose-600", label: "Возврат" };
+  if (lower.includes("closed")) return { className: "bg-neutral-200 text-neutral-700", label: "Закрыт" };
   if (!lower) return { className: "bg-neutral-100 text-neutral-600", label: "-" };
   return { className: "bg-neutral-100 text-neutral-700", label: action || "-" };
 };
@@ -50,9 +50,9 @@ const formatWorkspaceLabel = (
   workspaceId: number | null | undefined,
   workspaceName: string | null | undefined,
 ) => {
-  if (!workspaceId) return "Global";
+  if (!workspaceId) return "Глобально";
   if (workspaceName) return `${workspaceName} (ID ${workspaceId})`;
-  return `Workspace ${workspaceId}`;
+  return `Рабочее пространство ${workspaceId}`;
 };
 
 const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
@@ -93,7 +93,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
         const res = await api.listOrdersHistory(workspaceId ?? undefined, q?.trim() || undefined, 300);
         setOrders(res.items || []);
       } catch (err) {
-        const message = (err as { message?: string })?.message || "Failed to load orders history.";
+        const message = (err as { message?: string })?.message || "Не удалось загрузить историю заказов.";
         onToast?.(message, true);
       } finally {
         if (!silent) setLoading(false);
@@ -109,7 +109,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
     return () => window.clearTimeout(handle);
   }, [query, loadOrders]);
 
-  const totalLabel = useMemo(() => `${visibleOrders.length} records`, [visibleOrders.length]);
+  const totalLabel = useMemo(() => `${visibleOrders.length} записей`, [visibleOrders.length]);
 
   const platformPill = useCallback((platform: "funpay" | "playerok") => {
     if (platform === "playerok") {
@@ -122,9 +122,9 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-neutral-900">Orders History</h3>
+          <h3 className="text-lg font-semibold text-neutral-900">История заказов</h3>
           <p className="text-sm text-neutral-500">
-            Smart detection by buyer, order ID, account, Steam ID, or lot.
+            Поиск по покупателю, ID заказа, аккаунту, Steam ID или лоту.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -135,7 +135,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
             onClick={() => loadOrders(query)}
             className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
           >
-            Refresh
+            Обновить
           </button>
         </div>
       </div>
@@ -154,7 +154,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
             </svg>
             <input
               type="search"
-              placeholder="Search by buyer, order ID, account, Steam ID"
+              placeholder="Поиск по покупателю, ID заказа, аккаунту, Steam ID"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="w-full bg-transparent text-neutral-700 placeholder:text-neutral-400 outline-none"
@@ -162,8 +162,8 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
           </label>
           <div className="text-xs text-neutral-500">
             {selectedWorkspaceId === "all" && selectedPlatform === "all"
-              ? "All workspaces combined."
-              : "Workspace scoped."}
+              ? "Все рабочие пространства вместе."
+              : "Фильтр по рабочему пространству."}
           </div>
         </div>
         <div className="overflow-x-hidden">
@@ -173,20 +173,20 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                 className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                 style={{ gridTemplateColumns: ORDERS_GRID }}
               >
-                <span>Order</span>
-                <span>Buyer</span>
-                <span>Account</span>
+                <span>Заказ</span>
+                <span>Покупатель</span>
+                <span>Аккаунт</span>
                 <span>Steam ID</span>
-                <span>Duration</span>
-                <span>Price</span>
-                <span className="text-center">Action</span>
-                <span>Date</span>
-                <span>Workspace</span>
+                <span>Длительность</span>
+                <span>Цена</span>
+                <span className="text-center">Действие</span>
+                <span>Дата</span>
+                <span>Рабочее пространство</span>
               </div>
               <div className="mt-3 space-y-3">
                 {loading && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    Loading orders...
+                    Загружаем заказы...
                   </div>
                 )}
                 {!loading &&
@@ -197,7 +197,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                         ? `RUB ${Number(order.price).toLocaleString()}`
                         : "-";
                     const accountLabel = order.account_name || "-";
-                    const subLabel = order.lot_number ? `Lot ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
+                    const subLabel = order.lot_number ? `Лот ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
                     const platformKey = workspacePlatforms.get(order.workspace_id ?? -1) || "funpay";
                     const platformBadge = platformPill(platformKey);
                     return (
@@ -251,7 +251,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                   })}
                 {!loading && visibleOrders.length === 0 && (
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                    No orders found.
+                    Заказы не найдены.
                   </div>
                 )}
               </div>

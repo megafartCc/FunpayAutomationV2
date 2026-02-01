@@ -727,7 +727,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        Selected account
+                        Выбранный аккаунт
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
                         {selectedAccount.name || "Аккаунт"}
@@ -913,7 +913,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        Selected rental
+                        Выбранная аренда
                       </div>
                       <div className="mt-1 text-sm font-semibold text-neutral-900">
                         {selectedRental.account || "Аренда"}
@@ -999,7 +999,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
           })()
         ) : (
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-            Select an active rental to unlock actions.
+            Выберите активную аренду, чтобы открыть действия.
           </div>
         )}
       </div>
