@@ -531,6 +531,17 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS auto_raise_global_state (
+                user_id BIGINT PRIMARY KEY,
+                next_run_at TIMESTAMP NULL,
+                last_workspace_id BIGINT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_auto_raise_global_next (next_run_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state' AND column_name = 'next_run_at'
             LIMIT 1

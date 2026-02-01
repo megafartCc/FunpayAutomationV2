@@ -209,6 +209,21 @@ def ensure_auto_raise_state(mysql_cfg: dict, user_id: int) -> None:
         conn.close()
 
 
+def ensure_auto_raise_global_state(mysql_cfg: dict, user_id: int) -> None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "auto_raise_global_state"):
+            return
+        cursor.execute(
+            "INSERT IGNORE INTO auto_raise_global_state (user_id) VALUES (%s)",
+            (int(user_id),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def claim_auto_raise_slot(
     mysql_cfg: dict,
     *,
@@ -245,6 +260,42 @@ def claim_auto_raise_slot(
         conn.close()
 
 
+def claim_auto_raise_global_slot(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int,
+    interval_seconds: int,
+    allow_same: bool,
+) -> bool:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "auto_raise_global_state"):
+            return False
+        cursor.execute(
+            """
+            UPDATE auto_raise_global_state
+            SET next_run_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL %s SECOND),
+                last_workspace_id = %s
+            WHERE user_id = %s
+              AND (next_run_at IS NULL OR next_run_at <= UTC_TIMESTAMP())
+              AND (%s = 1 OR last_workspace_id IS NULL OR last_workspace_id <> %s)
+            """,
+            (
+                int(interval_seconds),
+                int(workspace_id),
+                int(user_id),
+                1 if allow_same else 0,
+                int(workspace_id),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
 def get_auto_raise_next_run(mysql_cfg: dict, user_id: int) -> float | None:
     conn = mysql.connector.connect(**mysql_cfg)
     try:
@@ -253,6 +304,22 @@ def get_auto_raise_next_run(mysql_cfg: dict, user_id: int) -> float | None:
             return None
         cursor.execute(
             "SELECT next_run_at FROM auto_raise_state WHERE user_id = %s",
+            (int(user_id),),
+        )
+        row = cursor.fetchone() or {}
+        return _coerce_ts(row.get("next_run_at"))
+    finally:
+        conn.close()
+
+
+def get_auto_raise_global_next_run(mysql_cfg: dict, user_id: int) -> float | None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "auto_raise_global_state"):
+            return None
+        cursor.execute(
+            "SELECT next_run_at FROM auto_raise_global_state WHERE user_id = %s",
             (int(user_id),),
         )
         row = cursor.fetchone() or {}
@@ -371,6 +438,8 @@ class AutoRaiseState:
     settings_updated_at: float = 0.0
     enabled_workspaces: list[int] = field(default_factory=list)
     workspaces_updated_at: float = 0.0
+    global_state_available: bool | None = None
+    global_state_checked_at: float = 0.0
 
 
 def refresh_profile(
@@ -652,17 +721,44 @@ def auto_raise_loop(
             continue
 
         ensure_auto_raise_state(mysql_cfg, int(user_id))
+        ensure_auto_raise_global_state(mysql_cfg, int(user_id))
         interval_seconds = int(settings.get("interval_minutes", 120)) * 60
         allow_same = len(state.enabled_workspaces) <= 1
-        claimed = claim_auto_raise_slot(
-            mysql_cfg,
-            user_id=int(user_id),
-            workspace_id=int(workspace_id),
-            interval_seconds=interval_seconds,
-            allow_same=allow_same,
-        )
+        has_global_state = state.global_state_available
+        if has_global_state is None or (now - state.global_state_checked_at) >= 60:
+            has_global_state = False
+            try:
+                conn = mysql.connector.connect(**mysql_cfg)
+                try:
+                    cursor = conn.cursor()
+                    has_global_state = table_exists(cursor, "auto_raise_global_state")
+                finally:
+                    conn.close()
+            except Exception:
+                has_global_state = False
+            state.global_state_available = has_global_state
+            state.global_state_checked_at = now
+
+        if has_global_state:
+            claimed = claim_auto_raise_global_slot(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id),
+                interval_seconds=interval_seconds,
+                allow_same=allow_same,
+            )
+        else:
+            claimed = claim_auto_raise_slot(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=int(workspace_id),
+                interval_seconds=interval_seconds,
+                allow_same=allow_same,
+            )
         if not claimed:
-            next_run = get_auto_raise_next_run(mysql_cfg, int(user_id))
+            next_run = get_auto_raise_global_next_run(mysql_cfg, int(user_id)) if has_global_state else None
+            if next_run is None:
+                next_run = get_auto_raise_next_run(mysql_cfg, int(user_id))
             if next_run:
                 delay = max(1, int(next_run - time.time()))
                 stop_event.wait(min(delay, manual_check_interval))
