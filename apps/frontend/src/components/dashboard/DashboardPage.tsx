@@ -1009,7 +1009,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-neutral-900">Inventory</h3>
@@ -1025,7 +1025,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>MMR</span>
                 <span className="text-center">State</span>
               </div>
-              <div className="mt-3 space-y-3">
+              <div
+                className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
+                style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
+              >
                 {inventoryAccounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
@@ -1160,7 +1163,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>Hero</span>
                 <span className="text-center">Status</span>
               </div>
-              <div className="mt-3 space-y-3">
+              <div
+                className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
+                style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
+              >
                 {filteredRentals.map((row, idx) => {
                   const isSelected = selectedRowKey === row.rowKey;
                   const pill = statusPill(row.status);
