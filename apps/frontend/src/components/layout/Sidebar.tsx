@@ -256,11 +256,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
   const navigate = useNavigate();
   const { t } = useI18n();
   const activeNav = pathToNavId(location.pathname);
-  const totalBlacklisted = 0;
   const { selectedId } = useWorkspace();
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [chatAdminCount, setChatAdminCount] = useState(0);
+  const [pendingBlacklistCount, setPendingBlacklistCount] = useState(0);
   const workspaceId = selectedId === "all" ? null : (selectedId as number);
+  const totalBlacklisted = pendingBlacklistCount;
 
   useEffect(() => {
     let isMounted = true;
@@ -294,6 +295,27 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
       window.clearInterval(handle);
     };
   }, [workspaceId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadBlacklistBadge = async () => {
+      try {
+        const res = await api.listBlacklist(undefined, undefined, "pending");
+        if (!isMounted) return;
+        setPendingBlacklistCount(res.items?.length || 0);
+      } catch {
+        if (isMounted) {
+          setPendingBlacklistCount(0);
+        }
+      }
+    };
+    void loadBlacklistBadge();
+    const handle = window.setInterval(loadBlacklistBadge, 20_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(handle);
+    };
+  }, []);
 
   const handleNavigate = (nextPath: string) => {
     navigate(nextPath, { replace: false });

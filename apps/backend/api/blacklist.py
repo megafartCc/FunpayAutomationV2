@@ -19,6 +19,7 @@ class BlacklistEntryItem(BaseModel):
     id: int
     owner: str
     reason: str | None = None
+    status: str | None = None
     workspace_id: int | None = None
     created_at: str | None = None
 
@@ -51,6 +52,7 @@ class BlacklistCreate(BaseModel):
 class BlacklistUpdate(BaseModel):
     owner: str = Field(..., min_length=1, max_length=255)
     reason: str | None = Field(None, max_length=500)
+    status: str | None = Field(None, max_length=16)
 
 
 class BlacklistRemove(BaseModel):
@@ -68,19 +70,21 @@ def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
 @router.get("/blacklist", response_model=BlacklistListResponse)
 def list_blacklist(
     query: str = "",
+    status: str | None = None,
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> BlacklistListResponse:
     user_id = int(user.id)
     if workspace_id is not None:
         _ensure_workspace(workspace_id, user_id)
-    items = blacklist_repo.list_blacklist(user_id, workspace_id, query=query or None)
+    items = blacklist_repo.list_blacklist(user_id, workspace_id, query=query or None, status=status or None)
     return BlacklistListResponse(
         items=[
             BlacklistEntryItem(
                 id=entry.id,
                 owner=entry.owner,
                 reason=entry.reason,
+                status=entry.status,
                 workspace_id=entry.workspace_id,
                 created_at=entry.created_at,
             )
@@ -135,7 +139,7 @@ def add_blacklist(
             resolved_workspace_name = resolved.workspace_name
     if not owner:
         raise HTTPException(status_code=400, detail="Owner is required.")
-    ok = blacklist_repo.add_blacklist_entry(owner, payload.reason, user_id, workspace_id)
+    ok = blacklist_repo.add_blacklist_entry(owner, payload.reason, user_id, workspace_id, status="confirmed")
     if not ok:
         raise HTTPException(status_code=400, detail="User already blacklisted.")
     details_parts = []
@@ -162,6 +166,7 @@ def add_blacklist(
         id=entry.id,
         owner=entry.owner,
         reason=entry.reason,
+        status=entry.status,
         workspace_id=entry.workspace_id,
         created_at=entry.created_at,
     )
@@ -176,12 +181,19 @@ def update_blacklist(
 ) -> BlacklistEntryItem:
     user_id = int(user.id)
     _ensure_workspace(workspace_id, user_id)
-    updated = blacklist_repo.update_blacklist_entry(entry_id, payload.owner, payload.reason, user_id, workspace_id)
+    updated = blacklist_repo.update_blacklist_entry(
+        entry_id,
+        payload.owner,
+        payload.reason,
+        user_id,
+        workspace_id,
+        status=payload.status,
+    )
     if not updated:
         raise HTTPException(status_code=400, detail="Failed to update blacklist entry.")
     blacklist_repo.log_blacklist_event(
         payload.owner,
-        "update",
+        "update" if not payload.status else f"status_{payload.status}",
         reason=payload.reason,
         user_id=user_id,
         workspace_id=workspace_id,
@@ -194,6 +206,7 @@ def update_blacklist(
         id=entry.id,
         owner=entry.owner,
         reason=entry.reason,
+        status=entry.status,
         workspace_id=entry.workspace_id,
         created_at=entry.created_at,
     )

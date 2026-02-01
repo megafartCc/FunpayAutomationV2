@@ -121,6 +121,7 @@ export type BlacklistEntry = {
   id: number;
   owner: string;
   reason?: string | null;
+  status?: string | null;
   workspace_id?: number | null;
   created_at?: string | null;
 };
@@ -145,6 +146,7 @@ export type BlacklistCreatePayload = {
 export type BlacklistUpdatePayload = {
   owner: string;
   reason?: string | null;
+  status?: string | null;
 };
 
 export type OrderResolveItem = {
@@ -450,10 +452,11 @@ export const api = {
     ),
   listActiveRentals: (workspaceId?: number) =>
     request<{ items: ActiveRentalItem[] }>(withWorkspace("/rentals/active", workspaceId), { method: "GET" }),
-  listBlacklist: (workspaceId?: number, query?: string) => {
+  listBlacklist: (workspaceId?: number, query?: string, status?: string) => {
     const params = new URLSearchParams();
     if (workspaceId) params.set("workspace_id", String(workspaceId));
     if (query) params.set("query", query);
+    if (status) params.set("status", status);
     const suffix = params.toString();
     return request<{ items: BlacklistEntry[] }>(`/blacklist${suffix ? `?${suffix}` : ""}`, { method: "GET" });
   },

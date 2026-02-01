@@ -569,8 +569,9 @@ def _build_purchase_bonus_message(total_minutes: int, bonus_minutes: int) -> str
     return (
         f"🎁 При оформлении {paid_hours} {format_hours_label(paid_hours)} + "
         f"{bonus_hours} {format_hours_label(bonus_hours)} подарок.\n"
-        f"Бонус начислен на ваш баланс: {format_duration_minutes(bonus_minutes)}. "
-        "Используйте команду !бонус <ID>."
+        f"Бонус начислен на ваш баланс: {format_duration_minutes(bonus_minutes)}.\n"
+        "Хотите применить бонус к любой текущей или будущей аренде? "
+        "Напишите: !бонус <ID аккаунта>."
     )
 
 

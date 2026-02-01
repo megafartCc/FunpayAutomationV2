@@ -12,7 +12,7 @@ from .account_utils import (
     build_rental_choice_message,
     resolve_rental_minutes,
 )
-from .blacklist_utils import is_blacklisted, log_blacklist_event
+from .blacklist_utils import is_blacklisted, log_blacklist_event, upsert_blacklist_suggestion
 from .chat_utils import send_chat_message, send_message_by_owner
 from .bonus_utils import adjust_bonus_balance, get_bonus_balance
 from .constants import (
@@ -603,6 +603,16 @@ def handle_low_priority_replace_command(
     if not selected:
         return True
 
+    suggestion_reason = "LP replacement request"
+    suggestion_details = f"account_id={selected.get('id')}; lot={selected.get('lot_number')}"
+    suggestion_added = upsert_blacklist_suggestion(
+        mysql_cfg,
+        owner=sender_username,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+        reason=suggestion_reason,
+    )
+
     rental_start = _parse_datetime(selected.get("rental_start"))
     if rental_start is None:
         send_chat_message(logger, account, chat_id, LP_REPLACE_NO_CODE_MESSAGE)
@@ -656,6 +666,16 @@ def handle_low_priority_replace_command(
         rental_duration_minutes=rental_minutes,
     )
     if not ok:
+        if suggestion_added:
+            log_blacklist_event(
+                mysql_cfg,
+                owner=sender_username,
+                action="lp_replace_request",
+                reason=suggestion_reason,
+                details=f"{suggestion_details}; result=failed",
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
         send_chat_message(logger, account, chat_id, LP_REPLACE_FAILED_MESSAGE)
         return True
 
@@ -668,6 +688,16 @@ def handle_low_priority_replace_command(
     replacement_info["rental_frozen"] = 0
     message = f"{LP_REPLACE_SUCCESS_PREFIX}\n{build_account_message(replacement_info, rental_minutes, False)}"
     send_chat_message(logger, account, chat_id, message)
+    if suggestion_added:
+        log_blacklist_event(
+            mysql_cfg,
+            owner=sender_username,
+            action="lp_replace_request",
+            reason=suggestion_reason,
+            details=f"{suggestion_details}; result=success",
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
     return True
 
 

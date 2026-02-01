@@ -213,9 +213,12 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       return;
     }
     try {
+      const entryStatus =
+        blacklistEntries.find((item) => String(item.id) === String(blacklistEditingId))?.status ||
+        "confirmed";
       const entry = await api.updateBlacklist(
         Number(blacklistEditingId),
-        { owner, reason: blacklistEditReason.trim() || null },
+        { owner, reason: blacklistEditReason.trim() || null, status: entryStatus },
         workspaceId ?? undefined,
       );
       onToast?.(tr("Blacklist entry updated.", "Запись чёрного списка обновлена."));
@@ -272,6 +275,44 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   const allBlacklistSelected =
     blacklistEntries.length > 0 && blacklistSelected.length === blacklistEntries.length;
   const totalBlacklisted = useMemo(() => blacklistEntries.length, [blacklistEntries]);
+  const pendingBlacklisted = useMemo(
+    () => blacklistEntries.filter((entry) => (entry.status || "confirmed") === "pending").length,
+    [blacklistEntries],
+  );
+
+  const handleConfirmBlacklist = async (entry: BlacklistEntry) => {
+    if (!entry.id) return;
+    try {
+      await api.updateBlacklist(
+        Number(entry.id),
+        { owner: entry.owner, reason: entry.reason || null, status: "confirmed" },
+        workspaceId ?? undefined,
+      );
+      onToast?.(tr("Blacklist confirmed.", "Чёрный список подтверждён."));
+      await loadBlacklist();
+      await loadBlacklistLogs();
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to confirm blacklist.", "Не удалось подтвердить чёрный список.");
+      onToast?.(message, true);
+    }
+  };
+
+  const handleDeclineBlacklist = async (entry: BlacklistEntry) => {
+    if (!entry.owner) return;
+    try {
+      await api.removeBlacklist([entry.owner], workspaceId ?? undefined);
+      onToast?.(tr("Blacklist request declined.", "Заявка на чёрный список отклонена."));
+      await loadBlacklist();
+      await loadBlacklistLogs();
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to decline blacklist.", "Не удалось отклонить заявку.");
+      onToast?.(message, true);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -290,6 +331,11 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
             <span className="text-xs rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">
               {tr("{count} blocked", "Заблокировано: {count}", { count: totalBlacklisted })}
             </span>
+            {pendingBlacklisted > 0 && (
+              <span className="text-xs rounded-full bg-amber-100 px-3 py-1 font-semibold text-amber-700">
+                {tr("{count} pending", "На проверке: {count}", { count: pendingBlacklisted })}
+              </span>
+            )}
             <button
               onClick={() => loadBlacklist()}
               className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
@@ -447,6 +493,11 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                         ) : (
                           <div className="min-w-0">
                             <div className="truncate font-semibold text-neutral-900">{entry.owner}</div>
+                            {(entry.status || "confirmed") === "pending" && (
+                              <span className="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                {tr("Pending review", "На проверке")}
+                              </span>
+                            )}
                             {isAllWorkspaces && (
                               <div className="text-xs text-neutral-400">
                                 {formatWorkspaceLabel(entry.workspace_id ?? null, workspaces)}
@@ -482,12 +533,31 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                               </button>
                             </>
                           ) : (
-                            <button
-                              onClick={() => startEditBlacklist(entry)}
-                              className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
-                            >
-                              {tr("Edit", "Редактировать")}
-                            </button>
+                            <>
+                              {(entry.status || "confirmed") === "pending" ? (
+                                <>
+                                  <button
+                                    onClick={() => handleConfirmBlacklist(entry)}
+                                    className="rounded-lg bg-neutral-900 px-3 py-1 text-xs font-semibold text-white"
+                                  >
+                                    {tr("Confirm", "Подтвердить")}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeclineBlacklist(entry)}
+                                    className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
+                                  >
+                                    {tr("Decline", "Отклонить")}
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => startEditBlacklist(entry)}
+                                  className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600"
+                                >
+                                  {tr("Edit", "Редактировать")}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>

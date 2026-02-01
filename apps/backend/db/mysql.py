@@ -304,16 +304,38 @@ def ensure_schema() -> None:
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 owner VARCHAR(255) NOT NULL,
                 reason TEXT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'confirmed',
                 user_id BIGINT NOT NULL,
                 workspace_id BIGINT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_blacklist_owner_user_ws (owner, user_id, workspace_id),
                 INDEX idx_blacklist_owner (owner),
-                INDEX idx_blacklist_user_ws (user_id, workspace_id)
+                INDEX idx_blacklist_user_ws (user_id, workspace_id),
+                INDEX idx_blacklist_status (status, user_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'blacklist' AND column_name = 'status'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE blacklist ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'confirmed' AFTER reason"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'blacklist' AND index_name = 'idx_blacklist_status'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE blacklist ADD INDEX idx_blacklist_status (status, user_id)")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS blacklist_logs (
