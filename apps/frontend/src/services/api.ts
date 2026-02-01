@@ -81,6 +81,28 @@ export type AutoRaiseLogItem = {
   created_at?: string | null;
 };
 
+export type BonusBalanceItem = {
+  id: number;
+  owner: string;
+  balance_minutes: number;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  updated_at?: string | null;
+};
+
+export type BonusHistoryItem = {
+  id: number;
+  owner: string;
+  delta_minutes: number;
+  balance_minutes: number;
+  reason: string;
+  order_id?: string | null;
+  account_id?: number | null;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  created_at?: string | null;
+};
+
 export type AutoRaiseSettings = {
   enabled: boolean;
   all_workspaces: boolean;
@@ -383,6 +405,37 @@ export const api = {
     request<{ created: number }>("/auto-raise/manual", {
       method: "POST",
       body: workspaceId ? { workspace_id: workspaceId } : {},
+    }),
+  listBonusBalances: (query?: string, workspaceId?: number | null, limit: number = 200) => {
+    const params = new URLSearchParams();
+    if (query) params.set("query", query);
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString();
+    return request<{ items: BonusBalanceItem[] }>(`/bonus/balances${suffix ? `?${suffix}` : ""}`, {
+      method: "GET",
+    });
+  },
+  listBonusHistory: (owner: string, workspaceId?: number | null, limit: number = 200) => {
+    const params = new URLSearchParams();
+    params.set("owner", owner);
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    if (limit) params.set("limit", String(limit));
+    return request<{ items: BonusHistoryItem[] }>(`/bonus/history?${params.toString()}`, {
+      method: "GET",
+    });
+  },
+  adjustBonusBalance: (payload: {
+    owner: string;
+    delta_minutes: number;
+    workspace_id?: number | null;
+    reason?: string | null;
+    order_id?: string | null;
+    account_id?: number | null;
+  }) =>
+    request<{ balance_minutes: number; applied_delta: number }>("/bonus/adjust", {
+      method: "POST",
+      body: payload,
     }),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
   updateLot: (lotNumber: number, payload: Partial<LotCreatePayload> & { display_name?: string | null }, workspaceId?: number) =>

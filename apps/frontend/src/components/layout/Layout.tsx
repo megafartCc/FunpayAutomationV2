@@ -14,6 +14,7 @@ type LayoutProps = {
 
 const titles: Record<string, TranslationKey> = {
   "/dashboard": "title.dashboard",
+  "/bonus": "title.bonus",
   "/funpay-stats": "title.funpayStats",
   "/rentals": "title.rentals",
   "/orders": "title.orders",

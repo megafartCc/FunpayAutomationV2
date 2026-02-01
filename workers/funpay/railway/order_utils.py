@@ -7,6 +7,7 @@ from FunPayAPI.account import Account
 from FunPayAPI.common.enums import MessageTypes
 
 from .account_utils import build_account_message, resolve_rental_minutes
+from .bonus_utils import adjust_bonus_balance, has_bonus_event
 from .blacklist_utils import (
     get_blacklist_compensation_total,
     is_blacklisted,
@@ -37,6 +38,7 @@ from .text_utils import (
     extract_lot_number_from_order,
     extract_order_id,
     format_duration_minutes,
+    format_hours_label,
     format_penalty_label,
     get_unit_minutes,
     normalize_owner_name,
@@ -526,6 +528,52 @@ def fetch_latest_order_id_for_owner_lot(
         conn.close()
 
 
+def _award_purchase_bonus(
+    *,
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    buyer: str,
+    order_id: str,
+    account_id: int | None,
+    total_minutes: int,
+) -> int:
+    bonus_minutes = (int(total_minutes) // (4 * 60)) * 60
+    if bonus_minutes <= 0:
+        return 0
+    if has_bonus_event(
+        mysql_cfg,
+        user_id=int(user_id),
+        owner=buyer,
+        order_id=str(order_id),
+        reason="purchase_bonus",
+        workspace_id=workspace_id,
+    ):
+        return 0
+    _, applied = adjust_bonus_balance(
+        mysql_cfg,
+        user_id=int(user_id),
+        owner=buyer,
+        workspace_id=workspace_id,
+        delta_minutes=int(bonus_minutes),
+        reason="purchase_bonus",
+        order_id=str(order_id),
+        account_id=int(account_id) if account_id is not None else None,
+    )
+    return int(applied)
+
+
+def _build_purchase_bonus_message(total_minutes: int, bonus_minutes: int) -> str:
+    paid_hours = max(1, int(total_minutes) // 60)
+    bonus_hours = max(1, int(bonus_minutes) // 60)
+    return (
+        f"🎁 При оформлении {paid_hours} {format_hours_label(paid_hours)} + "
+        f"{bonus_hours} {format_hours_label(bonus_hours)} подарок.\n"
+        f"Бонус начислен на ваш баланс: {format_duration_minutes(bonus_minutes)}. "
+        "Используйте команду !бонус <ID>."
+    )
+
+
 def resolve_order_id_from_funpay(
     account: Account,
     *,
@@ -822,6 +870,17 @@ def handle_order_purchased(
             replacement_info["rental_frozen"] = 0
             message = f"{ORDER_ACCOUNT_REPLACEMENT_PREFIX}\n{build_account_message(replacement_info, total_minutes, True)}"
             send_chat_message(logger, account, chat_id, message)
+            bonus_applied = _award_purchase_bonus(
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                buyer=buyer,
+                order_id=order_id,
+                account_id=replacement.get("id"),
+                total_minutes=int(total_minutes),
+            )
+            if bonus_applied > 0:
+                send_chat_message(logger, account, chat_id, _build_purchase_bonus_message(total_minutes, bonus_applied))
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
 
@@ -892,6 +951,17 @@ def handle_order_purchased(
             replacement_info["rental_frozen"] = 0
             message = f"{ORDER_ACCOUNT_REPLACEMENT_PREFIX}\n{build_account_message(replacement_info, total_minutes, True)}"
             send_chat_message(logger, account, chat_id, message)
+            bonus_applied = _award_purchase_bonus(
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                buyer=buyer,
+                order_id=order_id,
+                account_id=replacement.get("id"),
+                total_minutes=int(total_minutes),
+            )
+            if bonus_applied > 0:
+                send_chat_message(logger, account, chat_id, _build_purchase_bonus_message(total_minutes, bonus_applied))
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
 
@@ -1003,4 +1073,15 @@ def handle_order_purchased(
     else:
         message = build_account_message(updated_account or mapping, display_minutes, include_timer_note=True)
     send_chat_message(logger, account, chat_id, message)
+    bonus_applied = _award_purchase_bonus(
+        mysql_cfg=mysql_cfg,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+        buyer=buyer,
+        order_id=order_id,
+        account_id=(updated_account or mapping).get("id"),
+        total_minutes=int(total_minutes),
+    )
+    if bonus_applied > 0:
+        send_chat_message(logger, account, chat_id, _build_purchase_bonus_message(total_minutes, bonus_applied))
     mark_order_processed(site_username, site_user_id, workspace_id, order_id)

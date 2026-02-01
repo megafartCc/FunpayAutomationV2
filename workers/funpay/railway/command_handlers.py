@@ -14,6 +14,7 @@ from .account_utils import (
 )
 from .blacklist_utils import is_blacklisted, log_blacklist_event
 from .chat_utils import send_chat_message, send_message_by_owner
+from .bonus_utils import adjust_bonus_balance, get_bonus_balance
 from .constants import (
     LP_REPLACE_FAILED_MESSAGE,
     LP_REPLACE_MMR_RANGE,
@@ -372,6 +373,119 @@ def handle_extend_command(
         account,
         chat_id,
         message,
+    )
+    return True
+
+
+def handle_bonus_command(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    chat_name: str,
+    sender_username: str,
+    chat_id: int | None,
+    command: str,
+    args: str,
+    chat_url: str,
+) -> bool:
+    if chat_id is None:
+        logger.warning("Bonus command ignored (missing chat_id).")
+        return False
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError as exc:
+        logger.warning("Bonus command skipped: %s", exc)
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+            return True
+
+    if user_id is None:
+        send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
+        return True
+
+    balance = get_bonus_balance(
+        mysql_cfg,
+        user_id=int(user_id),
+        owner=sender_username,
+        workspace_id=workspace_id,
+    )
+    accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
+
+    account_id = parse_account_id_arg(args)
+    if not args or account_id is None:
+        if balance <= 0:
+            message = "У вас нет бонусных часов."
+            send_chat_message(logger, account, chat_id, message)
+            return True
+        lines = [f"🎁 Ваш бонус: {format_duration_minutes(balance)}."]
+        if accounts:
+            lines.append("Выберите аренду для применения бонуса: !бонус <ID>")
+            for acc in accounts:
+                display = build_display_name(acc)
+                acc_id = acc.get("id")
+                lines.append(f"{display} - ID {acc_id}")
+        else:
+            lines.append("Активных аренд сейчас нет.")
+        send_chat_message(logger, account, chat_id, "\n".join(lines))
+        return True
+
+    if balance < 60:
+        send_chat_message(logger, account, chat_id, f"Недостаточно бонусных часов. Баланс: {format_duration_minutes(balance)}.")
+        return True
+
+    selected = None
+    for acc in accounts:
+        try:
+            if int(acc.get("id")) == int(account_id):
+                selected = acc
+                break
+        except Exception:
+            continue
+    if not selected:
+        send_chat_message(logger, account, chat_id, "Укажите корректный ID аренды: !бонус <ID>")
+        return True
+
+    updated = extend_rental_for_buyer(
+        mysql_cfg,
+        account_id=int(selected["id"]),
+        user_id=int(user_id),
+        buyer=sender_username,
+        add_units=1,
+        add_minutes=60,
+        workspace_id=workspace_id,
+    )
+    if not updated:
+        send_chat_message(logger, account, chat_id, "Не удалось применить бонус. Попробуйте позже.")
+        return True
+
+    new_balance, applied = adjust_bonus_balance(
+        mysql_cfg,
+        user_id=int(user_id),
+        owner=sender_username,
+        workspace_id=workspace_id,
+        delta_minutes=-60,
+        reason="apply_bonus",
+        account_id=int(selected["id"]),
+    )
+    if applied == 0:
+        send_chat_message(logger, account, chat_id, "Недостаточно бонусных часов.")
+        return True
+
+    send_chat_message(
+        logger,
+        account,
+        chat_id,
+        f"✅ Бонусный час применён. Новый баланс: {format_duration_minutes(new_balance)}.",
     )
     return True
 
@@ -738,6 +852,7 @@ def handle_command(
         "!админ": lambda *a: _log_command_stub(*a, action="admin"),
         "!пауза": handle_pause_command,
         "!продолжить": handle_resume_command,
+        "!бонус": handle_bonus_command,
     }
     handler = handlers.get(command)
     if not handler:

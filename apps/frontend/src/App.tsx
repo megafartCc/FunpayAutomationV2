@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import { api, AuthResponse } from "./services/api";
 import Layout from "./components/layout/Layout";
 import DashboardPage from "./components/dashboard/DashboardPage";
+import BonusPage from "./components/bonus/BonusPage";
 import FunpayStatsPage from "./components/stats/FunpayStatsPage";
 import ActiveRentalsPage from "./components/rentals/ActiveRentalsPage";
 import InventoryPage from "./components/inventory/InventoryPage";
@@ -149,6 +150,7 @@ const AppRoutes: React.FC = () => {
         >
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage onToast={showToast} />} />
+          <Route path="bonus" element={<BonusPage onToast={showToast} />} />
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
           <Route path="rentals" element={<ActiveRentalsPage onToast={showToast} />} />
           <Route path="orders" element={<OrdersHistoryPage onToast={showToast} />} />

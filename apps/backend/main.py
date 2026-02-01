@@ -14,6 +14,7 @@ from api.notifications import router as notifications_router
 from api.raise_categories import router as raise_categories_router
 from api.auto_raise import router as auto_raise_router
 from api.telegram import router as telegram_router
+from api.bonus import router as bonus_router
 from api.workspaces import router as workspaces_router
 from db.mysql import ensure_schema
 from settings.config import settings
@@ -56,5 +57,6 @@ app.include_router(rentals_router, prefix="/api", tags=["rentals"])
 app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 app.include_router(raise_categories_router, prefix="/api", tags=["raise-categories"])
 app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
+app.include_router(bonus_router, prefix="/api", tags=["bonus"])
 app.include_router(telegram_router, prefix="/api", tags=["telegram"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])

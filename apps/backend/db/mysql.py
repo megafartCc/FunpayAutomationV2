@@ -538,6 +538,174 @@ def ensure_schema() -> None:
             cursor.execute("ALTER TABLE auto_raise_state ADD INDEX idx_auto_raise_state_next (next_run_at)")
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS bonus_wallet (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                owner VARCHAR(255) NOT NULL,
+                balance_minutes INT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_bonus_wallet (user_id, workspace_id, owner),
+                INDEX idx_bonus_wallet_owner (owner),
+                INDEX idx_bonus_wallet_user_ws (user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bonus_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                owner VARCHAR(255) NOT NULL,
+                delta_minutes INT NOT NULL,
+                balance_minutes INT NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                order_id VARCHAR(32) NULL,
+                account_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_bonus_history_owner (owner),
+                INDEX idx_bonus_history_user_ws (user_id, workspace_id),
+                INDEX idx_bonus_history_order (order_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet' AND column_name = 'workspace_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD COLUMN workspace_id BIGINT NULL AFTER user_id")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet' AND column_name = 'owner'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD COLUMN owner VARCHAR(255) NOT NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet' AND column_name = 'balance_minutes'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD COLUMN balance_minutes INT NOT NULL DEFAULT 0")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet' AND column_name = 'updated_at'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE bonus_wallet ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet'
+              AND index_name = 'uniq_bonus_wallet'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD UNIQUE KEY uniq_bonus_wallet (user_id, workspace_id, owner)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet'
+              AND index_name = 'idx_bonus_wallet_owner'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD INDEX idx_bonus_wallet_owner (owner)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_wallet'
+              AND index_name = 'idx_bonus_wallet_user_ws'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_wallet ADD INDEX idx_bonus_wallet_user_ws (user_id, workspace_id)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history' AND column_name = 'balance_minutes'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD COLUMN balance_minutes INT NOT NULL DEFAULT 0")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history' AND column_name = 'reason'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD COLUMN reason VARCHAR(64) NOT NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history' AND column_name = 'order_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD COLUMN order_id VARCHAR(32) NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history' AND column_name = 'account_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD COLUMN account_id BIGINT NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history'
+              AND index_name = 'idx_bonus_history_owner'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD INDEX idx_bonus_history_owner (owner)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history'
+              AND index_name = 'idx_bonus_history_user_ws'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD INDEX idx_bonus_history_user_ws (user_id, workspace_id)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'bonus_history'
+              AND index_name = 'idx_bonus_history_order'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE bonus_history ADD INDEX idx_bonus_history_order (order_id)")
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS telegram_links (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,

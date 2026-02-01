@@ -19,6 +19,46 @@ const DashboardIcon = () => (
   </svg>
 );
 
+const BonusIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4 8H20V12H4V8Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4 12H20V20H4V12Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 8V20"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 8C10 4 8.5 3 7 3C5.5 3 4.5 4 4.5 5.5C4.5 7 6 8 8 8"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 8C14 4 15.5 3 17 3C18.5 3 19.5 4 19.5 5.5C19.5 7 18 8 16 8"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const FunpayStatisticsIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -163,6 +203,7 @@ type NavItem = { id: string; labelKey: TranslationKey; Icon: React.FC };
 const NAV_ITEMS: NavItem[] = [
   { id: "funpay-stats", labelKey: "nav.funpayStats", Icon: FunpayStatisticsIcon },
   { id: "overview", labelKey: "nav.dashboard", Icon: DashboardIcon },
+  { id: "bonus", labelKey: "nav.bonus", Icon: BonusIcon },
   { id: "rentals", labelKey: "nav.rentals", Icon: RentalsIcon },
   { id: "orders", labelKey: "nav.orders", Icon: OrdersHistoryIcon },
   { id: "tickets", labelKey: "nav.tickets", Icon: OrdersHistoryIcon },
@@ -181,6 +222,7 @@ const BOTTOM_NAV_IDS = new Set(["plugins", "settings"]);
 const navIdToPath: Record<string, string> = {
   "funpay-stats": "/funpay-stats",
   overview: "/dashboard",
+  bonus: "/bonus",
   rentals: "/rentals",
   orders: "/orders",
   tickets: "/tickets",
