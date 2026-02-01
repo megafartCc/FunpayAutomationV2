@@ -350,7 +350,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
                       transition={{ type: "spring", stiffness: 300, damping: 28 }}
                     />
                   )}
-                  <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
+                  <span
+                    className={`relative z-10 flex h-6 w-6 items-center justify-center text-base ${
+                      isActive ? "text-white" : "text-neutral-500"
+                    }`}
+                  >
                     <item.Icon />
                   </span>
                   <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
@@ -415,7 +419,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
                       transition={{ type: "spring", stiffness: 300, damping: 28 }}
                     />
                   )}
-                  <span className={`relative z-10 text-base ${isActive ? "text-white" : "text-neutral-500"}`}>
+                  <span
+                    className={`relative z-10 flex h-6 w-6 items-center justify-center text-base ${
+                      isActive ? "text-white" : "text-neutral-500"
+                    }`}
+                  >
                     <item.Icon />
                   </span>
                   <span className={`relative z-10 truncate ${isActive ? "text-white" : "text-neutral-700"}`}>
