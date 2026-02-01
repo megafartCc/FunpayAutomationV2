@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import mysql.connector
 
+from FunPayAPI.common.enums import SubCategoryTypes
+
 from .db_utils import resolve_workspace_mysql_cfg, table_exists
 
 
@@ -43,3 +45,29 @@ def upsert_raise_categories(
         conn.commit()
     finally:
         conn.close()
+
+
+def collect_raise_categories(account) -> list[tuple[int, str]]:
+    profile = account.get_user(account.id)
+    categories: dict[int, str] = {}
+    for subcat in sorted(list(profile.get_sorted_lots(2).keys()), key=lambda x: x.category.position):
+        if subcat.type is SubCategoryTypes.CURRENCY:
+            continue
+        categories[int(subcat.category.id)] = subcat.category.name
+    return sorted(categories.items(), key=lambda item: item[0])
+
+
+def sync_raise_categories(
+    mysql_cfg: dict,
+    *,
+    account,
+    user_id: int,
+    workspace_id: int | None,
+) -> None:
+    categories = collect_raise_categories(account)
+    upsert_raise_categories(
+        mysql_cfg,
+        user_id=int(user_id),
+        workspace_id=int(workspace_id) if workspace_id is not None else None,
+        categories=categories,
+    )

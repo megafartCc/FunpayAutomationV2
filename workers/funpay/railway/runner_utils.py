@@ -37,6 +37,7 @@ from .notifications_utils import upsert_workspace_status
 from .order_utils import apply_review_bonus_for_order, handle_order_purchased, revert_review_bonus_for_order
 from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
+from .raise_utils import sync_raise_categories
 from .rental_utils import process_rental_monitor
 from .db_utils import get_mysql_config
 from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
@@ -699,6 +700,8 @@ def run_single_user(logger: logging.Logger) -> None:
 
     user_agent = os.getenv("FUNPAY_USER_AGENT")
     poll_seconds = env_int("FUNPAY_POLL_SECONDS", 6)
+    raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
+    raise_sync_last = 0.0
 
     logger.info("Initializing FunPay account...")
     account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
@@ -733,6 +736,12 @@ def run_single_user(logger: logging.Logger) -> None:
                 user_id = get_user_id_by_username(mysql_cfg, account.username)
                 if user_id is not None:
                     process_chat_outbox(logger, mysql_cfg, account, user_id=user_id, workspace_id=None)
+                    if time.time() - raise_sync_last >= raise_sync_interval:
+                        try:
+                            sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
+                        except Exception:
+                            logger.debug("Raise categories sync failed.", exc_info=True)
+                        raise_sync_last = time.time()
         time.sleep(poll_seconds)
 
 
@@ -754,6 +763,8 @@ def workspace_worker_loop(
     state = RentalMonitorState()
     chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
     chat_sync_last = 0.0
+    raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
+    raise_sync_last = 0.0
     try:
         mysql_cfg = get_mysql_config()
     except RuntimeError:
@@ -800,6 +811,16 @@ def workspace_worker_loop(
                     message="Connected to FunPay.",
                 )
                 last_status_ping = time.time()
+                try:
+                    sync_raise_categories(
+                        mysql_cfg,
+                        account=account,
+                        user_id=int(user_id),
+                        workspace_id=int(workspace_id) if workspace_id is not None else None,
+                    )
+                    raise_sync_last = time.time()
+                except Exception:
+                    logger.debug("%s Raise categories sync failed.", label, exc_info=True)
 
             threading.Thread(
                 target=refresh_session_loop,
@@ -822,6 +843,17 @@ def workspace_worker_loop(
                         sync_chats_list(mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
                         chat_sync_last = time.time()
                     process_chat_outbox(logger, mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
+                    if time.time() - raise_sync_last >= raise_sync_interval:
+                        try:
+                            sync_raise_categories(
+                                mysql_cfg,
+                                account=account,
+                                user_id=int(user_id),
+                                workspace_id=int(workspace_id) if workspace_id is not None else None,
+                            )
+                            raise_sync_last = time.time()
+                        except Exception:
+                            logger.debug("%s Raise categories sync failed.", label, exc_info=True)
                     if time.time() - last_status_ping >= 60:
                         upsert_workspace_status(
                             mysql_cfg,
