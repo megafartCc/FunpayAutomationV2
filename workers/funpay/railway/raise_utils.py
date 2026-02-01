@@ -147,13 +147,23 @@ def load_auto_raise_settings(mysql_cfg: dict, user_id: int) -> dict:
             return _default_auto_raise_settings()
         cursor.execute(
             """
-            SELECT workspace_id, enabled, all_workspaces, interval_minutes
+            SELECT *
             FROM auto_raise_settings
             WHERE user_id = %s
             """,
             (int(user_id),),
         )
         rows = cursor.fetchall() or []
+        if not rows:
+            return _default_auto_raise_settings()
+        if "workspace_id" not in rows[0]:
+            row = rows[-1]
+            return {
+                "enabled": bool(row.get("enabled")),
+                "all_workspaces": bool(row.get("all_workspaces", True)),
+                "interval_minutes": int(row.get("interval_minutes") or 120),
+                "workspaces": {},
+            }
         settings = _default_auto_raise_settings()
         workspaces: dict[int, bool] = {}
         for row in rows:

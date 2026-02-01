@@ -415,6 +415,79 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings' AND column_name = 'workspace_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_settings ADD COLUMN workspace_id BIGINT NULL AFTER user_id")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings' AND column_name = 'enabled'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_settings ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 0")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings' AND column_name = 'all_workspaces'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE auto_raise_settings ADD COLUMN all_workspaces TINYINT(1) NOT NULL DEFAULT 1"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings' AND column_name = 'interval_minutes'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_settings ADD COLUMN interval_minutes INT NOT NULL DEFAULT 120")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings' AND column_name = 'updated_at'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE auto_raise_settings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings'
+              AND index_name = 'uniq_auto_raise_settings'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE auto_raise_settings ADD UNIQUE KEY uniq_auto_raise_settings (user_id, workspace_id)"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings'
+              AND index_name = 'idx_auto_raise_settings_user_ws'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE auto_raise_settings ADD INDEX idx_auto_raise_settings_user_ws (user_id, workspace_id)"
+            )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS auto_raise_state (
                 user_id BIGINT PRIMARY KEY,
                 next_run_at TIMESTAMP NULL,
@@ -424,6 +497,45 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state' AND column_name = 'next_run_at'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_state ADD COLUMN next_run_at TIMESTAMP NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state' AND column_name = 'last_workspace_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_state ADD COLUMN last_workspace_id BIGINT NULL")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state' AND column_name = 'updated_at'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE auto_raise_state ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state'
+              AND index_name = 'idx_auto_raise_state_next'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE auto_raise_state ADD INDEX idx_auto_raise_state_next (next_run_at)")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS telegram_links (

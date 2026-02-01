@@ -45,13 +45,28 @@ class MySQLAutoRaiseRepo:
                 )
             cursor.execute(
                 """
-                SELECT workspace_id, enabled, all_workspaces, interval_minutes
+                SELECT *
                 FROM auto_raise_settings
                 WHERE user_id = %s
                 """,
                 (int(user_id),),
             )
             rows = cursor.fetchall() or []
+            if not rows:
+                return AutoRaiseSettings(
+                    enabled=False,
+                    all_workspaces=True,
+                    interval_minutes=120,
+                    workspaces={},
+                )
+            if "workspace_id" not in rows[0]:
+                row = rows[-1]
+                return AutoRaiseSettings(
+                    enabled=bool(row.get("enabled")),
+                    all_workspaces=bool(row.get("all_workspaces", True)),
+                    interval_minutes=int(row.get("interval_minutes") or 120),
+                    workspaces={},
+                )
             enabled = False
             all_workspaces = True
             interval_minutes = 120
@@ -85,6 +100,35 @@ class MySQLAutoRaiseRepo:
                 """
             )
             if cursor.fetchone() is None:
+                return
+            cursor.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'auto_raise_settings'
+                  AND column_name = 'workspace_id'
+                LIMIT 1
+                """
+            )
+            has_workspace_id = cursor.fetchone() is not None
+            if not has_workspace_id:
+                cursor.execute(
+                    """
+                    INSERT INTO auto_raise_settings (user_id, enabled, all_workspaces, interval_minutes)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        enabled = VALUES(enabled),
+                        all_workspaces = VALUES(all_workspaces),
+                        interval_minutes = VALUES(interval_minutes)
+                    """,
+                    (
+                        int(user_id),
+                        1 if settings.enabled else 0,
+                        1 if settings.all_workspaces else 0,
+                        int(settings.interval_minutes),
+                    ),
+                )
+                conn.commit()
                 return
             cursor.execute(
                 """
