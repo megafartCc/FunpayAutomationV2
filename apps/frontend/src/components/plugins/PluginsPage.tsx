@@ -122,6 +122,27 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     setLotsLoading(true);
     setLotsError(null);
     try {
+      if (selectedId === "all") {
+        if (workspaces.length === 0) {
+          setLots([]);
+          return;
+        }
+        const results = await Promise.allSettled(workspaces.map((ws) => api.listLots(ws.id)));
+        const collected: LotItem[] = [];
+        let failures = 0;
+        results.forEach((res) => {
+          if (res.status === "fulfilled") {
+            collected.push(...(res.value.items || []));
+          } else {
+            failures += 1;
+          }
+        });
+        setLots(collected);
+        if (failures === results.length && results.length > 0) {
+          setLotsError(t("plugins.autoRaise.parsedError"));
+        }
+        return;
+      }
       const res = await api.listLots(selectedWorkspaceId);
       setLots(res.items || []);
     } catch (err) {
@@ -130,7 +151,7 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     } finally {
       setLotsLoading(false);
     }
-  }, [selectedWorkspaceId, t]);
+  }, [selectedId, selectedWorkspaceId, workspaces, t]);
 
   useEffect(() => {
     void loadLots();
