@@ -64,6 +64,13 @@ export type LotItem = {
   workspace_id?: number | null;
 };
 
+export type RaiseCategoryItem = {
+  category_id: number;
+  category_name: string;
+  workspace_id?: number | null;
+  updated_at?: string | null;
+};
+
 export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
@@ -332,6 +339,15 @@ export const api = {
       workspaceId ? `/lots?workspace_id=${workspaceId}` : "/lots",
       { method: "GET" },
     ),
+  listRaiseCategories: (workspaceId?: number | null) => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    const suffix = params.toString();
+    return request<{ items: RaiseCategoryItem[] }>(
+      `/raise-categories${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
   updateLot: (lotNumber: number, payload: Partial<LotCreatePayload> & { display_name?: string | null }, workspaceId?: number) =>
     request<LotItem>(

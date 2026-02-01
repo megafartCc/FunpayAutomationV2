@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, LotItem } from "../../services/api";
+import { api, RaiseCategoryItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -18,7 +18,7 @@ const STORAGE_KEY = "funpay.plugins.autoRaise";
 const MIN_INTERVAL = 15;
 const MAX_INTERVAL = 720;
 const INTERVAL_STEP = 15;
-const LOTS_GRID = "minmax(120px,0.7fr) minmax(220px,1.4fr) minmax(200px,1fr) minmax(120px,0.6fr)";
+const CATEGORIES_GRID = "minmax(220px,1.5fr) minmax(200px,1fr) minmax(180px,0.9fr)";
 
 const clampInterval = (value: number) => {
   const safe = Math.min(MAX_INTERVAL, Math.max(MIN_INTERVAL, value));
@@ -64,9 +64,9 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
   const [allWorkspaces, setAllWorkspaces] = useState(true);
   const [intervalMinutes, setIntervalMinutes] = useState(120);
   const [workspaceEnabled, setWorkspaceEnabled] = useState<Record<number, boolean>>({});
-  const [lots, setLots] = useState<LotItem[]>([]);
-  const [lotsLoading, setLotsLoading] = useState(false);
-  const [lotsError, setLotsError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<RaiseCategoryItem[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   const selectedWorkspaceId = selectedId === "all" ? undefined : selectedId;
 
@@ -118,55 +118,34 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [enabled, allWorkspaces, intervalMinutes, workspaceEnabled]);
 
-  const loadLots = useCallback(async () => {
-    setLotsLoading(true);
-    setLotsError(null);
+  const loadCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    setCategoriesError(null);
     try {
-      if (selectedId === "all") {
-        if (workspaces.length === 0) {
-          setLots([]);
-          return;
-        }
-        const results = await Promise.allSettled(workspaces.map((ws) => api.listLots(ws.id)));
-        const collected: LotItem[] = [];
-        let failures = 0;
-        results.forEach((res) => {
-          if (res.status === "fulfilled") {
-            collected.push(...(res.value.items || []));
-          } else {
-            failures += 1;
-          }
-        });
-        setLots(collected);
-        if (failures === results.length && results.length > 0) {
-          setLotsError(t("plugins.autoRaise.parsedError"));
-        }
-        return;
-      }
-      const res = await api.listLots(selectedWorkspaceId);
-      setLots(res.items || []);
+      const res = await api.listRaiseCategories(selectedWorkspaceId ?? null);
+      setCategories(res.items || []);
     } catch (err) {
       const message = (err as { message?: string })?.message;
-      setLotsError(message || t("plugins.autoRaise.parsedError"));
+      setCategoriesError(message || t("plugins.autoRaise.parsedError"));
     } finally {
-      setLotsLoading(false);
+      setCategoriesLoading(false);
     }
-  }, [selectedId, selectedWorkspaceId, workspaces, t]);
+  }, [selectedWorkspaceId, t]);
 
   useEffect(() => {
-    void loadLots();
-  }, [loadLots]);
+    void loadCategories();
+  }, [loadCategories]);
 
-  const sortedLots = useMemo(() => {
-    const items = [...lots];
+  const sortedCategories = useMemo(() => {
+    const items = [...categories];
     items.sort((a, b) => {
       const aWs = a.workspace_id ?? 0;
       const bWs = b.workspace_id ?? 0;
       if (aWs !== bWs) return aWs - bWs;
-      return a.lot_number - b.lot_number;
+      return a.category_name.localeCompare(b.category_name);
     });
     return items;
-  }, [lots]);
+  }, [categories]);
 
   const intervalLabel = useMemo(() => {
     const hours = Math.floor(intervalMinutes / 60);
@@ -353,14 +332,14 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-              {t("plugins.autoRaise.parsedCount", { count: sortedLots.length })}
+              {t("plugins.autoRaise.parsedCount", { count: sortedCategories.length })}
             </span>
             <button
               type="button"
-              onClick={loadLots}
-              disabled={lotsLoading}
+              onClick={loadCategories}
+              disabled={categoriesLoading}
               className={`rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-semibold text-neutral-600 transition ${
-                lotsLoading ? "cursor-not-allowed opacity-60" : "hover:border-neutral-300"
+                categoriesLoading ? "cursor-not-allowed opacity-60" : "hover:border-neutral-300"
               }`}
             >
               {t("plugins.autoRaise.parsedRefresh")}
@@ -373,65 +352,52 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
 
         <div className="mt-4 overflow-x-auto">
           <div className="min-w-[720px]">
-            <div className="grid gap-3 px-4 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: LOTS_GRID }}>
-              <span>{t("plugins.autoRaise.parsedColLot")}</span>
-              <span>{t("plugins.autoRaise.parsedColAccount")}</span>
+            <div
+              className="grid gap-3 px-4 text-xs font-semibold text-neutral-500"
+              style={{ gridTemplateColumns: CATEGORIES_GRID }}
+            >
+              <span>{t("plugins.autoRaise.parsedColCategory")}</span>
               <span>{t("plugins.autoRaise.parsedColWorkspace")}</span>
-              <span>{t("plugins.autoRaise.parsedColLink")}</span>
+              <span>{t("plugins.autoRaise.parsedColUpdated")}</span>
             </div>
             <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "420px" }}>
-              {lotsLoading && (
+              {categoriesLoading && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                   {t("plugins.autoRaise.parsedLoading")}
                 </div>
               )}
-              {!lotsLoading && lotsError && (
+              {!categoriesLoading && categoriesError && (
                 <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-6 text-center text-sm text-rose-600">
-                  {lotsError}
+                  {categoriesError}
                 </div>
               )}
-              {!lotsLoading &&
-                !lotsError &&
-                sortedLots.map((lot) => {
+              {!categoriesLoading &&
+                !categoriesError &&
+                sortedCategories.map((category) => {
                   const workspaceLabel =
-                    lot.workspace_id !== null && lot.workspace_id !== undefined
-                      ? workspaceMap.get(lot.workspace_id) || `${t("common.workspace")} ${lot.workspace_id}`
+                    category.workspace_id !== null && category.workspace_id !== undefined
+                      ? workspaceMap.get(category.workspace_id) ||
+                        `${t("common.workspace")} ${category.workspace_id}`
                       : t("common.allWorkspaces");
+                  const updatedAt = category.updated_at
+                    ? new Date(category.updated_at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })
+                    : "-";
                   return (
                     <div
-                      key={`${lot.lot_number}-${lot.account_id}`}
+                      key={`${category.workspace_id ?? "all"}-${category.category_id}`}
                       className="grid items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)]"
-                      style={{ gridTemplateColumns: LOTS_GRID }}
+                      style={{ gridTemplateColumns: CATEGORIES_GRID }}
                     >
                       <div className="min-w-0">
-                        <div className="truncate font-semibold text-neutral-900">#{lot.lot_number}</div>
-                        <div className="text-xs text-neutral-400">{lot.display_name || lot.account_name || "-"}</div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-neutral-800">{lot.account_name || "-"}</div>
-                        <div className="text-xs text-neutral-400">
-                          {lot.account_id ? `ID ${lot.account_id}` : "-"}
-                        </div>
+                        <div className="truncate font-semibold text-neutral-900">{category.category_name}</div>
+                        <div className="text-xs text-neutral-400">ID {category.category_id}</div>
                       </div>
                       <span className="min-w-0 truncate text-xs text-neutral-600">{workspaceLabel}</span>
-                      <span className="min-w-0 text-xs">
-                        {lot.lot_url ? (
-                          <a
-                            href={lot.lot_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-semibold text-sky-600 hover:text-sky-700"
-                          >
-                            {t("plugins.autoRaise.parsedOpen")}
-                          </a>
-                        ) : (
-                          <span className="text-neutral-400">-</span>
-                        )}
-                      </span>
+                      <span className="min-w-0 truncate text-xs text-neutral-500">{updatedAt}</span>
                     </div>
                   );
                 })}
-              {!lotsLoading && !lotsError && sortedLots.length === 0 && (
+              {!categoriesLoading && !categoriesError && sortedCategories.length === 0 && (
                 <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
                   {t("plugins.autoRaise.parsedEmpty")}
                 </div>

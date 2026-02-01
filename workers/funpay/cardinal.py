@@ -95,6 +95,63 @@ def _build_raise_notifier(cardinal: "Cardinal"):
     return notify
 
 
+def _persist_raise_categories(cardinal: "Cardinal") -> None:
+    try:
+        from railway.db_utils import get_mysql_config
+        from railway.raise_utils import upsert_raise_categories
+        from railway.user_utils import get_workspace_by_golden_key, get_user_id_by_username
+    except Exception:
+        return
+
+    try:
+        mysql_cfg = get_mysql_config()
+    except Exception:
+        return
+
+    golden_key = ""
+    try:
+        golden_key = cardinal.MAIN_CFG["FunPay"].get("golden_key", "").strip()
+    except Exception:
+        golden_key = ""
+
+    workspace_id = None
+    user_id = None
+    if golden_key:
+        try:
+            workspace = get_workspace_by_golden_key(mysql_cfg, golden_key)
+        except Exception:
+            workspace = None
+        if workspace:
+            user_id = workspace.get("user_id")
+            workspace_id = workspace.get("workspace_id")
+
+    if user_id is None:
+        username = getattr(cardinal.account, "username", None)
+        if username:
+            try:
+                user_id = get_user_id_by_username(mysql_cfg, username)
+            except Exception:
+                user_id = None
+
+    if user_id is None or not getattr(cardinal, "profile", None):
+        return
+
+    categories: dict[int, str] = {}
+    try:
+        for subcat in sorted(list(cardinal.profile.get_sorted_lots(2).keys()), key=lambda x: x.category.position):
+            if subcat.type is SubCategoryTypes.CURRENCY:
+                continue
+            categories[int(subcat.category.id)] = subcat.category.name
+    except Exception:
+        return
+
+    upsert_raise_categories(
+        mysql_cfg,
+        user_id=int(user_id),
+        workspace_id=int(workspace_id) if workspace_id is not None else None,
+        categories=sorted(categories.items(), key=lambda x: x[0]),
+    )
+
 def get_cardinal() -> None | Cardinal:
     """
     Возвращает существующий экземпляр кардинала.
@@ -325,6 +382,7 @@ class Cardinal(object):
             self.curr_profile = profile
             self.lots_ids = [i.id for i in profile.get_lots()]
             logger.info(_("crd_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
+            _persist_raise_categories(self)
         return True
 
     def __collect_lot_subcategory_ids(self) -> list[int]:
@@ -401,6 +459,7 @@ class Cardinal(object):
                 self.curr_profile = profile
                 self.lots_ids = [i.id for i in profile.get_lots()]
                 logger.info(_("crd_profile_updated", len(profile.get_lots()), len(profile.get_sorted_lots(2))))
+                _persist_raise_categories(self)
                 return True
             except TimeoutError:
                 logger.error(_("crd_profile_get_timeout_err"))
