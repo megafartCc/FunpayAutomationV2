@@ -81,6 +81,13 @@ export type AutoRaiseLogItem = {
   created_at?: string | null;
 };
 
+export type AutoRaiseSettings = {
+  enabled: boolean;
+  all_workspaces: boolean;
+  interval_minutes: number;
+  workspaces: Record<number, boolean>;
+};
+
 export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
@@ -368,6 +375,10 @@ export const api = {
       { method: "GET" },
     );
   },
+  getAutoRaiseSettings: () =>
+    request<AutoRaiseSettings>("/auto-raise/settings", { method: "GET" }),
+  saveAutoRaiseSettings: (payload: AutoRaiseSettings) =>
+    request<AutoRaiseSettings>("/auto-raise/settings", { method: "PUT", body: payload }),
   requestAutoRaise: (workspaceId?: number | null) =>
     request<{ created: number }>("/auto-raise/manual", {
       method: "POST",

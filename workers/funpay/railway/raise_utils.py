@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import os
 import time
+from datetime import datetime
 from dataclasses import dataclass, field
 
 import mysql.connector
@@ -116,6 +117,140 @@ def _seconds_to_str(seconds: int) -> str:
     return " ".join(parts) if parts else "0 сек"
 
 
+def _default_auto_raise_settings() -> dict:
+    return {
+        "enabled": False,
+        "all_workspaces": True,
+        "interval_minutes": 120,
+        "workspaces": {},
+    }
+
+
+def _coerce_ts(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if hasattr(value, "timestamp"):
+        return float(value.timestamp())
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except Exception:
+        return None
+
+
+def load_auto_raise_settings(mysql_cfg: dict, user_id: int) -> dict:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "auto_raise_settings"):
+            return _default_auto_raise_settings()
+        cursor.execute(
+            """
+            SELECT workspace_id, enabled, all_workspaces, interval_minutes
+            FROM auto_raise_settings
+            WHERE user_id = %s
+            """,
+            (int(user_id),),
+        )
+        rows = cursor.fetchall() or []
+        settings = _default_auto_raise_settings()
+        workspaces: dict[int, bool] = {}
+        for row in rows:
+            workspace_id = row.get("workspace_id")
+            if workspace_id is None:
+                settings["enabled"] = bool(row.get("enabled"))
+                settings["all_workspaces"] = bool(row.get("all_workspaces"))
+                settings["interval_minutes"] = int(row.get("interval_minutes") or settings["interval_minutes"])
+            else:
+                workspaces[int(workspace_id)] = bool(row.get("enabled"))
+        settings["workspaces"] = workspaces
+        return settings
+    finally:
+        conn.close()
+
+
+def load_enabled_workspace_ids(mysql_cfg: dict, user_id: int, settings: dict) -> list[int]:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "workspaces"):
+            return []
+        cursor.execute("SELECT id FROM workspaces WHERE user_id = %s ORDER BY id", (int(user_id),))
+        rows = cursor.fetchall() or []
+        ids = [int(row.get("id")) for row in rows if row.get("id") is not None]
+        if not settings.get("all_workspaces", True):
+            enabled_map = settings.get("workspaces") or {}
+            ids = [ws_id for ws_id in ids if enabled_map.get(ws_id, True)]
+        return ids
+    finally:
+        conn.close()
+
+
+def ensure_auto_raise_state(mysql_cfg: dict, user_id: int) -> None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "auto_raise_state"):
+            return
+        cursor.execute("INSERT IGNORE INTO auto_raise_state (user_id) VALUES (%s)", (int(user_id),))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def claim_auto_raise_slot(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int,
+    interval_seconds: int,
+    allow_same: bool,
+) -> bool:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "auto_raise_state"):
+            return True
+        cursor.execute(
+            """
+            UPDATE auto_raise_state
+            SET next_run_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL %s SECOND),
+                last_workspace_id = %s
+            WHERE user_id = %s
+              AND (next_run_at IS NULL OR next_run_at <= UTC_TIMESTAMP())
+              AND (%s = 1 OR last_workspace_id IS NULL OR last_workspace_id <> %s)
+            """,
+            (
+                int(interval_seconds),
+                int(workspace_id),
+                int(user_id),
+                1 if allow_same else 0,
+                int(workspace_id),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_auto_raise_next_run(mysql_cfg: dict, user_id: int) -> float | None:
+    conn = mysql.connector.connect(**mysql_cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "auto_raise_state"):
+            return None
+        cursor.execute(
+            "SELECT next_run_at FROM auto_raise_state WHERE user_id = %s",
+            (int(user_id),),
+        )
+        row = cursor.fetchone() or {}
+        return _coerce_ts(row.get("next_run_at"))
+    finally:
+        conn.close()
+
+
 def log_auto_raise(
     mysql_cfg: dict | None,
     *,
@@ -222,6 +357,10 @@ class AutoRaiseState:
     raised_time: dict[int, int] = field(default_factory=dict)
     profile: object | None = None
     profile_updated_at: float = 0.0
+    settings: dict | None = None
+    settings_updated_at: float = 0.0
+    enabled_workspaces: list[int] = field(default_factory=list)
+    workspaces_updated_at: float = 0.0
 
 
 def refresh_profile(
@@ -433,6 +572,9 @@ def auto_raise_loop(
     profile_sync_seconds: int,
 ) -> None:
     state = AutoRaiseState()
+    settings_sync_seconds = 30
+    workspaces_sync_seconds = 60
+    manual_check_interval = 30
     log_auto_raise(
         mysql_cfg,
         user_id=user_id,
@@ -452,7 +594,73 @@ def auto_raise_loop(
         if not enabled_fn():
             stop_event.wait(10)
             continue
-        next_time = raise_lots_once(
+
+        settings = state.settings
+        now = time.time()
+        if mysql_cfg and user_id is not None:
+            if settings is None or (now - state.settings_updated_at) >= settings_sync_seconds:
+                try:
+                    settings = load_auto_raise_settings(mysql_cfg, int(user_id))
+                except Exception:
+                    settings = _default_auto_raise_settings()
+                state.settings = settings
+                state.settings_updated_at = now
+        if not settings:
+            settings = _default_auto_raise_settings()
+
+        if not settings.get("enabled", False):
+            stop_event.wait(10)
+            continue
+        if workspace_id is not None and not settings.get("all_workspaces", True):
+            if not settings.get("workspaces", {}).get(int(workspace_id), True):
+                stop_event.wait(10)
+                continue
+
+        if not mysql_cfg or user_id is None or workspace_id is None:
+            next_time = raise_lots_once(
+                account=account,
+                state=state,
+                mysql_cfg=mysql_cfg,
+                user_id=user_id,
+                workspace_id=workspace_id,
+                profile_sync_seconds=profile_sync_seconds,
+            )
+            delay = next_time - int(time.time())
+            if delay > 0:
+                stop_event.wait(min(delay, manual_check_interval))
+            continue
+
+        if (now - state.workspaces_updated_at) >= workspaces_sync_seconds or not state.enabled_workspaces:
+            try:
+                state.enabled_workspaces = load_enabled_workspace_ids(mysql_cfg, int(user_id), settings)
+            except Exception:
+                state.enabled_workspaces = []
+            state.workspaces_updated_at = now
+
+        if state.enabled_workspaces and int(workspace_id) not in state.enabled_workspaces:
+            stop_event.wait(10)
+            continue
+
+        ensure_auto_raise_state(mysql_cfg, int(user_id))
+        interval_seconds = int(settings.get("interval_minutes", 120)) * 60
+        allow_same = len(state.enabled_workspaces) <= 1
+        claimed = claim_auto_raise_slot(
+            mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=int(workspace_id),
+            interval_seconds=interval_seconds,
+            allow_same=allow_same,
+        )
+        if not claimed:
+            next_run = get_auto_raise_next_run(mysql_cfg, int(user_id))
+            if next_run:
+                delay = max(1, int(next_run - time.time()))
+                stop_event.wait(min(delay, manual_check_interval))
+            else:
+                stop_event.wait(manual_check_interval)
+            continue
+
+        raise_lots_once(
             account=account,
             state=state,
             mysql_cfg=mysql_cfg,
@@ -460,6 +668,4 @@ def auto_raise_loop(
             workspace_id=workspace_id,
             profile_sync_seconds=profile_sync_seconds,
         )
-        delay = next_time - int(time.time())
-        if delay > 0:
-            stop_event.wait(delay)
+        stop_event.wait(min(10, manual_check_interval))

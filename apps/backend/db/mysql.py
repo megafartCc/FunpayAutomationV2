@@ -400,6 +400,32 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS auto_raise_settings (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                enabled TINYINT(1) NOT NULL DEFAULT 0,
+                all_workspaces TINYINT(1) NOT NULL DEFAULT 1,
+                interval_minutes INT NOT NULL DEFAULT 120,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_auto_raise_settings (user_id, workspace_id),
+                INDEX idx_auto_raise_settings_user_ws (user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_raise_state (
+                user_id BIGINT PRIMARY KEY,
+                next_run_at TIMESTAMP NULL,
+                last_workspace_id BIGINT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_auto_raise_state_next (next_run_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS telegram_links (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,

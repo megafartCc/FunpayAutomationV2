@@ -1,20 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, AutoRaiseLogItem, RaiseCategoryItem } from "../../services/api";
+import { api, AutoRaiseLogItem, AutoRaiseSettings, RaiseCategoryItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
 };
 
-type AutoRaiseConfig = {
-  enabled: boolean;
-  allWorkspaces: boolean;
-  intervalMinutes: number;
-  workspaces: Record<number, boolean>;
-};
-
-const STORAGE_KEY = "funpay.plugins.autoRaise";
 const MIN_INTERVAL = 15;
 const MAX_INTERVAL = 720;
 const INTERVAL_STEP = 15;
@@ -67,6 +59,10 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [categories, setCategories] = useState<RaiseCategoryItem[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [logs, setLogs] = useState<AutoRaiseLogItem[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -79,21 +75,29 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
 
   const selectedWorkspaceLabel = useMemo(() => t("common.allWorkspaces"), [t]);
 
-  useEffect(() => {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+  const loadSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    setSettingsError(null);
     try {
-      const parsed = JSON.parse(raw) as Partial<AutoRaiseConfig>;
-      if (typeof parsed.enabled === "boolean") setEnabled(parsed.enabled);
-      if (typeof parsed.allWorkspaces === "boolean") setAllWorkspaces(parsed.allWorkspaces);
-      if (typeof parsed.intervalMinutes === "number") setIntervalMinutes(clampInterval(parsed.intervalMinutes));
-      if (parsed.workspaces && typeof parsed.workspaces === "object") {
-        setWorkspaceEnabled(parsed.workspaces as Record<number, boolean>);
-      }
-    } catch {
-      // ignore invalid storage
+      const res = await api.getAutoRaiseSettings();
+      setEnabled(Boolean(res.enabled));
+      setAllWorkspaces(Boolean(res.all_workspaces));
+      setIntervalMinutes(clampInterval(res.interval_minutes));
+      setWorkspaceEnabled(res.workspaces || {});
+      setSettingsLoaded(true);
+    } catch (err) {
+      const message = (err as { message?: string })?.message;
+      setSettingsError(message || t("plugins.autoRaise.manualError"));
+      onToast?.(message || t("plugins.autoRaise.manualError"), true);
+      setSettingsLoaded(true);
+    } finally {
+      setSettingsLoading(false);
     }
-  }, []);
+  }, [onToast, t]);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   useEffect(() => {
     setWorkspaceEnabled((prev) => {
@@ -106,14 +110,28 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   }, [workspaces]);
 
   useEffect(() => {
-    const payload: AutoRaiseConfig = {
+    if (!settingsLoaded) return;
+    const payload: AutoRaiseSettings = {
       enabled,
-      allWorkspaces,
-      intervalMinutes,
+      all_workspaces: allWorkspaces,
+      interval_minutes: intervalMinutes,
       workspaces: workspaceEnabled,
     };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [enabled, allWorkspaces, intervalMinutes, workspaceEnabled]);
+    const handle = window.setTimeout(async () => {
+      setSettingsSaving(true);
+      try {
+        await api.saveAutoRaiseSettings(payload);
+        setSettingsError(null);
+      } catch (err) {
+        const message = (err as { message?: string })?.message || t("plugins.autoRaise.manualError");
+        setSettingsError(message);
+        onToast?.(message, true);
+      } finally {
+        setSettingsSaving(false);
+      }
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [enabled, allWorkspaces, intervalMinutes, workspaceEnabled, settingsLoaded, onToast, t]);
 
   const loadCategories = useCallback(async () => {
     setCategoriesLoading(true);
@@ -221,6 +239,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       });
       return next;
     });
+    setSettingsError(null);
   };
 
   return (
@@ -246,12 +265,14 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
             onChange={() => setEnabled((prev) => !prev)}
             label={t("plugins.autoRaise.toggleTitle")}
             description={t("plugins.autoRaise.toggleDesc")}
+            disabled={settingsLoading}
           />
           <Switch
             checked={allWorkspaces}
             onChange={() => setAllWorkspaces((prev) => !prev)}
             label={t("plugins.autoRaise.allWorkspacesTitle")}
             description={t("plugins.autoRaise.allWorkspacesDesc")}
+            disabled={settingsLoading}
           />
         </div>
 
@@ -273,6 +294,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
               step={INTERVAL_STEP}
               value={intervalMinutes}
               onChange={(event) => handleIntervalChange(Number(event.target.value))}
+              disabled={settingsLoading}
               className="w-full accent-neutral-900"
             />
             <input
@@ -282,6 +304,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
               step={INTERVAL_STEP}
               value={intervalMinutes}
               onChange={(event) => handleIntervalChange(Number(event.target.value))}
+              disabled={settingsLoading}
               className="w-24 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
             />
           </div>
@@ -292,7 +315,10 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
-          <span>{t("plugins.autoRaise.localNotice")}</span>
+          <span>
+            {t("plugins.autoRaise.localNotice")}
+            {settingsSaving ? ` • ${t("common.saving")}` : ""}
+          </span>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -310,6 +336,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
             </button>
           </div>
         </div>
+        {settingsError ? <div className="mt-2 text-xs text-rose-500">{settingsError}</div> : null}
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
@@ -357,7 +384,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                       type="button"
                       role="switch"
                       aria-checked={wsEnabled}
-                      disabled={allWorkspaces}
+                      disabled={allWorkspaces || settingsLoading}
                       onClick={() =>
                         setWorkspaceEnabled((prev) => ({
                           ...prev,
@@ -366,7 +393,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                       }
                       className={`relative inline-flex h-5 w-9 items-center rounded-full border transition ${
                         wsEnabled ? "border-emerald-500 bg-emerald-500" : "border-neutral-300 bg-white"
-                      } ${allWorkspaces ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                      } ${allWorkspaces || settingsLoading ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${

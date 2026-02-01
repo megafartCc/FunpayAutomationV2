@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
-
 from db.mysql import get_base_connection
 
 
@@ -18,7 +16,118 @@ class AutoRaiseLogRecord:
     created_at: str | None
 
 
+@dataclass
+class AutoRaiseSettings:
+    enabled: bool
+    all_workspaces: bool
+    interval_minutes: int
+    workspaces: dict[int, bool]
+
+
 class MySQLAutoRaiseRepo:
+    def get_settings(self, user_id: int) -> AutoRaiseSettings:
+        conn = get_base_connection()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings'
+                LIMIT 1
+                """
+            )
+            if cursor.fetchone() is None:
+                return AutoRaiseSettings(
+                    enabled=False,
+                    all_workspaces=True,
+                    interval_minutes=120,
+                    workspaces={},
+                )
+            cursor.execute(
+                """
+                SELECT workspace_id, enabled, all_workspaces, interval_minutes
+                FROM auto_raise_settings
+                WHERE user_id = %s
+                """,
+                (int(user_id),),
+            )
+            rows = cursor.fetchall() or []
+            enabled = False
+            all_workspaces = True
+            interval_minutes = 120
+            workspaces: dict[int, bool] = {}
+            for row in rows:
+                workspace_id = row.get("workspace_id")
+                if workspace_id is None:
+                    enabled = bool(row.get("enabled"))
+                    all_workspaces = bool(row.get("all_workspaces"))
+                    interval_minutes = int(row.get("interval_minutes") or 120)
+                else:
+                    workspaces[int(workspace_id)] = bool(row.get("enabled"))
+            return AutoRaiseSettings(
+                enabled=enabled,
+                all_workspaces=all_workspaces,
+                interval_minutes=interval_minutes,
+                workspaces=workspaces,
+            )
+        finally:
+            conn.close()
+
+    def save_settings(self, user_id: int, settings: AutoRaiseSettings) -> None:
+        conn = get_base_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = DATABASE() AND table_name = 'auto_raise_settings'
+                LIMIT 1
+                """
+            )
+            if cursor.fetchone() is None:
+                return
+            cursor.execute(
+                """
+                INSERT INTO auto_raise_settings (user_id, workspace_id, enabled, all_workspaces, interval_minutes)
+                VALUES (%s, NULL, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    enabled = VALUES(enabled),
+                    all_workspaces = VALUES(all_workspaces),
+                    interval_minutes = VALUES(interval_minutes)
+                """,
+                (
+                    int(user_id),
+                    1 if settings.enabled else 0,
+                    1 if settings.all_workspaces else 0,
+                    int(settings.interval_minutes),
+                ),
+            )
+            cursor.execute(
+                "DELETE FROM auto_raise_settings WHERE user_id = %s AND workspace_id IS NOT NULL",
+                (int(user_id),),
+            )
+            if settings.workspaces:
+                rows = [
+                    (
+                        int(user_id),
+                        int(workspace_id),
+                        1 if enabled else 0,
+                        0,
+                        int(settings.interval_minutes),
+                    )
+                    for workspace_id, enabled in settings.workspaces.items()
+                ]
+                cursor.executemany(
+                    """
+                    INSERT INTO auto_raise_settings (user_id, workspace_id, enabled, all_workspaces, interval_minutes)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    rows,
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
     def list_logs(
         self,
         user_id: int,
