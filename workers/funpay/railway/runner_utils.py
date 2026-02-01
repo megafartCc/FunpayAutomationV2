@@ -24,21 +24,37 @@ from .chat_utils import (
     is_first_time_chat,
     process_chat_outbox,
     send_chat_message,
+    send_message_by_owner,
     sync_chats_list,
     upsert_chat_summary,
 )
 from .account_utils import build_account_message, build_rental_choice_message, get_remaining_label, resolve_rental_minutes
 from .command_handlers import build_stock_messages, handle_command
-from .constants import COMMAND_PREFIXES, COMMANDS_RU, RENTALS_EMPTY, STOCK_EMPTY, STOCK_LIST_LIMIT, STOCK_TITLE
+from .constants import (
+    COMMAND_PREFIXES,
+    COMMANDS_RU,
+    RENTAL_REFUND_MESSAGE,
+    RENTALS_EMPTY,
+    STOCK_EMPTY,
+    STOCK_LIST_LIMIT,
+    STOCK_TITLE,
+)
 from .env_utils import env_bool, env_int
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
-from .notifications_utils import upsert_workspace_status
-from .order_utils import apply_review_bonus_for_order, handle_order_purchased, revert_review_bonus_for_order
+from .notifications_utils import log_notification_event, upsert_workspace_status
+from .order_utils import (
+    apply_review_bonus_for_order,
+    extract_lot_number_from_order,
+    fetch_latest_account_for_owner_lot,
+    fetch_order_history_summary,
+    handle_order_purchased,
+    revert_review_bonus_for_order,
+)
 from .presence_utils import clear_lot_cache_on_start
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 from .raise_utils import auto_raise_loop, sync_raise_categories
-from .rental_utils import process_rental_monitor
+from .rental_utils import process_rental_monitor, release_account_in_db
 from .db_utils import get_mysql_config
 from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
 from .user_utils import get_user_id_by_username
@@ -251,6 +267,15 @@ def _extract_buyer_from_review_text(text: str | None) -> str | None:
         return match.group(1)
     return None
 
+
+def _extract_buyer_from_refund_text(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"(?:покупателю|buyer)\s+([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
+
 def _extract_command_tokens(text: str) -> list[str]:
     if not text:
         return []
@@ -404,6 +429,102 @@ def _handle_review_bonus(
             bonus_minutes=int(bonus_minutes),
         )
         _send_revert_message(updated, "????? ???????")
+
+
+def _handle_refund_release(
+    logger: logging.Logger,
+    account: Account,
+    site_username: str | None,
+    site_user_id: int | None,
+    workspace_id: int | None,
+    msg: object,
+    chat_name: str,
+) -> None:
+    if getattr(msg, "type", None) not in (
+        MessageTypes.REFUND,
+        MessageTypes.PARTIAL_REFUND,
+        MessageTypes.REFUND_BY_ADMIN,
+    ):
+        return
+    order_id = extract_order_id(getattr(msg, "text", None) or "")
+    if not order_id:
+        return
+    order = None
+    try:
+        order = account.get_order(order_id)
+    except Exception as exc:
+        logger.warning("Failed to fetch order %s for refund handling: %s", order_id, exc)
+    buyer = None
+    if order is not None:
+        buyer = getattr(order, "buyer_username", None)
+    if not buyer:
+        buyer = _extract_buyer_from_refund_text(getattr(msg, "text", None) or "") or chat_name
+    if not buyer:
+        return
+    try:
+        mysql_cfg = get_mysql_config()
+    except RuntimeError:
+        return
+    user_id = site_user_id
+    if user_id is None and site_username:
+        try:
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+        except mysql.connector.Error as exc:
+            logger.warning("Failed to resolve user id for %s: %s", site_username, exc)
+            return
+    if user_id is None:
+        return
+
+    summary = fetch_order_history_summary(
+        mysql_cfg,
+        order_id=str(order_id),
+        owner=buyer,
+        workspace_id=workspace_id,
+    )
+    account_id = summary.get("account_id") if summary else None
+    target_workspace_id = (
+        summary.get("workspace_id") if summary and summary.get("workspace_id") is not None else workspace_id
+    )
+    if account_id is None and order is not None:
+        lot_number = extract_lot_number_from_order(order)
+        if lot_number is not None:
+            account_id = fetch_latest_account_for_owner_lot(
+                mysql_cfg,
+                owner=buyer,
+                lot_number=int(lot_number),
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+    if account_id is None:
+        try:
+            owner_accounts = fetch_owner_accounts(mysql_cfg, int(user_id), buyer, workspace_id)
+        except mysql.connector.Error:
+            owner_accounts = []
+        if len(owner_accounts) == 1:
+            account_id = owner_accounts[0].get("id")
+    if account_id is None:
+        return
+
+    released = release_account_in_db(
+        mysql_cfg,
+        int(account_id),
+        int(user_id),
+        target_workspace_id,
+    )
+    log_notification_event(
+        mysql_cfg,
+        event_type="refund_release",
+        status="ok" if released else "failed",
+        title="Rental refunded",
+        message="Rental ended after refund." if released else "Refund detected but release failed.",
+        owner=buyer,
+        account_id=int(account_id),
+        user_id=int(user_id),
+        workspace_id=target_workspace_id,
+        order_id=str(order_id),
+    )
+    if released:
+        send_message_by_owner(logger, account, buyer, RENTAL_REFUND_MESSAGE)
 
 def refresh_session_loop(account: Account, interval_seconds: int = 3600, label: str | None = None) -> None:
     sleep_time = interval_seconds
@@ -711,6 +832,15 @@ def log_message(
                 chat_name,
                 chat_id,
             )
+        _handle_refund_release(
+            logger,
+            account,
+            site_username,
+            site_user_id,
+            workspace_id,
+            msg,
+            chat_name,
+        )
         if msg.type == MessageTypes.ORDER_PURCHASED:
             handle_order_purchased(
                 logger,
