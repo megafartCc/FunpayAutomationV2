@@ -763,10 +763,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
               <span>Hero</span>
               <span className="text-center">Status</span>
             </div>
-            <div
-              className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
-              style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
-            >
+            <div className="mt-3 space-y-3 list-scroll">
               {rentals.map((row, idx) => {
                 const isSelected = selectedRowKey === row.rowKey;
                 const pill = statusPill(row.status);

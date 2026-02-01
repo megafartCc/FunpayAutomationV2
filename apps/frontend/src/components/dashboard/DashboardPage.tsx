@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 
 import { api, AccountItem, ActiveRentalItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import InteractiveSphere from "./InteractiveSphere";
 
 type DeltaTone = "up" | "down";
 
@@ -1009,6 +1010,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         ))}
       </div>
 
+      <InteractiveSphere />
+
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="min-h-[880px] rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
@@ -1025,10 +1028,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>MMR</span>
                 <span className="text-center">State</span>
               </div>
-              <div
-                className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
-                style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
-              >
+              <div className="mt-3 space-y-3 list-scroll">
                 {inventoryAccounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
@@ -1163,10 +1163,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>Hero</span>
                 <span className="text-center">Status</span>
               </div>
-              <div
-                className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1"
-                style={{ maxHeight: "min(640px, calc(100vh - 360px))", scrollbarGutter: "stable" }}
-              >
+              <div className="mt-3 space-y-3 list-scroll">
                 {filteredRentals.map((row, idx) => {
                   const isSelected = selectedRowKey === row.rowKey;
                   const pill = statusPill(row.status);
