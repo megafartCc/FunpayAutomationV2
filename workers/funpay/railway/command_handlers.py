@@ -427,15 +427,15 @@ def handle_bonus_command(
             message = "У вас нет бонусных часов."
             send_chat_message(logger, account, chat_id, message)
             return True
-        lines = [f"🎁 Ваш бонус: {format_duration_minutes(balance)}."]
+        lines = [f"Ваш баланс бонусов (время): {format_duration_minutes(balance)}."]
         if accounts:
-            lines.append("Выберите аренду для применения бонуса: !бонус <ID>")
+            lines.append("Чтобы применить бонус к аренде, напишите: !бонус <ID аккаунта>.")
             for acc in accounts:
                 display = build_display_name(acc)
                 acc_id = acc.get("id")
                 lines.append(f"{display} - ID {acc_id}")
         else:
-            lines.append("Активных аренд сейчас нет.")
+            lines.append("Активных аренд сейчас нет. Бонус сохранён — примените позже командой !бонус <ID аккаунта>.")
         send_chat_message(logger, account, chat_id, "\n".join(lines))
         return True
 
