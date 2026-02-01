@@ -609,7 +609,7 @@ const InventoryPage: React.FC<InventoryPageProps> = ({ onToast }) => {
                 <span>MMR</span>
                 <span className="text-center">State</span>
               </div>
-              <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
+              <div className="mt-3 space-y-3">
                 {accounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;

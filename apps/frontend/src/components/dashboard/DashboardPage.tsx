@@ -1025,7 +1025,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>MMR</span>
                 <span className="text-center">State</span>
               </div>
-              <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
+              <div className="mt-3 space-y-3">
                 {inventoryAccounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
@@ -1155,12 +1155,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                 <span>Account</span>
                 <span>Buyer</span>
                 <span>Started</span>
-                <span className="text-right">Time Left</span>
-                <span className="text-right">Match Time</span>
+                <span>Time Left</span>
+                <span>Match Time</span>
                 <span>Hero</span>
                 <span className="text-center">Status</span>
               </div>
-              <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "640px" }}>
+              <div className="mt-3 space-y-3">
                 {filteredRentals.map((row, idx) => {
                   const isSelected = selectedRowKey === row.rowKey;
                   const pill = statusPill(row.status);
@@ -1212,10 +1212,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       </div>
                       <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
-                      <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
+                      <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
                         {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
                       </span>
-                      <span className="min-w-0 truncate font-mono tabular-nums text-right text-neutral-900">
+                      <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
                         {getMatchTimeLabel(row, now)}
                       </span>
                       <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
