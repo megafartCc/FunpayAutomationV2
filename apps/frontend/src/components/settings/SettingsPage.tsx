@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { api, TelegramStatus, WorkspaceItem, WorkspaceProxyCheck } from "../../services/api";
+import { api, TelegramStatus, WorkspaceItem, WorkspaceProxyCheck, WorkspaceStatusItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 type SettingsPageProps = {
@@ -44,8 +44,73 @@ const splitProxyCredentials = (raw: string) => {
   }
 };
 
+const statusKey = (workspaceId: number | null | undefined, platform?: string | null) =>
+  `${workspaceId ?? "none"}:${(platform || "funpay").toLowerCase()}`;
+const normalizeStatus = (value?: string | null) => (value || "").toLowerCase();
+const parseUpdatedAt = (value?: string | null) => {
+  if (!value) return null;
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+const isStatusStale = (status?: WorkspaceStatusItem | null) => {
+  const updated = parseUpdatedAt(status?.updated_at);
+  if (!updated) return false;
+  return Date.now() - updated.getTime() > 2 * 60 * 1000;
+};
+const resolveStatusMeta = (status?: WorkspaceStatusItem | null) => {
+  if (!status) {
+    return {
+      label: "No status",
+      className: "border-neutral-200 bg-white text-neutral-500",
+    };
+  }
+  const normalized = normalizeStatus(status.status);
+  if (isStatusStale(status) && ["ok", "online", "connected", "warning", "degraded"].includes(normalized)) {
+    return {
+      label: "Offline",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  if (["ok", "online", "connected"].includes(normalized)) {
+    return {
+      label: "Online",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (["warning", "degraded"].includes(normalized)) {
+    return {
+      label: "Degraded",
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+    };
+  }
+  if (["unauthorized", "auth", "auth_required", "forbidden"].includes(normalized)) {
+    return {
+      label: "Auth required",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  if (["offline"].includes(normalized)) {
+    return {
+      label: "Offline",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  if (["error", "failed"].includes(normalized)) {
+    return {
+      label: "Error",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  return {
+    label: normalized ? normalized : "Unknown",
+    className: "border-neutral-200 bg-white text-neutral-500",
+  };
+};
+
 const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
-  const { visibleWorkspaces, loading, refresh } = useWorkspace();
+  const { visibleWorkspaces, loading, refresh, selectedPlatform } = useWorkspace();
   const [keyActionBusy, setKeyActionBusy] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPlatform, setNewPlatform] = useState<"funpay" | "playerok">("funpay");
@@ -62,6 +127,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
   const [editProxyUsername, setEditProxyUsername] = useState("");
   const [editProxyPassword, setEditProxyPassword] = useState("");
   const [proxyChecks, setProxyChecks] = useState<Record<number, WorkspaceProxyCheck & { status: string }>>({});
+  const [workspaceStatuses, setWorkspaceStatuses] = useState<Record<string, WorkspaceStatusItem>>({});
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
   const [telegramLink, setTelegramLink] = useState("");
   const [telegramBusy, setTelegramBusy] = useState(false);
@@ -280,6 +347,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
 
   const workspaceList = useMemo(() => visibleWorkspaces || [], [visibleWorkspaces]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadStatuses = async () => {
+      try {
+        const platform = selectedPlatform === "all" ? undefined : selectedPlatform;
+        const res = await api.listWorkspaceStatuses(undefined, platform);
+        if (!isMounted) return;
+        const map: Record<string, WorkspaceStatusItem> = {};
+        (res.items || []).forEach((item) => {
+          const key = statusKey(item.workspace_id ?? null, item.platform);
+          if (!map[key]) {
+            map[key] = item;
+          }
+        });
+        setWorkspaceStatuses(map);
+        setStatusError(null);
+      } catch {
+        if (isMounted) {
+          setStatusError("Failed to load status.");
+        }
+      }
+    };
+    void loadStatuses();
+    const handle = window.setInterval(loadStatuses, 20_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(handle);
+    };
+  }, [selectedPlatform]);
+
   return (
     <div className="grid gap-6">
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 max-h-[calc(100vh-260px)] flex flex-col">
@@ -393,6 +490,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onToast }) => {
                     <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-neutral-600">
                       {item.platform || "funpay"}
                     </span>
+                    {(() => {
+                      const status = workspaceStatuses[statusKey(item.id, item.platform)];
+                      const meta = resolveStatusMeta(status);
+                      const updatedAt = parseUpdatedAt(status?.updated_at);
+                      const updatedLabel = updatedAt ? `Updated ${updatedAt.toLocaleString()}` : "";
+                      const titleParts = [
+                        status?.message || (status?.status ? `Status: ${status.status}` : ""),
+                        updatedLabel,
+                        statusError ? statusError : "",
+                      ].filter(Boolean);
+                      const title = titleParts.length ? titleParts.join(" | ") : "No status yet.";
+                      return (
+                        <span
+                          title={title}
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${meta.className}`}
+                        >
+                          {meta.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="text-xs text-neutral-500">
                         {item.is_default ? "Default workspace" : "Workspace"}
