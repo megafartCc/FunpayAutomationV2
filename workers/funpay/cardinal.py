@@ -35,6 +35,66 @@ localizer = Localizer()
 _ = localizer.translate
 
 
+def _build_raise_notifier(cardinal: "Cardinal"):
+    try:
+        from railway.db_utils import get_mysql_config
+        from railway.notifications_utils import log_notification_event
+        from railway.user_utils import get_workspace_by_golden_key, get_user_id_by_username
+    except Exception:
+        return None
+
+    try:
+        mysql_cfg = get_mysql_config()
+    except Exception:
+        return None
+
+    golden_key = ""
+    try:
+        golden_key = cardinal.MAIN_CFG["FunPay"].get("golden_key", "").strip()
+    except Exception:
+        golden_key = ""
+
+    workspace_id = None
+    user_id = None
+    if golden_key:
+        try:
+            workspace = get_workspace_by_golden_key(mysql_cfg, golden_key)
+        except Exception:
+            workspace = None
+        if workspace:
+            user_id = workspace.get("user_id")
+            workspace_id = workspace.get("workspace_id")
+
+    if user_id is None:
+        username = getattr(cardinal.account, "username", None)
+        if username:
+            try:
+                user_id = get_user_id_by_username(mysql_cfg, username)
+            except Exception:
+                user_id = None
+
+    if user_id is None:
+        return None
+
+    def notify(status: str, title: str, message: str | None = None) -> None:
+        try:
+            log_notification_event(
+                mysql_cfg,
+                event_type="raise",
+                status=status,
+                title=title,
+                message=message,
+                account_name=getattr(cardinal.account, "username", None),
+                account_id=getattr(cardinal.account, "id", None),
+                user_id=int(user_id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
+            )
+        except Exception:
+            return
+
+    return notify
+
+
 def get_cardinal() -> None | Cardinal:
     """
     Возвращает существующий экземпляр кардинала.
@@ -383,6 +443,7 @@ class Cardinal(object):
         """
         # Время следующего вызова функции (по умолчанию - бесконечность).
         next_call = float("inf")
+        notify_raise = _build_raise_notifier(self)
 
         for subcat in sorted(list(self.profile.get_sorted_lots(2).keys()), key=lambda x: x.category.position):
             if subcat.type is SubCategoryTypes.CURRENCY:
@@ -409,6 +470,9 @@ class Cardinal(object):
                 time_delta = "" if not last_time else f" Последнее поднятие: {cardinal_tools.time_to_str(new_time - last_time)} назад."
                 time.sleep(1)
                 self.account.raise_lots(subcat.category.id)
+                if notify_raise:
+                    message = f'Категория "{subcat.category.name}" поднята.{time_delta}'
+                    notify_raise("ok", "Auto-raise lots", message)
             except FunPayAPI.exceptions.RaiseError as e:
                 if e.error_message is not None:
                     error_text = e.error_message
@@ -422,6 +486,9 @@ class Cardinal(object):
                     next_time = int(time.time()) + 1
                 self.raise_time[subcat.category.id] = next_time
                 next_call = next_time if next_time < next_call else next_call
+                if notify_raise:
+                    details = error_text or "Raise failed."
+                    notify_raise("failed", "Auto-raise lots", f'{subcat.category.name}: {details}')
                 if not raise_ok:
                     continue
             except Exception as e:
@@ -435,6 +502,9 @@ class Cardinal(object):
                 time.sleep(t)
                 next_time = int(time.time()) + 1
                 next_call = next_time if next_time < next_call else next_call
+                if notify_raise:
+                    details = str(e)[:200] if e else "Raise failed."
+                    notify_raise("failed", "Auto-raise lots", f'{subcat.category.name}: {details}')
                 if not raise_ok:
                     continue
             self.run_handlers(self.post_lots_raise_handlers, (self, subcat.category, error_text + time_delta))

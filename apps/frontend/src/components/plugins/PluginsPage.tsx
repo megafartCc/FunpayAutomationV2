@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
+import { api, LotItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -17,6 +18,7 @@ const STORAGE_KEY = "funpay.plugins.autoRaise";
 const MIN_INTERVAL = 15;
 const MAX_INTERVAL = 720;
 const INTERVAL_STEP = 15;
+const LOTS_GRID = "minmax(120px,0.7fr) minmax(220px,1.4fr) minmax(200px,1fr) minmax(120px,0.6fr)";
 
 const clampInterval = (value: number) => {
   const safe = Math.min(MAX_INTERVAL, Math.max(MIN_INTERVAL, value));
@@ -55,13 +57,30 @@ const Switch: React.FC<{
 );
 
 const PluginsPage: React.FC<PluginsPageProps> = () => {
-  const { workspaces } = useWorkspace();
+  const { workspaces, selectedId } = useWorkspace();
   const { t } = useI18n();
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
   const [intervalMinutes, setIntervalMinutes] = useState(120);
   const [workspaceEnabled, setWorkspaceEnabled] = useState<Record<number, boolean>>({});
+  const [lots, setLots] = useState<LotItem[]>([]);
+  const [lotsLoading, setLotsLoading] = useState(false);
+  const [lotsError, setLotsError] = useState<string | null>(null);
+
+  const selectedWorkspaceId = selectedId === "all" ? undefined : selectedId;
+
+  const workspaceMap = useMemo(() => {
+    const map = new Map<number, string>();
+    workspaces.forEach((ws) => map.set(ws.id, ws.name));
+    return map;
+  }, [workspaces]);
+
+  const selectedWorkspaceLabel = useMemo(() => {
+    if (selectedId === "all") return t("common.allWorkspaces");
+    const match = workspaces.find((ws) => ws.id === selectedId);
+    return match?.name || `${t("common.workspace")} ${selectedId}`;
+  }, [selectedId, t, workspaces]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -98,6 +117,35 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [enabled, allWorkspaces, intervalMinutes, workspaceEnabled]);
+
+  const loadLots = useCallback(async () => {
+    setLotsLoading(true);
+    setLotsError(null);
+    try {
+      const res = await api.listLots(selectedWorkspaceId);
+      setLots(res.items || []);
+    } catch (err) {
+      const message = (err as { message?: string })?.message;
+      setLotsError(message || t("plugins.autoRaise.parsedError"));
+    } finally {
+      setLotsLoading(false);
+    }
+  }, [selectedWorkspaceId, t]);
+
+  useEffect(() => {
+    void loadLots();
+  }, [loadLots]);
+
+  const sortedLots = useMemo(() => {
+    const items = [...lots];
+    items.sort((a, b) => {
+      const aWs = a.workspace_id ?? 0;
+      const bWs = b.workspace_id ?? 0;
+      if (aWs !== bWs) return aWs - bWs;
+      return a.lot_number - b.lot_number;
+    });
+    return items;
+  }, [lots]);
 
   const intervalLabel = useMemo(() => {
     const hours = Math.floor(intervalMinutes / 60);
@@ -274,6 +322,102 @@ const PluginsPage: React.FC<PluginsPageProps> = () => {
             })}
           </div>
         )}
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">{t("plugins.autoRaise.parsedTitle")}</h3>
+            <p className="text-sm text-neutral-500">{t("plugins.autoRaise.parsedDesc")}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+              {t("plugins.autoRaise.parsedCount", { count: sortedLots.length })}
+            </span>
+            <button
+              type="button"
+              onClick={loadLots}
+              disabled={lotsLoading}
+              className={`rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-semibold text-neutral-600 transition ${
+                lotsLoading ? "cursor-not-allowed opacity-60" : "hover:border-neutral-300"
+              }`}
+            >
+              {t("plugins.autoRaise.parsedRefresh")}
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-neutral-500">
+          {t("plugins.autoRaise.parsedScope", { workspace: selectedWorkspaceLabel })}
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <div className="min-w-[720px]">
+            <div className="grid gap-3 px-4 text-xs font-semibold text-neutral-500" style={{ gridTemplateColumns: LOTS_GRID }}>
+              <span>{t("plugins.autoRaise.parsedColLot")}</span>
+              <span>{t("plugins.autoRaise.parsedColAccount")}</span>
+              <span>{t("plugins.autoRaise.parsedColWorkspace")}</span>
+              <span>{t("plugins.autoRaise.parsedColLink")}</span>
+            </div>
+            <div className="mt-3 space-y-3 overflow-y-auto overflow-x-hidden pr-1" style={{ maxHeight: "420px" }}>
+              {lotsLoading && (
+                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                  {t("plugins.autoRaise.parsedLoading")}
+                </div>
+              )}
+              {!lotsLoading && lotsError && (
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-6 text-center text-sm text-rose-600">
+                  {lotsError}
+                </div>
+              )}
+              {!lotsLoading &&
+                !lotsError &&
+                sortedLots.map((lot) => {
+                  const workspaceLabel =
+                    lot.workspace_id !== null && lot.workspace_id !== undefined
+                      ? workspaceMap.get(lot.workspace_id) || `${t("common.workspace")} ${lot.workspace_id}`
+                      : t("common.allWorkspaces");
+                  return (
+                    <div
+                      key={`${lot.lot_number}-${lot.account_id}`}
+                      className="grid items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)]"
+                      style={{ gridTemplateColumns: LOTS_GRID }}
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-neutral-900">#{lot.lot_number}</div>
+                        <div className="text-xs text-neutral-400">{lot.display_name || lot.account_name || "-"}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-neutral-800">{lot.account_name || "-"}</div>
+                        <div className="text-xs text-neutral-400">
+                          {lot.account_id ? `ID ${lot.account_id}` : "-"}
+                        </div>
+                      </div>
+                      <span className="min-w-0 truncate text-xs text-neutral-600">{workspaceLabel}</span>
+                      <span className="min-w-0 text-xs">
+                        {lot.lot_url ? (
+                          <a
+                            href={lot.lot_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-sky-600 hover:text-sky-700"
+                          >
+                            {t("plugins.autoRaise.parsedOpen")}
+                          </a>
+                        ) : (
+                          <span className="text-neutral-400">-</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              {!lotsLoading && !lotsError && sortedLots.length === 0 && (
+                <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+                  {t("plugins.autoRaise.parsedEmpty")}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

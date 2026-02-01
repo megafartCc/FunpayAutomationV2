@@ -36,6 +36,7 @@ const statusPill = (status?: string | null) => {
 
 const eventLabel = (eventType?: string | null) => {
   const normalized = (eventType || "").toLowerCase();
+  if (normalized.includes("raise")) return "Автоподнятие";
   if (normalized === "purchase") return "Покупка";
   if (normalized === "deauthorize") return "Деавторизация Steam";
   if (normalized === "rental_expired") return "Аренда истекла";
@@ -79,6 +80,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
 
   const filteredNotifications = useMemo(() => {
     if (eventFilter === "all") return notifications;
+    if (eventFilter === "raise") {
+      return notifications.filter((notification) =>
+        (notification.event_type || "").toLowerCase().includes("raise"),
+      );
+    }
     return notifications.filter((notification) => notification.event_type === eventFilter);
   }, [notifications, eventFilter]);
 
@@ -107,6 +113,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onToast }) => {
               <option value="replacement">Замена</option>
               <option value="deauthorize">Деавторизация</option>
               <option value="rental_expired">Аренда истекла</option>
+              <option value="raise">Автоподнятие</option>
             </select>
           </div>
           <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
