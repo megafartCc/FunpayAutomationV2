@@ -498,6 +498,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                                 {tr("Pending review", "На проверке")}
                               </span>
                             )}
+                            {entry.details ? (
+                              <div className="mt-1 truncate text-xs text-neutral-400">{entry.details}</div>
+                            ) : null}
                             {isAllWorkspaces && (
                               <div className="text-xs text-neutral-400">
                                 {formatWorkspaceLabel(entry.workspace_id ?? null, workspaces)}

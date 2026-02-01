@@ -14,6 +14,7 @@ class BlacklistEntry:
     id: int
     owner: str
     reason: Optional[str]
+    details: Optional[str]
     status: str
     user_id: int
     workspace_id: Optional[int]
@@ -65,7 +66,7 @@ class MySQLBlacklistRepo:
                 params.append(status)
             cursor.execute(
                 f"""
-                SELECT id, owner, reason, status, user_id, workspace_id, created_at
+                SELECT id, owner, reason, details, status, user_id, workspace_id, created_at
                 FROM blacklist
                 {where}
                 ORDER BY created_at DESC, id DESC
@@ -78,6 +79,7 @@ class MySQLBlacklistRepo:
                     id=int(row["id"]),
                     owner=row["owner"],
                     reason=row.get("reason"),
+                    details=row.get("details"),
                     status=row.get("status") or "confirmed",
                     user_id=int(row["user_id"]),
                     workspace_id=row.get("workspace_id"),
@@ -165,11 +167,13 @@ class MySQLBlacklistRepo:
         workspace_id: int | None = None,
         *,
         status: str = "confirmed",
+        details: str | None = None,
     ) -> bool:
         owner_key = self._normalize_owner(owner)
         if not owner_key:
             return False
         reason_value = reason.strip() if isinstance(reason, str) and reason.strip() else None
+        details_value = details.strip() if isinstance(details, str) and details.strip() else None
         status_value = str(status or "confirmed").strip().lower() or "confirmed"
         conn = self._get_conn()
         try:
@@ -190,22 +194,23 @@ class MySQLBlacklistRepo:
                     cursor.execute(
                         """
                         UPDATE blacklist
-                        SET reason = %s, status = %s
+                        SET reason = %s, details = %s, status = %s
                         WHERE owner = %s AND user_id = %s AND workspace_id IS NULL
                         """,
-                        (reason_value, status_value, owner_key, int(user_id)),
+                        (reason_value, details_value, status_value, owner_key, int(user_id)),
                     )
                     conn.commit()
                     return cursor.rowcount > 0
             try:
                 cursor.execute(
                     """
-                    INSERT INTO blacklist (owner, reason, status, user_id, workspace_id)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO blacklist (owner, reason, details, status, user_id, workspace_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
                         owner_key,
                         reason_value,
+                        details_value,
                         status_value,
                         int(user_id),
                         int(workspace_id) if workspace_id is not None else None,
@@ -216,16 +221,17 @@ class MySQLBlacklistRepo:
             except mysql.connector.Error as exc:
                 if exc.errno != errorcode.ER_DUP_ENTRY:
                     raise
-                if reason_value is None and status_value == "confirmed":
+                if reason_value is None and details_value is None and status_value == "confirmed":
                     return False
                 cursor.execute(
                     """
                     UPDATE blacklist
-                    SET reason = %s, status = %s
+                    SET reason = %s, details = %s, status = %s
                     WHERE owner = %s AND user_id = %s AND workspace_id <=> %s
                     """,
                     (
                         reason_value,
+                        details_value,
                         status_value,
                         owner_key,
                         int(user_id),

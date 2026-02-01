@@ -304,6 +304,7 @@ def ensure_schema() -> None:
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 owner VARCHAR(255) NOT NULL,
                 reason TEXT NULL,
+                details TEXT NULL,
                 status VARCHAR(16) NOT NULL DEFAULT 'confirmed',
                 user_id BIGINT NOT NULL,
                 workspace_id BIGINT NULL,
@@ -327,6 +328,15 @@ def ensure_schema() -> None:
             cursor.execute(
                 "ALTER TABLE blacklist ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'confirmed' AFTER reason"
             )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'blacklist' AND column_name = 'details'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE blacklist ADD COLUMN details TEXT NULL AFTER reason")
         cursor.execute(
             """
             SELECT 1 FROM information_schema.statistics

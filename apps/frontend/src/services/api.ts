@@ -121,6 +121,7 @@ export type BlacklistEntry = {
   id: number;
   owner: string;
   reason?: string | null;
+  details?: string | null;
   status?: string | null;
   workspace_id?: number | null;
   created_at?: string | null;

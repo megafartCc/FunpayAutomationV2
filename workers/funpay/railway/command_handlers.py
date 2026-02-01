@@ -604,13 +604,15 @@ def handle_low_priority_replace_command(
         return True
 
     suggestion_reason = "LP replacement request"
-    suggestion_details = f"account_id={selected.get('id')}; lot={selected.get('lot_number')}"
+    display_name = build_display_name(selected)
+    suggestion_details = f"Account: {display_name} (ID {selected.get('id')})"
     suggestion_added = upsert_blacklist_suggestion(
         mysql_cfg,
         owner=sender_username,
         user_id=int(user_id),
         workspace_id=workspace_id,
         reason=suggestion_reason,
+        details=suggestion_details,
     )
 
     rental_start = _parse_datetime(selected.get("rental_start"))

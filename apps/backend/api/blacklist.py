@@ -19,6 +19,7 @@ class BlacklistEntryItem(BaseModel):
     id: int
     owner: str
     reason: str | None = None
+    details: str | None = None
     status: str | None = None
     workspace_id: int | None = None
     created_at: str | None = None
@@ -84,6 +85,7 @@ def list_blacklist(
                 id=entry.id,
                 owner=entry.owner,
                 reason=entry.reason,
+                details=entry.details,
                 status=entry.status,
                 workspace_id=entry.workspace_id,
                 created_at=entry.created_at,
@@ -166,6 +168,7 @@ def add_blacklist(
         id=entry.id,
         owner=entry.owner,
         reason=entry.reason,
+        details=entry.details,
         status=entry.status,
         workspace_id=entry.workspace_id,
         created_at=entry.created_at,
@@ -206,6 +209,7 @@ def update_blacklist(
         id=entry.id,
         owner=entry.owner,
         reason=entry.reason,
+        details=entry.details,
         status=entry.status,
         workspace_id=entry.workspace_id,
         created_at=entry.created_at,

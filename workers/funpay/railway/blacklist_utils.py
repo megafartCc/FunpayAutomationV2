@@ -92,6 +92,7 @@ def upsert_blacklist_suggestion(
     user_id: int,
     workspace_id: int | None = None,
     reason: str | None = None,
+    details: str | None = None,
 ) -> bool:
     owner_key = normalize_owner_name(owner)
     if not owner_key:
@@ -104,7 +105,9 @@ def upsert_blacklist_suggestion(
             return False
         if not column_exists(cursor, "blacklist", "status"):
             return False
+        has_details = column_exists(cursor, "blacklist", "details")
         reason_value = reason.strip() if isinstance(reason, str) and reason.strip() else None
+        details_value = details.strip() if isinstance(details, str) and details.strip() else None
         cursor.execute(
             """
             SELECT id, status FROM blacklist
@@ -118,27 +121,52 @@ def upsert_blacklist_suggestion(
             current_status = row[1] if len(row) > 1 else None
             if current_status == "confirmed":
                 return False
-            cursor.execute(
-                """
-                UPDATE blacklist
-                SET reason = %s, status = 'pending', updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-                """,
-                (reason_value, int(row[0])),
-            )
+            if has_details:
+                cursor.execute(
+                    """
+                    UPDATE blacklist
+                    SET reason = %s, details = %s, status = 'pending', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (reason_value, details_value, int(row[0])),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE blacklist
+                    SET reason = %s, status = 'pending', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (reason_value, int(row[0])),
+                )
         else:
-            cursor.execute(
-                """
-                INSERT INTO blacklist (owner, reason, status, user_id, workspace_id)
-                VALUES (%s, %s, 'pending', %s, %s)
-                """,
-                (
-                    owner_key,
-                    reason_value,
-                    int(user_id),
-                    int(workspace_id) if workspace_id is not None else None,
-                ),
-            )
+            if has_details:
+                cursor.execute(
+                    """
+                    INSERT INTO blacklist (owner, reason, details, status, user_id, workspace_id)
+                    VALUES (%s, %s, %s, 'pending', %s, %s)
+                    """,
+                    (
+                        owner_key,
+                        reason_value,
+                        details_value,
+                        int(user_id),
+                        int(workspace_id) if workspace_id is not None else None,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO blacklist (owner, reason, status, user_id, workspace_id)
+                    VALUES (%s, %s, 'pending', %s, %s)
+                    """,
+                    (
+                        owner_key,
+                        reason_value,
+                        int(user_id),
+                        int(workspace_id) if workspace_id is not None else None,
+                    ),
+                )
         conn.commit()
         return True
     finally:
