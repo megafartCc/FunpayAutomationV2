@@ -362,24 +362,24 @@ def _handle_review_bonus(
     except RuntimeError:
         return
     bonus_minutes = env_int("REVIEW_BONUS_MINUTES", 60)
-    bonus_label = f"+{bonus_minutes} ?????"
+    bonus_label = f"+{bonus_minutes} минут"
     if int(bonus_minutes) == 60:
-        bonus_label = "+1 ???"
+        bonus_label = "+1 час"
 
     def _send_bonus_message(updated: dict | None) -> None:
         if not updated or chat_id is None:
             return
         account_id = updated.get("id")
-        account_suffix = f" ???????? (ID {account_id})" if account_id is not None else ""
-        message = f"?? ?????????? ????? ? ????????? {bonus_label} ? ??????{account_suffix}."
+        account_suffix = f" аккаунту (ID {account_id})" if account_id is not None else ""
+        message = f"✅ Продлил аренду на {bonus_label} по отзыву к{account_suffix}."
         send_chat_message(logger, account, int(chat_id), message)
 
     def _send_revert_message(updated: dict | None, reason: str) -> None:
         if not updated or chat_id is None:
             return
         account_id = updated.get("id")
-        account_suffix = f" ???????? (ID {account_id})" if account_id is not None else ""
-        message = f"{reason} ? ????? {bonus_label} ??????? ? ??????{account_suffix}."
+        account_suffix = f" аккаунту (ID {account_id})" if account_id is not None else ""
+        message = f"{reason} — бонус {bonus_label} отменён по{account_suffix}."
         send_chat_message(logger, account, int(chat_id), message)
 
     if getattr(msg, "type", None) == MessageTypes.FEEDBACK_DELETED:
