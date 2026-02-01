@@ -62,7 +62,7 @@
     scrollbar-gutter: stable;
   }
   .dashboard-list-scroll {
-    max-height: min(680px, calc(100vh - 460px));
+    max-height: min(760px, calc(100vh - 380px));
   }
 }
 
