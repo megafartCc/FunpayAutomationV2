@@ -1,7 +1,6 @@
 import logging
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import router as auth_router
 from api.accounts import router as accounts_router
@@ -27,23 +26,7 @@ logger = logging.getLogger("uvicorn.error")
 def _startup() -> None:
     ensure_schema()
 
-if settings.cors_origins == ["*"]:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[],
-        allow_origin_regex=".*",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(accounts_router, prefix="/api", tags=["accounts"])
