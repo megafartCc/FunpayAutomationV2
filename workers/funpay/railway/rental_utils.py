@@ -20,7 +20,11 @@ from .db_utils import column_exists, get_mysql_config, resolve_workspace_mysql_c
 from .env_utils import env_bool, env_int
 from .models import RentalMonitorState
 from .notifications_utils import log_notification_event
-from .order_utils import fetch_latest_order_id_for_account, fetch_latest_order_id_for_owner_lot
+from .order_utils import (
+    fetch_latest_order_id_for_account,
+    fetch_latest_order_id_for_owner_lot,
+    resolve_order_id_from_funpay,
+)
 from .presence_utils import fetch_presence
 from .steam_guard_utils import steam_id_from_mafile
 from .steam_utils import deauthorize_account_sessions
@@ -348,10 +352,18 @@ def process_rental_monitor(
                     user_id=int(user_id),
                     workspace_id=workspace_id,
                 )
-            order_suffix = order_id or "______"
-            confirm_message = (
-                f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
-                f"Подтвердите тут -> https://funpay.com/orders/{order_suffix}/"
-            )
+            if not order_id:
+                order_id = resolve_order_id_from_funpay(
+                    account,
+                    owner=owner,
+                    lot_number=row.get("lot_number"),
+                    account_name=row.get("account_name") or row.get("login"),
+                )
+            confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
+            if order_id:
+                confirm_message = (
+                    f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
+                    f"Подтвердите тут -> https://funpay.com/orders/{order_id}/"
+                )
             send_message_by_owner(logger, account, owner, confirm_message)
         _clear_expire_delay_state(state, account_id)

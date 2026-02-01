@@ -526,6 +526,44 @@ def fetch_latest_order_id_for_owner_lot(
         conn.close()
 
 
+def resolve_order_id_from_funpay(
+    account: Account,
+    *,
+    owner: str,
+    lot_number: int | None = None,
+    account_name: str | None = None,
+) -> str | None:
+    owner_key = str(owner or "").strip()
+    if not owner_key:
+        return None
+    try:
+        _, orders, _, _ = account.get_sales(
+            buyer=owner_key,
+            include_paid=True,
+            include_closed=True,
+            include_refunded=True,
+        )
+    except Exception as exc:
+        logging.getLogger("funpay.worker").warning("Failed to resolve order for %s: %s", owner_key, exc)
+        return None
+    if not orders:
+        return None
+    if lot_number is not None:
+        lot_str = str(lot_number)
+        for order in orders:
+            description = str(getattr(order, "description", "") or "")
+            if lot_str and lot_str in description:
+                return order.id
+    if account_name:
+        name_key = str(account_name).strip().lower()
+        if name_key:
+            for order in orders:
+                description = str(getattr(order, "description", "") or "").lower()
+                if name_key in description:
+                    return order.id
+    return orders[0].id if orders else None
+
+
 def handle_order_purchased(
     logger: logging.Logger,
     account: Account,
