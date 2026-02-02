@@ -53,6 +53,7 @@ from .lot_utils import (
     replace_rental_account,
     start_rental_for_owner,
 )
+from .order_utils import fetch_previous_owner_for_account
 from .rental_utils import update_rental_freeze_state
 from .steam_guard_utils import get_steam_guard_code, steam_id_from_mafile
 from .text_utils import (
@@ -605,15 +606,29 @@ def handle_low_priority_replace_command(
 
     suggestion_reason = "LP replacement request"
     display_name = build_display_name(selected)
-    suggestion_details = f"Account: {display_name} (ID {selected.get('id')})"
-    suggestion_added = upsert_blacklist_suggestion(
+    previous_owner = fetch_previous_owner_for_account(
         mysql_cfg,
-        owner=sender_username,
+        account_id=int(selected.get("id") or 0),
         user_id=int(user_id),
         workspace_id=workspace_id,
-        reason=suggestion_reason,
-        details=suggestion_details,
+        current_owner=sender_username,
     )
+    suggestion_details = (
+        f"Account: {display_name} (ID {selected.get('id')}); "
+        f"current_owner={sender_username}; previous_owner={previous_owner or 'unknown'}"
+    )
+    suggestion_added = False
+    suggestion_owner = None
+    if previous_owner and normalize_owner_name(previous_owner) != normalize_owner_name(sender_username):
+        suggestion_owner = previous_owner
+        suggestion_added = upsert_blacklist_suggestion(
+            mysql_cfg,
+            owner=previous_owner,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            reason=suggestion_reason,
+            details=suggestion_details,
+        )
 
     rental_start = _parse_datetime(selected.get("rental_start"))
     if rental_start is None:
@@ -671,7 +686,7 @@ def handle_low_priority_replace_command(
         if suggestion_added:
             log_blacklist_event(
                 mysql_cfg,
-                owner=sender_username,
+                owner=suggestion_owner or sender_username,
                 action="lp_replace_request",
                 reason=suggestion_reason,
                 details=f"{suggestion_details}; result=failed",
@@ -693,7 +708,7 @@ def handle_low_priority_replace_command(
     if suggestion_added:
         log_blacklist_event(
             mysql_cfg,
-            owner=sender_username,
+            owner=suggestion_owner or sender_username,
             action="lp_replace_request",
             reason=suggestion_reason,
             details=f"{suggestion_details}; result=success",

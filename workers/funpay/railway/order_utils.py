@@ -438,6 +438,52 @@ def fetch_latest_order_id_for_account(
         conn.close()
 
 
+def fetch_previous_owner_for_account(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    user_id: int,
+    workspace_id: int | None = None,
+    current_owner: str | None = None,
+) -> str | None:
+    owner_key = normalize_owner_name(current_owner)
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "order_history"):
+            return None
+        has_workspace = column_exists(cursor, "order_history", "workspace_id")
+        params: list = [int(user_id), int(account_id)]
+        where = [
+            "user_id = %s",
+            "account_id = %s",
+            "action IN ('assign', 'extend', 'replace_assign')",
+        ]
+        if owner_key:
+            where.append("LOWER(owner) <> %s")
+            params.append(owner_key)
+        if has_workspace and workspace_id is not None:
+            where.append("workspace_id = %s")
+            params.append(int(workspace_id))
+        cursor.execute(
+            f"""
+            SELECT owner
+            FROM order_history
+            WHERE {" AND ".join(where)}
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return row[0] if row[0] else None
+    finally:
+        conn.close()
+
+
 def fetch_latest_account_for_owner_lot(
     mysql_cfg: dict,
     *,
