@@ -36,6 +36,19 @@ class BlacklistLog:
 
 class MySQLBlacklistRepo:
     @staticmethod
+    def _table_exists(cursor: mysql.connector.cursor.MySQLCursor, table_name: str) -> bool:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = %s
+            LIMIT 1
+            """,
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+
+    @staticmethod
     def _get_table_columns(cursor: mysql.connector.cursor.MySQLCursor, table_name: str) -> set[str]:
         cursor.execute(
             """
@@ -65,7 +78,10 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
-            columns = self._get_table_columns(conn.cursor(), "blacklist")
+            meta_cursor = conn.cursor()
+            if not self._table_exists(meta_cursor, "blacklist"):
+                return []
+            columns = self._get_table_columns(meta_cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             has_details = "details" in columns
             has_status = "status" in columns
@@ -119,7 +135,10 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
-            columns = self._get_table_columns(conn.cursor(), "blacklist_logs")
+            meta_cursor = conn.cursor()
+            if not self._table_exists(meta_cursor, "blacklist_logs"):
+                return []
+            columns = self._get_table_columns(meta_cursor, "blacklist_logs")
             has_workspace_id = "workspace_id" in columns
             has_details = "details" in columns
             has_amount = "amount" in columns
@@ -166,6 +185,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return False
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             has_status = "status" in columns
@@ -209,6 +230,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return False
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             has_details = "details" in columns
@@ -315,6 +338,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return False
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             has_status = "status" in columns
@@ -368,6 +393,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return 0
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             placeholders = ", ".join(["%s"] * len(owners_clean))
@@ -392,6 +419,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return 0
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             params: list = [int(user_id)]
@@ -425,6 +454,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist_logs"):
+                return
             columns = self._get_table_columns(cursor, "blacklist_logs")
             insert_columns = ["owner", "action", "reason", "user_id"]
             insert_values: list[object] = [
@@ -467,6 +498,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist_logs"):
+                return 0
             columns = self._get_table_columns(cursor, "blacklist_logs")
             has_workspace_id = "workspace_id" in columns
             params: list = [owner_key, int(user_id)]
@@ -499,6 +532,8 @@ class MySQLBlacklistRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return False
             columns = self._get_table_columns(cursor, "blacklist")
             has_workspace_id = "workspace_id" in columns
             params: list = [owner_key, int(user_id)]
