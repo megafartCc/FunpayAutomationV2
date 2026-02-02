@@ -14,35 +14,13 @@ type ResolvedWorkspace = {
 };
 
 const BLACKLIST_GRID =
-  "40px minmax(180px,1.2fr) minmax(180px,1fr) minmax(220px,1.4fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
-
-const getStratzUrl = (steamId?: string | null) => {
-  const trimmed = (steamId || "").trim();
-  if (!trimmed || trimmed.toLowerCase() === "unknown") return null;
-  return `https://stratz.com/search/${trimmed}`;
-};
+  "40px minmax(180px,1.2fr) minmax(240px,1.6fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleString();
-};
-
-const parseAccountDetails = (details?: string | null) => {
-  if (!details) return null;
-  const loginMatch = details.match(/login=([^;]+)/i);
-  const steamMatch = details.match(/steam_id=([^;]+)/i);
-  const normalize = (value?: string | null) => {
-    if (!value) return null;
-    const trimmed = value.trim();
-    if (!trimmed || trimmed.toLowerCase() === "unknown") return null;
-    return trimmed;
-  };
-  return {
-    login: normalize(loginMatch?.[1] ?? null),
-    steamId: normalize(steamMatch?.[1] ?? null),
-  };
 };
 
 const formatWorkspaceLabel = (
@@ -474,7 +452,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                   />
                 </label>
                 <span>{tr("Buyer", "Покупатель")}</span>
-                <span>{tr("Steam account", "Steam аккаунт")}</span>
                 <span>{tr("Reason", "Причина")}</span>
                 <span>{tr("Added", "Добавлено")}</span>
                 <span>{tr("Actions", "Действия")}</span>
@@ -491,7 +468,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                       blacklistEditingId !== null &&
                       entry.id !== undefined &&
                       String(blacklistEditingId) === String(entry.id);
-                    const accountDetails = parseAccountDetails(entry.details);
                     return (
                       <div
                         key={entry.id ?? entry.owner ?? idx}
@@ -522,23 +498,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                                 {tr("Pending review", "На проверке")}
                               </span>
                             )}
-                            {accountDetails?.login ? (
-                              <div className="mt-1 text-xs text-neutral-500">
-                                {tr("Account login:", "Логин аккаунта:")}{" "}
-                                {stratzUrl(accountDetails.steamId) ? (
-                                  <a
-                                    href={stratzUrl(accountDetails.steamId)!}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="font-semibold text-blue-600 hover:underline"
-                                  >
-                                    {accountDetails.login}
-                                  </a>
-                                ) : (
-                                  <span className="font-semibold text-neutral-700">{accountDetails.login}</span>
-                                )}
-                              </div>
-                            ) : null}
                             {entry.details ? (
                               <div className="mt-1 truncate text-xs text-neutral-400">{entry.details}</div>
                             ) : null}
@@ -549,24 +508,6 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                             )}
                           </div>
                         )}
-                        <div className="min-w-0">
-                          {accountDetails?.login ? (
-                            getStratzUrl(accountDetails.steamId) ? (
-                              <a
-                                href={getStratzUrl(accountDetails.steamId)!}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="truncate font-semibold text-blue-600 hover:underline"
-                              >
-                                {accountDetails.login}
-                              </a>
-                            ) : (
-                              <span className="truncate font-semibold text-neutral-700">{accountDetails.login}</span>
-                            )
-                          ) : (
-                            <span className="text-neutral-400">-</span>
-                          )}
-                        </div>
                         {isEditing ? (
                           <input
                             value={blacklistEditReason}
