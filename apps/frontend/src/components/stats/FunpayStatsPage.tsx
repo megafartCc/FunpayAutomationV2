@@ -88,6 +88,14 @@ type BuyerStat = {
 
 const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
 
+type BlankCardProps = {
+  minHeight?: number;
+};
+
+const BlankCard: React.FC<BlankCardProps> = ({ minHeight = 260 }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm" style={{ minHeight }} />
+);
+
 const FunpayStatsPage: React.FC = () => {
   const { tr } = useI18n();
   const { selectedId } = useWorkspace();
@@ -566,7 +574,7 @@ const FunpayStatsPage: React.FC = () => {
         </div>
       </div>
 
-      {blankCard(120)}
+      <BlankCard minHeight={120} />
     </div>
   );
 };
