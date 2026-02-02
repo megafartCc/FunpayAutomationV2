@@ -111,67 +111,7 @@ class MySQLAutoRaiseRepo:
                 """
             )
             has_workspace_id = cursor.fetchone() is not None
-            cursor.execute(
-                """
-                SELECT 1 FROM information_schema.statistics
-                WHERE table_schema = DATABASE()
-                  AND table_name = 'auto_raise_settings'
-                  AND index_name = 'uniq_auto_raise_settings'
-                LIMIT 1
-                """
-            )
-            has_workspace_unique = cursor.fetchone() is not None
-            cursor.execute(
-                """
-                SELECT column_name
-                FROM information_schema.key_column_usage
-                WHERE table_schema = DATABASE()
-                  AND table_name = 'auto_raise_settings'
-                  AND constraint_name = 'PRIMARY'
-                ORDER BY ordinal_position
-                """
-            )
-            primary_key_columns = [row[0] for row in cursor.fetchall() or []]
-            has_legacy_primary_key = primary_key_columns == ["user_id"]
             if not has_workspace_id:
-                cursor.execute(
-                    """
-                    INSERT INTO auto_raise_settings (user_id, enabled, all_workspaces, interval_minutes)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        enabled = VALUES(enabled),
-                        all_workspaces = VALUES(all_workspaces),
-                        interval_minutes = VALUES(interval_minutes)
-                    """,
-                    (
-                        int(user_id),
-                        1 if settings.enabled else 0,
-                        1 if settings.all_workspaces else 0,
-                        int(settings.interval_minutes),
-                    ),
-                )
-                conn.commit()
-                return
-            if not has_workspace_unique:
-                cursor.execute(
-                    """
-                    INSERT INTO auto_raise_settings (user_id, enabled, all_workspaces, interval_minutes)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        enabled = VALUES(enabled),
-                        all_workspaces = VALUES(all_workspaces),
-                        interval_minutes = VALUES(interval_minutes)
-                    """,
-                    (
-                        int(user_id),
-                        1 if settings.enabled else 0,
-                        1 if settings.all_workspaces else 0,
-                        int(settings.interval_minutes),
-                    ),
-                )
-                conn.commit()
-                return
-            if has_legacy_primary_key:
                 cursor.execute(
                     """
                     INSERT INTO auto_raise_settings (user_id, enabled, all_workspaces, interval_minutes)

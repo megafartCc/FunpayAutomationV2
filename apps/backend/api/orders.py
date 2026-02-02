@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from api.deps import get_current_user
 from db.order_history_repo import MySQLOrderHistoryRepo
 from db.workspace_repo import MySQLWorkspaceRepo
+from services.funpay_refund import refund_order
 
 
 router = APIRouter()
@@ -45,6 +46,17 @@ class OrderHistoryItem(BaseModel):
 
 class OrdersHistoryResponse(BaseModel):
     items: list[OrderHistoryItem]
+
+
+class OrderRefundRequest(BaseModel):
+    order_id: str
+    workspace_id: int | None = None
+
+
+class OrderRefundResponse(BaseModel):
+    order_id: str
+    ok: bool
+    message: str | None = None
 
 
 @router.get("/orders/resolve", response_model=OrderResolveResponse)
@@ -109,3 +121,32 @@ def orders_history(
             for item in items
         ]
     )
+
+
+@router.post("/orders/refund", response_model=OrderRefundResponse)
+def refund_order_request(
+    payload: OrderRefundRequest,
+    user=Depends(get_current_user),
+) -> OrderRefundResponse:
+    user_id = int(user.id)
+    resolved = orders_repo.resolve_order(payload.order_id, user_id, payload.workspace_id)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Order not found in history yet.")
+    resolved_workspace_id = payload.workspace_id or resolved.workspace_id
+    if resolved_workspace_id is None:
+        raise HTTPException(status_code=400, detail="Order workspace is required for refund.")
+    workspace = workspace_repo.get_by_id(int(resolved_workspace_id), user_id)
+    if not workspace:
+        raise HTTPException(status_code=400, detail="Select a workspace for refund.")
+    if (workspace.platform or "funpay").lower() != "funpay":
+        raise HTTPException(status_code=400, detail="Refund is supported only for FunPay workspaces.")
+    if not workspace.golden_key:
+        raise HTTPException(status_code=400, detail="Workspace golden_key is missing.")
+    result = refund_order(
+        golden_key=workspace.golden_key,
+        order_id=resolved.order_id,
+        proxy_url=workspace.proxy_url,
+    )
+    if not result.ok:
+        raise HTTPException(status_code=400, detail=result.message or "Refund failed.")
+    return OrderRefundResponse(order_id=result.order_id, ok=True, message=result.message)

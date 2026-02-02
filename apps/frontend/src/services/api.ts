@@ -180,6 +180,12 @@ export type OrderHistoryItem = {
   created_at?: string | null;
 };
 
+export type OrderRefundResult = {
+  order_id: string;
+  ok: boolean;
+  message?: string | null;
+};
+
 export type NotificationItem = {
   id: number;
   event_type: string;
@@ -486,6 +492,11 @@ export const api = {
       { method: "GET" },
     );
   },
+  refundOrder: (orderId: string, workspaceId?: number | null) =>
+    request<OrderRefundResult>("/orders/refund", {
+      method: "POST",
+      body: { order_id: orderId, workspace_id: workspaceId ?? null },
+    }),
   listNotifications: (workspaceId?: number | null, limit?: number) => {
     const params = new URLSearchParams();
     if (limit) params.set("limit", String(limit));
