@@ -16,13 +16,7 @@ type ResolvedWorkspace = {
 const BLACKLIST_GRID =
   "40px minmax(180px,1.2fr) minmax(180px,1fr) minmax(220px,1.4fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
 
-const stratzUrl = (steamId?: string | null) => {
-  const trimmed = (steamId || "").trim();
-  if (!trimmed || trimmed.toLowerCase() === "unknown") return null;
-  return `https://stratz.com/search/${trimmed}`;
-};
-
-const stratzUrl = (steamId?: string | null) => {
+const getStratzUrl = (steamId?: string | null) => {
   const trimmed = (steamId || "").trim();
   if (!trimmed || trimmed.toLowerCase() === "unknown") return null;
   return `https://stratz.com/search/${trimmed}`;
@@ -557,9 +551,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                         )}
                         <div className="min-w-0">
                           {accountDetails?.login ? (
-                            stratzUrl(accountDetails.steamId) ? (
+                            getStratzUrl(accountDetails.steamId) ? (
                               <a
-                                href={stratzUrl(accountDetails.steamId)!}
+                                href={getStratzUrl(accountDetails.steamId)!}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="truncate font-semibold text-blue-600 hover:underline"
