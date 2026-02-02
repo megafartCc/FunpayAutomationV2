@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n/useI18n";
+import { api, ActiveRentalItem, OrderHistoryItem } from "../../services/api";
+import { useWorkspace } from "../../context/WorkspaceContext";
 
 type DeltaTone = "up" | "down";
 
@@ -64,9 +66,27 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
   </div>
 );
 
-const blankCard = (minHeight = 260) => (
-  <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm" style={{ minHeight }} />
-);
+const chartBarColor = (index: number) => {
+  if (index % 6 === 0) return "bg-indigo-500";
+  if (index % 6 === 1) return "bg-sky-500";
+  if (index % 6 === 2) return "bg-emerald-500";
+  if (index % 6 === 3) return "bg-amber-500";
+  if (index % 6 === 4) return "bg-rose-500";
+  return "bg-violet-500";
+};
+
+type ActivityPoint = {
+  label: string;
+  value: number;
+};
+
+type BuyerStat = {
+  name: string;
+  orders: number;
+  avgHours: number;
+};
+
+const formatHours = (hours: number) => `${hours.toFixed(1)}h`;
 
 const chartBarColor = (index: number) => {
   if (index % 6 === 0) return "bg-indigo-500";
@@ -93,7 +113,44 @@ const formatHours = (hours: number) => `${hours.toFixed(1)}h`;
 
 const FunpayStatsPage: React.FC = () => {
   const { tr } = useI18n();
+  const { selectedId } = useWorkspace();
   const [range, setRange] = useState<"7d" | "30d" | "90d" | "all">("30d");
+  const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+  const [activeRentals, setActiveRentals] = useState<ActiveRentalItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const workspaceId = selectedId === "all" ? undefined : selectedId;
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [ordersRes, rentalsRes] = await Promise.all([
+        api.listOrdersHistory(workspaceId ?? null, "", 500),
+        api.listActiveRentals(workspaceId),
+      ]);
+      setOrders(ordersRes.items || []);
+      setActiveRentals(rentalsRes.items || []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load statistics.", "Не удалось загрузить статистику.");
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, tr]);
+
+  useEffect(() => {
+    void loadStats();
+    const interval = window.setInterval(() => {
+      void loadStats();
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [loadStats]);
 
   const rangeLabel = useMemo(() => {
     switch (range) {
@@ -108,80 +165,150 @@ const FunpayStatsPage: React.FC = () => {
     }
   }, [range, tr]);
 
-  const hourlyActivity = useMemo<ActivityPoint[]>(
-    () => [
-      { label: "00:00", value: 6 },
-      { label: "02:00", value: 4 },
-      { label: "04:00", value: 3 },
-      { label: "06:00", value: 5 },
-      { label: "08:00", value: 12 },
-      { label: "10:00", value: 18 },
-      { label: "12:00", value: 21 },
-      { label: "14:00", value: 19 },
-      { label: "16:00", value: 24 },
-      { label: "18:00", value: 22 },
-      { label: "20:00", value: 15 },
-      { label: "22:00", value: 9 },
-    ],
-    [],
-  );
+  const rangeCutoff = useMemo(() => {
+    if (range === "all") return null;
+    const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return cutoff;
+  }, [range]);
+
+  const ordersInRange = useMemo(() => {
+    if (!rangeCutoff) return orders;
+    return orders.filter((order) => {
+      if (!order.created_at) return false;
+      const dt = new Date(order.created_at);
+      if (Number.isNaN(dt.getTime())) return false;
+      return dt >= rangeCutoff;
+    });
+  }, [orders, rangeCutoff]);
+
+  const buyers = useMemo<BuyerStat[]>(() => {
+    const map = new Map<string, { orders: number; totalMinutes: number; minutesCount: number }>();
+    ordersInRange.forEach((order) => {
+      const buyer = order.buyer || tr("Unknown", "Неизвестно");
+      const entry = map.get(buyer) ?? { orders: 0, totalMinutes: 0, minutesCount: 0 };
+      entry.orders += 1;
+      if (order.rental_minutes) {
+        entry.totalMinutes += order.rental_minutes;
+        entry.minutesCount += 1;
+      }
+      map.set(buyer, entry);
+    });
+    return Array.from(map.entries())
+      .map(([name, stats]) => ({
+        name,
+        orders: stats.orders,
+        avgHours: stats.minutesCount ? stats.totalMinutes / 60 / stats.minutesCount : 0,
+      }))
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 5);
+  }, [ordersInRange, tr]);
+
+  const avgRentalHours = useMemo(() => {
+    const minutes = ordersInRange.map((order) => order.rental_minutes || 0).filter((value) => value > 0);
+    if (!minutes.length) return 0;
+    return minutes.reduce((sum, value) => sum + value, 0) / 60 / minutes.length;
+  }, [ordersInRange]);
+
+  const averageOrderValue = useMemo(() => {
+    const values = ordersInRange
+      .map((order) => (typeof order.price === "number" ? order.price : order.amount ?? 0))
+      .filter((value) => value > 0);
+    if (!values.length) return 0;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  }, [ordersInRange]);
+
+  const totalBuyers = useMemo(() => {
+    const set = new Set(ordersInRange.map((order) => order.buyer).filter(Boolean));
+    return set.size;
+  }, [ordersInRange]);
+
+  const hourlyActivity = useMemo<ActivityPoint[]>(() => {
+    const buckets = Array.from({ length: 12 }, (_, idx) => ({
+      label: `${String(idx * 2).padStart(2, "0")}:00`,
+      value: 0,
+    }));
+    ordersInRange.forEach((order) => {
+      if (!order.created_at) return;
+      const dt = new Date(order.created_at);
+      if (Number.isNaN(dt.getTime())) return;
+      const bucket = Math.floor(dt.getHours() / 2);
+      buckets[bucket].value += 1;
+    });
+    return buckets;
+  }, [ordersInRange]);
 
   const peakHour = useMemo(() => {
+    if (!hourlyActivity.length) return { label: "--:--", value: 0 };
     return hourlyActivity.reduce((acc, point) => (point.value > acc.value ? point : acc), hourlyActivity[0]);
   }, [hourlyActivity]);
 
-  const summary = useMemo(
-    () => ({
-      orders: 312,
-      avgRentalHours: 6.4,
-      mostPopularBuyer: "ShadowFox",
-      topBuyerOrders: 42,
-      completionRate: 92,
-      avgResponseMins: 18,
-      activeRentals: 38,
-      totalBuyers: 127,
-    }),
-    [],
-  );
+  const peakRangeLabel = useMemo(() => {
+    if (peakHour.label === "--:--") return "--";
+    const start = Number.parseInt(peakHour.label.slice(0, 2), 10);
+    if (Number.isNaN(start)) return "--";
+    const end = (start + 1) % 24;
+    const startLabel = String(start).padStart(2, "0");
+    const endLabel = String(end).padStart(2, "0");
+    return `${startLabel}:00 - ${endLabel}:59`;
+  }, [peakHour.label]);
 
-  const buyers = useMemo<BuyerStat[]>(
-    () => [
-      { name: "ShadowFox", orders: 42, avgHours: 7.1, trend: "+8%" },
-      { name: "NightRunner", orders: 35, avgHours: 6.3, trend: "+5%" },
-      { name: "Valyria", orders: 28, avgHours: 5.9, trend: "+3%" },
-      { name: "MetaRush", orders: 21, avgHours: 6.8, trend: "-2%" },
-      { name: "EchoWind", orders: 19, avgHours: 5.7, trend: "+1%" },
-    ],
-    [],
-  );
+  const weeklyOverview = useMemo(() => {
+    const now = new Date();
+    const days = Array.from({ length: 7 }, (_, idx) => {
+      const date = new Date(now);
+      date.setDate(now.getDate() - (6 - idx));
+      const key = date.toISOString().slice(0, 10);
+      return { key, label: date.toLocaleDateString(undefined, { weekday: "short" }) };
+    });
+    const map = new Map<string, { orders: number; totalMinutes: number; countMinutes: number }>();
+    ordersInRange.forEach((order) => {
+      if (!order.created_at) return;
+      const dt = new Date(order.created_at);
+      if (Number.isNaN(dt.getTime())) return;
+      const key = dt.toISOString().slice(0, 10);
+      const entry = map.get(key) ?? { orders: 0, totalMinutes: 0, countMinutes: 0 };
+      entry.orders += 1;
+      if (order.rental_minutes) {
+        entry.totalMinutes += order.rental_minutes;
+        entry.countMinutes += 1;
+      }
+      map.set(key, entry);
+    });
+    return days.map((day) => {
+      const stats = map.get(day.key);
+      return {
+        label: day.label,
+        orders: stats?.orders ?? 0,
+        avg: stats?.countMinutes ? stats.totalMinutes / 60 / stats.countMinutes : 0,
+      };
+    });
+  }, [ordersInRange]);
+
+  const mostPopularBuyer = buyers[0]?.name || tr("No data", "Нет данных");
+  const topBuyerOrders = buyers[0]?.orders ?? 0;
 
   const stats: Stat[] = [
     {
       label: tr("Total orders", "Всего заказов"),
-      value: summary.orders,
-      delta: "+14%",
-      deltaTone: "up",
+      value: ordersInRange.length,
       icon: <CardBarsIcon />,
     },
     {
       label: tr("Active rentals", "Активные аренды"),
-      value: summary.activeRentals,
-      delta: "+6%",
-      deltaTone: "up",
+      value: activeRentals.length,
       icon: <CardUsersIcon />,
     },
     {
       label: tr("Average rental time", "Среднее время аренды"),
-      value: formatHours(summary.avgRentalHours),
-      delta: "+4%",
-      deltaTone: "up",
+      value: avgRentalHours ? formatHours(avgRentalHours) : "-",
       icon: <CardCloudCheckIcon />,
     },
     {
       label: tr("Most popular buyer", "Самый частый покупатель"),
-      value: summary.mostPopularBuyer,
-      delta: `${summary.topBuyerOrders} ${tr("orders", "заказов")}`,
-      deltaTone: "up",
+      value: mostPopularBuyer,
+      delta: topBuyerOrders ? `${topBuyerOrders} ${tr("orders", "заказов")}` : undefined,
       icon: <CardUsersIcon />,
     },
   ];
@@ -198,28 +325,50 @@ const FunpayStatsPage: React.FC = () => {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm">
-          {(
-            [
-              { key: "7d", label: tr("7d", "7д") },
-              { key: "30d", label: tr("30d", "30д") },
-              { key: "90d", label: tr("90d", "90д") },
-              { key: "all", label: tr("All", "Все") },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setRange(item.key)}
-              className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-                range === item.key
-                  ? "bg-neutral-900 text-white"
-                  : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-sm">
+            {(
+              [
+                { key: "7d", label: tr("7d", "7д") },
+                { key: "30d", label: tr("30d", "30д") },
+                { key: "90d", label: tr("90d", "90д") },
+                { key: "all", label: tr("All", "Все") },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setRange(item.key)}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
+                  range === item.key
+                    ? "bg-neutral-900 text-white"
+                    : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => loadStats()}
+            className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+          >
+            {tr("Refresh", "Обновить")}
+          </button>
         </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+        <span className="rounded-full bg-neutral-100 px-3 py-1 font-semibold text-neutral-600">{rangeLabel}</span>
+        <span>
+          {tr("Last update:", "Обновлено:")}{" "}
+          {lastUpdated ? lastUpdated.toLocaleTimeString() : tr("Loading...", "Загрузка...")}
+        </span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -263,16 +412,14 @@ const FunpayStatsPage: React.FC = () => {
           </h2>
           <div className="mt-4 space-y-3 text-sm text-neutral-600">
             <div className="flex items-center justify-between">
-              <span>{tr("Completion rate", "Доля выполненных")}</span>
-              <span className="font-semibold text-neutral-900">{summary.completionRate}%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>{tr("Average response", "Среднее время ответа")}</span>
-              <span className="font-semibold text-neutral-900">{summary.avgResponseMins} мин</span>
+              <span>{tr("Average order value", "Средний чек")}</span>
+              <span className="font-semibold text-neutral-900">
+                {averageOrderValue ? `${averageOrderValue.toFixed(0)} ₽` : "-"}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span>{tr("Total buyers", "Всего покупателей")}</span>
-              <span className="font-semibold text-neutral-900">{summary.totalBuyers}</span>
+              <span className="font-semibold text-neutral-900">{totalBuyers}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>{tr("Peak hour rentals", "Аренд в пик")}</span>
@@ -283,9 +430,11 @@ const FunpayStatsPage: React.FC = () => {
             <p className="text-xs uppercase tracking-wide text-neutral-400">
               {tr("Most popular buyer", "Самый частый покупатель")}
             </p>
-            <p className="mt-2 text-lg font-semibold text-neutral-900">{summary.mostPopularBuyer}</p>
+            <p className="mt-2 text-lg font-semibold text-neutral-900">{mostPopularBuyer}</p>
             <p className="text-xs text-neutral-500">
-              {tr("{count} orders in period", "{count} заказов за период", { count: summary.topBuyerOrders })}
+              {topBuyerOrders
+                ? tr("{count} orders in period", "{count} заказов за период", { count: topBuyerOrders })
+                : tr("No orders for the selected range.", "Нет заказов за выбранный период.")}
             </p>
           </div>
         </div>
@@ -346,29 +495,63 @@ const FunpayStatsPage: React.FC = () => {
             <div className="rounded-xl bg-neutral-50 p-4">
               <p className="text-xs uppercase tracking-wide text-neutral-400">{tr("Highest demand", "Пик спроса")}</p>
               <p className="mt-1 text-sm font-semibold text-neutral-900">
-                {tr("16:00 - 18:00", "16:00 - 18:00")}
+                {peakRangeLabel}
               </p>
               <p className="text-xs text-neutral-500">
-                {tr("Most rentals are booked in the late afternoon.", "Большинство аренд бронируется во второй половине дня.")}
+                {tr(
+                  "Based on orders created during the selected range.",
+                  "На основе заказов за выбранный период.",
+                )}
               </p>
             </div>
             <div className="rounded-xl bg-neutral-50 p-4">
               <p className="text-xs uppercase tracking-wide text-neutral-400">{tr("Average order value", "Средний чек")}</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">1 250 ₽</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">
+                {averageOrderValue ? `${averageOrderValue.toFixed(0)} ₽` : "-"}
+              </p>
               <p className="text-xs text-neutral-500">
-                {tr("Up 6% compared to previous period.", "Рост на 6% по сравнению с прошлым периодом.")}
+                {tr("Calculated from recent orders.", "Рассчитано по последним заказам.")}
               </p>
             </div>
             <div className="rounded-xl bg-neutral-50 p-4">
               <p className="text-xs uppercase tracking-wide text-neutral-400">{tr("Queue health", "Состояние очереди")}</p>
               <p className="mt-1 text-sm font-semibold text-neutral-900">
-                {tr("Stable", "Стабильно")}
+                {activeRentals.length > 0 ? tr("Active", "Активно") : tr("Quiet", "Спокойно")}
               </p>
               <p className="text-xs text-neutral-500">
-                {tr("Average wait time is under 10 minutes.", "Среднее ожидание — менее 10 минут.")}
+                {activeRentals.length > 0
+                  ? tr("Rentals are currently in progress.", "Идут активные аренды.")
+                  : tr("No active rentals right now.", "Сейчас нет активных аренд.")}
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Orders overview", "Сводка заказов")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr("Track overall volume and average rental time by day.", "Отслеживайте объем и среднее время аренды по дням.")}
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {loading ? tr("Loading...", "Загрузка...") : tr("{count} orders", "{count} заказов", { count: ordersInRange.length })}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {weeklyOverview.map((day) => (
+            <div key={day.label} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase text-neutral-400">{day.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-neutral-900">{day.orders}</p>
+              <p className="text-xs text-neutral-500">
+                {tr("Avg rental", "Средняя аренда")}: {day.avg ? formatHours(day.avg) : "-"}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
