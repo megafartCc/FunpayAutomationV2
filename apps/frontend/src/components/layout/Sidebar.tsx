@@ -179,6 +179,25 @@ const OrdersHistoryIcon = () => (
   </svg>
 );
 
+const StratzHistoryIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M12 8V12L15 14"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const SettingsIcon = () => (
   <svg width="22" height="21" viewBox="0 0 22 21" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -206,6 +225,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "bonus", labelKey: "nav.bonus", Icon: BonusIcon },
   { id: "rentals", labelKey: "nav.rentals", Icon: RentalsIcon },
   { id: "orders", labelKey: "nav.orders", Icon: OrdersHistoryIcon },
+  { id: "stratz-history", labelKey: "nav.stratzHistory", Icon: StratzHistoryIcon },
   { id: "tickets", labelKey: "nav.tickets", Icon: OrdersHistoryIcon },
   { id: "blacklist", labelKey: "nav.blacklist", Icon: BlacklistIcon },
   { id: "low-priority", labelKey: "nav.lowPriority", Icon: LowPriorityIcon },
@@ -225,6 +245,7 @@ const navIdToPath: Record<string, string> = {
   bonus: "/bonus",
   rentals: "/rentals",
   orders: "/orders",
+  "stratz-history": "/stratz-history",
   tickets: "/tickets",
   blacklist: "/blacklist",
   "low-priority": "/low-priority",

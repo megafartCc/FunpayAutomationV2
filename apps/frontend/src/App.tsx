@@ -13,6 +13,7 @@ import LotsPage from "./components/lots/LotsPage";
 import SettingsPage from "./components/settings/SettingsPage";
 import BlacklistPage from "./components/blacklist/BlacklistPage";
 import OrdersHistoryPage from "./components/orders/OrdersHistoryPage";
+import StratzGameHistoryPage from "./components/stratz/StratzGameHistoryPage";
 import ChatsPage from "./components/chats/ChatsPage";
 import LowPriorityAccountsPage from "./components/lowPriority/LowPriorityAccountsPage";
 import NotificationsPage from "./components/notifications/NotificationsPage";
@@ -154,6 +155,7 @@ const AppRoutes: React.FC = () => {
           <Route path="funpay-stats" element={<FunpayStatsPage />} />
           <Route path="rentals" element={<ActiveRentalsPage onToast={showToast} />} />
           <Route path="orders" element={<OrdersHistoryPage onToast={showToast} />} />
+          <Route path="stratz-history" element={<StratzGameHistoryPage />} />
           <Route
             path="tickets"
             element={
