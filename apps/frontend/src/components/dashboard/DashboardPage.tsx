@@ -1007,7 +1007,22 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative min-h-full">
+      <div
+        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+        aria-hidden="true"
+      >
+        <iframe
+          title="Retro Futuristic Circuit Background"
+          src="https://my.spline.design/retrofuturisticcircuitloop-9LZtUYtHIqnfCnmLrUd9dyUJ/"
+          className="h-full w-full border-0"
+          loading="eager"
+          tabIndex={-1}
+        />
+        <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] dark:bg-neutral-900/70" />
+      </div>
+
+      <div className="relative z-10 space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (
           <StatCard key={card.label} {...card} />
@@ -1257,6 +1272,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         {renderAccountActionsPanel()}
         {renderRentalActionsPanel()}
       </div>
+    </div>
     </div>
   );
 };
