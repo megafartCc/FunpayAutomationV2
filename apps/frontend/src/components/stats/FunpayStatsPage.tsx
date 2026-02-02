@@ -66,7 +66,7 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
   </div>
 );
 
-const chartBarColor = (index: number) => {
+const getChartBarColor = (index: number) => {
   if (index % 6 === 0) return "bg-indigo-500";
   if (index % 6 === 1) return "bg-sky-500";
   if (index % 6 === 2) return "bg-emerald-500";
@@ -86,30 +86,7 @@ type BuyerStat = {
   avgHours: number;
 };
 
-const formatHours = (hours: number) => `${hours.toFixed(1)}h`;
-
-const chartBarColor = (index: number) => {
-  if (index % 6 === 0) return "bg-indigo-500";
-  if (index % 6 === 1) return "bg-sky-500";
-  if (index % 6 === 2) return "bg-emerald-500";
-  if (index % 6 === 3) return "bg-amber-500";
-  if (index % 6 === 4) return "bg-rose-500";
-  return "bg-violet-500";
-};
-
-type ActivityPoint = {
-  label: string;
-  value: number;
-};
-
-type BuyerStat = {
-  name: string;
-  orders: number;
-  avgHours: number;
-  trend: string;
-};
-
-const formatHours = (hours: number) => `${hours.toFixed(1)}h`;
+const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
 
 const FunpayStatsPage: React.FC = () => {
   const { tr } = useI18n();
@@ -302,7 +279,7 @@ const FunpayStatsPage: React.FC = () => {
     },
     {
       label: tr("Average rental time", "Среднее время аренды"),
-      value: avgRentalHours ? formatHours(avgRentalHours) : "-",
+      value: avgRentalHours ? formatHoursLabel(avgRentalHours) : "-",
       icon: <CardCloudCheckIcon />,
     },
     {
@@ -397,7 +374,7 @@ const FunpayStatsPage: React.FC = () => {
               <div key={point.label} className="flex flex-col items-center gap-2">
                 <div className="text-[10px] font-semibold text-neutral-500">{point.value}</div>
                 <div
-                  className={`w-7 rounded-full ${chartBarColor(index)}`}
+                  className={`w-7 rounded-full ${getChartBarColor(index)}`}
                   style={{ height: `${Math.max(24, point.value * 6)}px` }}
                   title={`${point.label}: ${point.value}`}
                 />
@@ -451,41 +428,46 @@ const FunpayStatsPage: React.FC = () => {
                 {tr("Most frequent renters for the selected range.", "Самые частые арендаторы за период.")}
               </p>
             </div>
-            <button className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600">
-              {tr("Export", "Экспорт")}
-            </button>
+            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+              {tr("{count} buyers", "{count} покупателей", { count: totalBuyers })}
+            </span>
           </div>
-          <div className="mt-4 divide-y divide-neutral-100">
-            {buyers.map((buyer, idx) => (
-              <div key={buyer.name} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700">
-                    {idx + 1}
+          {buyers.length ? (
+            <div className="mt-4 divide-y divide-neutral-100">
+              {buyers.map((buyer, idx) => (
+                <div key={buyer.name} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-700">
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">{buyer.name}</p>
+                      <p className="text-xs text-neutral-500">
+                        {tr("Avg rental", "Средняя аренда")}: {buyer.avgHours ? formatHoursLabel(buyer.avgHours) : "-"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-900">{buyer.name}</p>
-                    <p className="text-xs text-neutral-500">
-                      {tr("Avg rental", "Средняя аренда")}: {formatHours(buyer.avgHours)}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-neutral-900">
+                        {buyer.orders} {tr("orders", "заказов")}
+                      </p>
+                    </div>
+                    <div className="h-2 w-24 rounded-full bg-neutral-100">
+                      <div
+                        className="h-2 rounded-full bg-neutral-900"
+                        style={{ width: `${Math.min(100, buyer.orders * 2)}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-neutral-900">
-                      {buyer.orders} {tr("orders", "заказов")}
-                    </p>
-                    <p className="text-xs text-neutral-500">{tr("Trend", "Тренд")}: {buyer.trend}</p>
-                  </div>
-                  <div className="h-2 w-24 rounded-full bg-neutral-100">
-                    <div
-                      className="h-2 rounded-full bg-neutral-900"
-                      style={{ width: `${Math.min(100, buyer.orders * 2)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-500">
+              {tr("No buyers yet for the selected range.", "Пока нет покупателей за выбранный период.")}
+            </div>
+          )}
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-neutral-900">
@@ -525,6 +507,33 @@ const FunpayStatsPage: React.FC = () => {
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Orders overview", "Сводка заказов")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr("Track overall volume and average rental time by day.", "Отслеживайте объем и среднее время аренды по дням.")}
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {loading ? tr("Loading...", "Загрузка...") : tr("{count} orders", "{count} заказов", { count: ordersInRange.length })}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {weeklyOverview.map((day) => (
+            <div key={day.label} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase text-neutral-400">{day.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-neutral-900">{day.orders}</p>
+              <p className="text-xs text-neutral-500">
+                {tr("Avg rental", "Средняя аренда")}: {day.avg ? formatHoursLabel(day.avg) : "-"}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
