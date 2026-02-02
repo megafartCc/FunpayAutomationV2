@@ -165,6 +165,10 @@ class MySQLAutoRaiseRepo:
                     """
                     INSERT INTO auto_raise_settings (user_id, workspace_id, enabled, all_workspaces, interval_minutes)
                     VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        enabled = VALUES(enabled),
+                        all_workspaces = VALUES(all_workspaces),
+                        interval_minutes = VALUES(interval_minutes)
                     """,
                     rows,
                 )
