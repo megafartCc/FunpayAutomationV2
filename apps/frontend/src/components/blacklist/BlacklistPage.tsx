@@ -14,7 +14,13 @@ type ResolvedWorkspace = {
 };
 
 const BLACKLIST_GRID =
-  "40px minmax(180px,1.2fr) minmax(240px,1.6fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
+  "40px minmax(180px,1.2fr) minmax(180px,1fr) minmax(220px,1.4fr) minmax(160px,0.9fr) minmax(140px,0.8fr)";
+
+const stratzUrl = (steamId?: string | null) => {
+  const trimmed = (steamId || "").trim();
+  if (!trimmed || trimmed.toLowerCase() === "unknown") return null;
+  return `https://stratz.com/search/${trimmed}`;
+};
 
 const stratzUrl = (steamId?: string | null) => {
   const trimmed = (steamId || "").trim();
@@ -474,6 +480,7 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                   />
                 </label>
                 <span>{tr("Buyer", "Покупатель")}</span>
+                <span>{tr("Steam account", "Steam аккаунт")}</span>
                 <span>{tr("Reason", "Причина")}</span>
                 <span>{tr("Added", "Добавлено")}</span>
                 <span>{tr("Actions", "Действия")}</span>
@@ -548,6 +555,24 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                             )}
                           </div>
                         )}
+                        <div className="min-w-0">
+                          {accountDetails?.login ? (
+                            stratzUrl(accountDetails.steamId) ? (
+                              <a
+                                href={stratzUrl(accountDetails.steamId)!}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="truncate font-semibold text-blue-600 hover:underline"
+                              >
+                                {accountDetails.login}
+                              </a>
+                            ) : (
+                              <span className="truncate font-semibold text-neutral-700">{accountDetails.login}</span>
+                            )
+                          ) : (
+                            <span className="text-neutral-400">-</span>
+                          )}
+                        </div>
                         {isEditing ? (
                           <input
                             value={blacklistEditReason}
