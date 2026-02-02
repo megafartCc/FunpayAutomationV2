@@ -538,6 +538,35 @@ const FunpayStatsPage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Orders overview", "Сводка заказов")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr("Track overall volume and average rental time by day.", "Отслеживайте объем и среднее время аренды по дням.")}
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {loading ? tr("Loading...", "Загрузка...") : tr("{count} orders", "{count} заказов", { count: ordersInRange.length })}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {weeklyOverview.map((day) => (
+            <div key={day.label} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase text-neutral-400">{day.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-neutral-900">{day.orders}</p>
+              <p className="text-xs text-neutral-500">
+                {tr("Avg rental", "Средняя аренда")}: {day.avg ? formatHoursLabel(day.avg) : "-"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {blankCard(120)}
     </div>
   );
 };
