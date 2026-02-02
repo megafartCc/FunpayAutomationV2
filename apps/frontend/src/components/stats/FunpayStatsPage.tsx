@@ -536,6 +536,8 @@ const FunpayStatsPage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {blankCard(120)}
     </div>
   );
 };
