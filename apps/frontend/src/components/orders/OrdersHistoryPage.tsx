@@ -8,7 +8,7 @@ type OrdersHistoryPageProps = {
 };
 
 const ORDERS_GRID =
-  "minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,1fr)";
+  "minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,0.7fr) minmax(0,0.7fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.7fr)";
 
 const formatMinutesLabel = (minutes?: number | null) => {
   const numeric = typeof minutes === "number" ? minutes : Number(minutes);
@@ -46,6 +46,17 @@ const orderActionPill = (action?: string | null) => {
   return { className: "bg-neutral-100 text-neutral-700", label: action || "-" };
 };
 
+const orderStatusPill = (action?: string | null) => {
+  const lower = (action || "").toLowerCase();
+  if (lower.includes("refund")) {
+    return { className: "bg-rose-50 text-rose-600", label: "Возврат" };
+  }
+  if (lower.includes("paid")) {
+    return { className: "bg-emerald-50 text-emerald-600", label: "Оплачен" };
+  }
+  return { className: "bg-sky-50 text-sky-700", label: "Подтвержден" };
+};
+
 const formatWorkspaceLabel = (
   workspaceId: number | null | undefined,
   workspaceName: string | null | undefined,
@@ -62,6 +73,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refundLoadingId, setRefundLoadingId] = useState<string | null>(null);
 
   const workspacePlatforms = useMemo(() => {
     const map = new Map<number, "funpay" | "playerok">();
@@ -117,6 +129,29 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
     }
     return { label: "FunPay", className: "bg-amber-50 text-amber-700" };
   }, []);
+
+  const handleRefund = useCallback(
+    async (order: OrderHistoryItem) => {
+      if (!order.order_id) return;
+      if (!window.confirm("Оформить возврат по этому заказу?")) return;
+      setRefundLoadingId(order.order_id);
+      try {
+        const res = await api.refundOrder(order.order_id, order.workspace_id ?? undefined);
+        if (!res.ok) {
+          onToast?.(res.message || "Не удалось оформить возврат.", true);
+        } else {
+          onToast?.(res.message || "Возврат отправлен.");
+          await loadOrders(query, true);
+        }
+      } catch (err) {
+        const message = (err as { message?: string })?.message || "Не удалось оформить возврат.";
+        onToast?.(message, true);
+      } finally {
+        setRefundLoadingId(null);
+      }
+    },
+    [loadOrders, onToast, query],
+  );
 
   return (
     <div className="space-y-4">
@@ -180,8 +215,10 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                 <span>Длительность</span>
                 <span>Цена</span>
                 <span className="text-center">Действие</span>
+                <span className="text-center">Статус</span>
                 <span>Дата</span>
                 <span>Рабочее пространство</span>
+                <span className="text-center">Возврат</span>
               </div>
               <div className="mt-3 space-y-3">
                 {loading && (
@@ -192,6 +229,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                 {!loading &&
                   visibleOrders.map((order, idx) => {
                     const pill = orderActionPill(order.action);
+                    const statusPill = orderStatusPill(order.action);
                     const priceLabel =
                       order.price !== null && order.price !== undefined && !Number.isNaN(Number(order.price))
                         ? `RUB ${Number(order.price).toLocaleString()}`
@@ -235,6 +273,13 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                           {pill.label}
                         </span>
                       </div>
+                      <div className="flex items-center justify-center">
+                        <span
+                          className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${statusPill.className}`}
+                        >
+                          {statusPill.label}
+                        </span>
+                      </div>
                       <span className="min-w-0 truncate text-xs text-neutral-500">
                         {formatMoscowDateTime(order.created_at)}
                       </span>
@@ -249,6 +294,21 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                             {platformBadge.label}
                           </span>
                         ) : null}
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRefund(order)}
+                          disabled={
+                            !order.order_id ||
+                            !!refundLoadingId ||
+                            (order.action || "").toLowerCase().includes("refund") ||
+                            platformKey !== "funpay"
+                          }
+                          className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-rose-600 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {refundLoadingId === order.order_id ? "..." : "Возврат"}
+                        </button>
                       </div>
                       </div>
                     );
