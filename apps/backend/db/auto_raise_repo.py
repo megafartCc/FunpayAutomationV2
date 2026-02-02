@@ -121,6 +121,17 @@ class MySQLAutoRaiseRepo:
                 """
             )
             has_workspace_unique = cursor.fetchone() is not None
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.key_column_usage
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'auto_raise_settings'
+                  AND constraint_name = 'PRIMARY'
+                ORDER BY ordinal_position
+                """
+            )
+            pk_columns = [row[0] for row in cursor.fetchall() or []]
             if not has_workspace_id:
                 cursor.execute(
                     """
@@ -140,7 +151,7 @@ class MySQLAutoRaiseRepo:
                 )
                 conn.commit()
                 return
-            if not has_workspace_unique:
+            if not has_workspace_unique or (pk_columns == ["user_id"]):
                 cursor.execute(
                     """
                     INSERT INTO auto_raise_settings (user_id, enabled, all_workspaces, interval_minutes)
