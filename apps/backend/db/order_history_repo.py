@@ -14,6 +14,7 @@ class OrderHistoryItem:
     order_id: str
     owner: str
     account_name: Optional[str]
+    account_login: Optional[str]
     account_id: Optional[int]
     steam_id: Optional[str]
     rental_minutes: Optional[int]
@@ -57,11 +58,12 @@ class MySQLOrderHistoryRepo:
                 params.append(int(workspace_id))
             cursor.execute(
                 f"""
-                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
                        oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
+                LEFT JOIN accounts a ON a.id = oh.account_id AND a.user_id = oh.user_id
                 WHERE oh.user_id = %s AND oh.order_id = %s{workspace_clause}
                 ORDER BY id DESC
                 LIMIT 1
@@ -78,11 +80,12 @@ class MySQLOrderHistoryRepo:
                     params.append(int(workspace_id))
                 cursor.execute(
                     f"""
-                    SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                    SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
                            oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
                            oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                     FROM order_history oh
                     LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
+                    LEFT JOIN accounts a ON a.id = oh.account_id AND a.user_id = oh.user_id
                     WHERE oh.user_id = %s AND oh.order_id LIKE %s{workspace_clause}
                     ORDER BY id DESC
                     LIMIT 1
@@ -97,6 +100,7 @@ class MySQLOrderHistoryRepo:
                 order_id=str(row.get("order_id") or order_key),
                 owner=row.get("owner") or "",
                 account_name=row.get("account_name"),
+                account_login=row.get("account_login"),
                 account_id=row.get("account_id"),
                 steam_id=row.get("steam_id"),
                 rental_minutes=row.get("rental_minutes"),
@@ -133,17 +137,18 @@ class MySQLOrderHistoryRepo:
                 like = f"%{q}%"
                 where += (
                     " AND (LOWER(oh.order_id) LIKE %s OR LOWER(oh.owner) LIKE %s OR "
-                    "LOWER(oh.account_name) LIKE %s OR LOWER(oh.steam_id) LIKE %s OR "
+                    "LOWER(oh.account_name) LIKE %s OR LOWER(a.login) LIKE %s OR LOWER(oh.steam_id) LIKE %s OR "
                     "CAST(oh.account_id AS CHAR) LIKE %s OR CAST(oh.lot_number AS CHAR) LIKE %s)"
                 )
-                params.extend([like, like, like, like, like, like])
+                params.extend([like, like, like, like, like, like, like])
             cursor.execute(
                 f"""
-                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, oh.account_id, oh.steam_id,
+                SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
                        oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
+                LEFT JOIN accounts a ON a.id = oh.account_id AND a.user_id = oh.user_id
                 {where}
                 ORDER BY oh.id DESC
                 LIMIT %s
@@ -157,6 +162,7 @@ class MySQLOrderHistoryRepo:
                     order_id=str(row.get("order_id") or ""),
                     owner=row.get("owner") or "",
                     account_name=row.get("account_name"),
+                    account_login=row.get("account_login"),
                     account_id=row.get("account_id"),
                     steam_id=row.get("steam_id"),
                     rental_minutes=row.get("rental_minutes"),

@@ -196,8 +196,12 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
                       order.price !== null && order.price !== undefined && !Number.isNaN(Number(order.price))
                         ? `RUB ${Number(order.price).toLocaleString()}`
                         : "-";
-                    const accountLabel = order.account_name || "-";
-                    const subLabel = order.lot_number ? `Лот ${order.lot_number}` : order.account_id ? `ID ${order.account_id}` : "";
+                    const accountLabel = order.account_name || order.account_login || "-";
+                    const subLabelParts: string[] = [];
+                    if (order.lot_number) subLabelParts.push(`Лот ${order.lot_number}`);
+                    if (order.account_id) subLabelParts.push(`ID ${order.account_id}`);
+                    if (order.account_login) subLabelParts.push(order.account_login);
+                    const subLabel = subLabelParts.join(" · ");
                     const platformKey = workspacePlatforms.get(order.workspace_id ?? -1) || "funpay";
                     const platformBadge = platformPill(platformKey);
                     return (

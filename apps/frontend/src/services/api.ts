@@ -167,6 +167,7 @@ export type OrderHistoryItem = {
   order_id: string;
   buyer: string;
   account_name?: string | null;
+  account_login?: string | null;
   account_id?: number | null;
   steam_id?: string | null;
   rental_minutes?: number | null;

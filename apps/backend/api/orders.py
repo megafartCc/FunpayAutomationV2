@@ -30,6 +30,7 @@ class OrderHistoryItem(BaseModel):
     order_id: str
     buyer: str
     account_name: str | None = None
+    account_login: str | None = None
     account_id: int | None = None
     steam_id: str | None = None
     rental_minutes: int | None = None
@@ -93,6 +94,7 @@ def orders_history(
                 order_id=item.order_id,
                 buyer=item.owner,
                 account_name=item.account_name,
+                account_login=item.account_login,
                 account_id=item.account_id,
                 steam_id=item.steam_id,
                 rental_minutes=item.rental_minutes,
