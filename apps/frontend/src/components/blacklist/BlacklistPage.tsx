@@ -525,9 +525,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                             {accountDetails?.login ? (
                               <div className="mt-1 text-xs text-neutral-500">
                                 {tr("Account login:", "Логин аккаунта:")}{" "}
-                                {stratzUrl(accountDetails.steamId) ? (
+                                {getStratzUrl(accountDetails.steamId) ? (
                                   <a
-                                    href={stratzUrl(accountDetails.steamId)!}
+                                    href={getStratzUrl(accountDetails.steamId)!}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="font-semibold text-blue-600 hover:underline"
