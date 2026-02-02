@@ -606,6 +606,8 @@ def handle_low_priority_replace_command(
 
     suggestion_reason = "LP replacement request"
     display_name = build_display_name(selected)
+    account_login = (selected.get("login") or "-").strip() or "-"
+    account_steam_id = steam_id_from_mafile(selected.get("mafile_json"))
     previous_owner = fetch_previous_owner_for_account(
         mysql_cfg,
         account_id=int(selected.get("id") or 0),
@@ -615,6 +617,7 @@ def handle_low_priority_replace_command(
     )
     suggestion_details = (
         f"Account: {display_name} (ID {selected.get('id')}); "
+        f"login={account_login}; steam_id={account_steam_id or 'unknown'}; "
         f"current_owner={sender_username}; previous_owner={previous_owner or 'unknown'}"
     )
     suggestion_added = False
