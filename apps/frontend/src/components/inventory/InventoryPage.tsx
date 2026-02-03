@@ -11,6 +11,7 @@ type AccountRow = {
   password: string;
   steamId: string;
   lotUrl?: string | null;
+  lotNumber?: number | null;
   mmr: number | string;
   workspaceId?: number | null;
   workspaceName?: string | null;
@@ -36,6 +37,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   password: item.password || "",
   steamId: item.steam_id ?? "",
   lotUrl: item.lot_url ?? null,
+  lotNumber: item.lot_number ?? null,
   mmr: item.mmr ?? "-",
   workspaceId: item.workspace_id ?? null,
   workspaceName: item.workspace_name ?? null,
@@ -342,10 +344,11 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                 : rented
                   ? "bg-amber-50 text-amber-700"
                   : "bg-emerald-50 text-emerald-600";
-            const lotLinked = !!selectedAccount.lotUrl;
+            const lotLinked = selectedAccount.lotNumber !== null && selectedAccount.lotNumber !== undefined;
             const lotLabel = lotLinked ? "Лот: привязан" : "Лот: не привязан";
             const lotClass = lotLinked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500";
             const lotUrlLabel = selectedAccount.lotUrl || "-";
+            const lotNumberLabel = lotLinked ? `#${selectedAccount.lotNumber}` : "-";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
@@ -403,7 +406,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                         {lotLabel}
                       </span>
                       <span className="text-xs text-neutral-500">
-                        Лот:{" "}
+                        Лот: {lotNumberLabel}{" "}
                         {selectedAccount.lotUrl ? (
                           <a
                             href={selectedAccount.lotUrl}
@@ -644,7 +647,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const lowPriority = !!acc.lowPriority;
-                  const lotLinked = !!acc.lotUrl;
+                  const lotLinked = acc.lotNumber !== null && acc.lotNumber !== undefined;
                   const lotLabel = lotLinked ? "Лот: привязан" : "Лот: не привязан";
                   const lotClass = lotLinked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500";
                   const stateLabel = lowPriority ? "Низкий приоритет" : frozen ? "Заморожено" : rented ? "В аренде" : "Доступен";
@@ -692,7 +695,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                             {lotLabel}
                           </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                            Лот: {acc.lotUrl || "-"}
+                            Лот: {lotLinked ? `#${acc.lotNumber}` : "-"}
                           </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
                             Основное: {formatWorkspaceLabel(acc.workspaceName, acc.workspaceId)}

@@ -22,6 +22,7 @@ export type AccountItem = {
   login: string;
   password: string;
   lot_url?: string | null;
+  lot_number?: number | null;
   mmr?: number | null;
   owner?: string | null;
   rental_start?: string | null;
