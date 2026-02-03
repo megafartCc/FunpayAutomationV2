@@ -22,23 +22,26 @@ def is_blacklisted(
         if not table_exists(cursor, "blacklist"):
             return False
         has_status = column_exists(cursor, "blacklist", "status")
-        if has_status:
+        if workspace_id is None:
+            status_clause = " AND status = 'confirmed'" if has_status else ""
             cursor.execute(
-                """
+                f"""
                 SELECT 1 FROM blacklist
-                WHERE owner = %s AND user_id = %s AND workspace_id <=> %s AND status = 'confirmed'
+                WHERE owner = %s AND user_id = %s{status_clause}
                 LIMIT 1
                 """,
-                (owner_key, int(user_id), int(workspace_id) if workspace_id is not None else None),
+                (owner_key, int(user_id)),
             )
         else:
+            status_clause = " AND status = 'confirmed'" if has_status else ""
             cursor.execute(
-                """
+                f"""
                 SELECT 1 FROM blacklist
-                WHERE owner = %s AND user_id = %s AND workspace_id <=> %s
+                WHERE owner = %s AND user_id = %s{status_clause}
+                  AND (workspace_id = %s OR workspace_id IS NULL)
                 LIMIT 1
                 """,
-                (owner_key, int(user_id), int(workspace_id) if workspace_id is not None else None),
+                (owner_key, int(user_id), int(workspace_id)),
             )
         return cursor.fetchone() is not None
     finally:
