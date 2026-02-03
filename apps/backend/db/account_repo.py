@@ -22,7 +22,7 @@ class AccountRecord:
     password: str
     lot_url: Optional[str]
     lot_number: Optional[int] = None
-    mmr: Optional[int]
+    mmr: Optional[int] = None
     owner: Optional[str]
     rental_start: Optional[str]
     rental_duration: int
