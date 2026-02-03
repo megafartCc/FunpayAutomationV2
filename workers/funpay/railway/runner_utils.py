@@ -371,7 +371,7 @@ def _build_ai_context(
 def _extract_buyer_from_review_text(text: str | None) -> str | None:
     if not text:
         return None
-    match = re.search(r"(?:??????????|The buyer)\s+([A-Za-z0-9_-]+)", text)
+    match = re.search(r"(?:Покупатель|The buyer)\s+([A-Za-z0-9_-]+)", text)
     if match:
         return match.group(1)
     return None
@@ -498,7 +498,7 @@ def _handle_review_bonus(
             owner=buyer,
             bonus_minutes=int(bonus_minutes),
         )
-        _send_revert_message(updated, "?? ?????????? ???????? ??????")
+        _send_revert_message(updated, "Отзыв удалён")
         return
 
     if order is None:
@@ -537,7 +537,7 @@ def _handle_review_bonus(
             owner=buyer,
             bonus_minutes=int(bonus_minutes),
         )
-        _send_revert_message(updated, "????? ???????")
+        _send_revert_message(updated, "Отзыв изменён")
 
 
 def _handle_refund_release(
@@ -843,9 +843,9 @@ def log_message(
                     else:
                         eta = _format_eta_from_row(row)
                         if eta:
-                            reply = f"?????? ??????? {name} ?????. {eta}"
+                            reply = f"Сейчас аккаунт {name} занят. {eta}"
                         else:
-                            reply = f"?????? ??????? {name} ?????. ???? ?????????? ?????? ????????? ????."
+                            reply = f"Сейчас аккаунт {name} занят. Пока неизвестно, когда освободится."
                     send_chat_message(logger, account, int(chat_id), reply)
                 else:
                     send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
@@ -863,7 +863,7 @@ def log_message(
                     logger,
                     account,
                     int(chat_id),
-                    "?????? ????? ???????????? ??????????. ???????? ?????? ?? ??? ??? ??????????? !????.",
+                    "Сейчас я не могу проверить занятость. Проверьте статус через команду !сток.",
                 )
                 return None
             lot_url = _find_recent_lot_url(mysql_cfg, int(user_id), workspace_id, int(chat_id))
@@ -872,7 +872,7 @@ def log_message(
                     logger,
                     account,
                     int(chat_id),
-                    "??????????, ???????? ?????? ?? ???, ????? ?????????.",
+                    "Пожалуйста, пришлите ссылку на лот, чтобы проверить.",
                 )
                 return None
             row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
@@ -885,7 +885,7 @@ def log_message(
                         logger,
                         account,
                         int(chat_id),
-                        "?????? ????? ???????????? ??????????. ?????????? ????? ??? ??????????? !????.",
+                        "Сейчас я не могу оценить время освобождения. Проверьте статус через команду !сток.",
                     )
                 return None
             if row and not row.get("owner"):
@@ -893,14 +893,14 @@ def log_message(
                     logger,
                     account,
                     int(chat_id),
-                    "?????? ??? ????????. ?????? ??????????.",
+                    "Этот лот свободен. Можете арендовать.",
                 )
                 return None
             send_chat_message(
                 logger,
                 account,
                 int(chat_id),
-                "??? ?? ?????? ? ????. ???????? ?????? ??? ???.",
+                "Лот не найден. Пришлите ссылку ещё раз.",
             )
             return None
         if mysql_cfg and user_id is not None:
