@@ -41,6 +41,7 @@ from .constants import (
 )
 from .env_utils import env_bool, env_int
 from .knowledge_utils import build_knowledge_context
+from .memory_utils import fetch_memory_context, store_memory
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
 from .notifications_utils import log_notification_event, upsert_workspace_status
@@ -234,6 +235,7 @@ def _build_ai_context(
     history_lines: list[str] = []
     rental_lines: list[str] = []
     knowledge_text = ""
+    memory_text = ""
     try:
         history_lines = build_recent_chat_context(
             mysql_cfg,
@@ -251,6 +253,16 @@ def _build_ai_context(
     except Exception:
         rental_lines = []
     try:
+        memory_text = fetch_memory_context(
+            mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            chat_id=int(chat_id),
+            query=user_text,
+        ) or ""
+    except Exception:
+        memory_text = ""
+    try:
         knowledge_text = build_knowledge_context(
             user_text,
             max_chars=env_int("AI_KNOWLEDGE_MAX_CHARS", 1400),
@@ -259,6 +271,9 @@ def _build_ai_context(
     except Exception:
         knowledge_text = ""
     sections: list[str] = []
+    if memory_text:
+        sections.append("Long-term memory:")
+        sections.append(memory_text)
     if knowledge_text:
         sections.append("Knowledge base:")
         sections.append(knowledge_text)
@@ -826,6 +841,18 @@ def log_message(
                 )
                 return None
             send_chat_message(logger, account, int(chat_id), ai_text)
+            if mysql_cfg and user_id is not None and chat_id is not None:
+                try:
+                    store_memory(
+                        mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=workspace_id,
+                        chat_id=int(chat_id),
+                        user_text=message_text,
+                        ai_text=ai_text,
+                    )
+                except Exception:
+                    pass
     if is_system:
         logger.info(
             "user=%s workspace=%s system_event type=%s chat=%s url=%s raw=%s",

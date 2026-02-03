@@ -840,6 +840,23 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_ai_memory (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                chat_id BIGINT NOT NULL,
+                key_text VARCHAR(255) NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP NULL,
+                INDEX idx_ai_memory_chat (user_id, workspace_id, chat_id),
+                INDEX idx_ai_memory_key (key_text(191))
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
         conn.commit()
     finally:
         conn.close()
