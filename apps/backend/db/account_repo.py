@@ -23,13 +23,13 @@ class AccountRecord:
     lot_url: Optional[str]
     lot_number: Optional[int] = None
     mmr: Optional[int] = None
-    owner: Optional[str]
-    rental_start: Optional[str]
-    rental_duration: int
-    rental_duration_minutes: Optional[int]
-    low_priority: int
-    account_frozen: int
-    rental_frozen: int
+    owner: Optional[str] = None
+    rental_start: Optional[str] = None
+    rental_duration: int = 0
+    rental_duration_minutes: Optional[int] = None
+    low_priority: int = 0
+    account_frozen: int = 0
+    rental_frozen: int = 0
     mafile_json: Optional[str] = None
 
 
