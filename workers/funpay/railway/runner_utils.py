@@ -71,6 +71,14 @@ WELCOME_MESSAGE = os.getenv(
 LOT_URL_RE = re.compile(r"https?://funpay\.com/lots/offer\?id=\d+", re.IGNORECASE)
 
 
+def _is_greeting(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    keywords = ("привет", "здрав", "hello", "hi", "добрый", "доброе")
+    return any(word in lowered for word in keywords)
+
+
 def _extract_lot_url(text: str) -> str | None:
     if not text:
         return None
@@ -713,8 +721,9 @@ def log_message(
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
             return None
-        send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
-        return None
+        if _is_greeting(lower_text):
+            send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
+            return None
     if not is_system and chat_id is not None and not getattr(msg, "by_bot", False) and not command:
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None
