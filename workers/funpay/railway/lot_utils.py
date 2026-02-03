@@ -142,6 +142,87 @@ def fetch_available_lot_accounts(
         conn.close()
 
 
+def fetch_busy_lot_accounts(
+    mysql_cfg: dict,
+    user_id: int | None,
+    workspace_id: int | None = None,
+) -> list[dict]:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "accounts"):
+            return []
+        has_lots = table_exists(cursor, "lots")
+        has_account_user_id = column_exists(cursor, "accounts", "user_id")
+        has_lot_user_id = has_lots and column_exists(cursor, "lots", "user_id")
+        has_account_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
+        has_account_lot_url = column_exists(cursor, "accounts", "lot_url")
+        has_account_lot_number = column_exists(cursor, "accounts", "lot_number")
+        has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+        has_low_priority = column_exists(cursor, "accounts", "low_priority")
+        has_mmr = column_exists(cursor, "accounts", "mmr")
+        has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
+        account_filters: list[str] = ["a.owner IS NOT NULL", "a.owner <> ''"]
+        params: list = []
+        if has_account_user_id and user_id is not None:
+            account_filters.append("a.user_id = %s")
+            params.append(int(user_id))
+        if has_account_workspace and workspace_id is not None and (not has_lots or not has_lot_workspace):
+            account_filters.append("a.workspace_id = %s")
+            params.append(int(workspace_id))
+
+        if has_lots:
+            lot_filters: list[str] = []
+            if user_id is not None and not has_account_user_id and has_lot_user_id:
+                lot_filters.append("l.user_id = %s")
+                params.append(int(user_id))
+            if has_lot_workspace and workspace_id is not None:
+                lot_filters.append("(l.workspace_id = %s OR l.workspace_id IS NULL)")
+                params.append(int(workspace_id))
+            lot_where = " AND " + " AND ".join(lot_filters) if lot_filters else ""
+            cursor.execute(
+                f"""
+                SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
+                       a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                       {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
+                       l.lot_number, l.lot_url
+                       {', l.display_name' if has_display_name else ', NULL AS display_name'}
+                FROM accounts a
+                JOIN lots l ON l.account_id = a.id
+                WHERE {" AND ".join(account_filters)}{lot_where}
+                ORDER BY l.lot_number ASC, a.id ASC
+                """,
+                tuple(params),
+            )
+        else:
+            cursor.execute(
+                f"""
+                SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
+                       a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
+                       {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
+                       {'a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority'},
+                       {'a.mmr' if has_mmr else 'NULL AS mmr'},
+                       {'a.lot_number' if has_account_lot_number else 'NULL AS lot_number'},
+                       {'a.lot_url' if has_account_lot_url else 'NULL AS lot_url'},
+                       NULL AS display_name
+                FROM accounts a
+                WHERE {" AND ".join(account_filters)}
+                ORDER BY a.id ASC
+                """,
+                tuple(params),
+            )
+        return list(cursor.fetchall() or [])
+    finally:
+        conn.close()
+
+
 def fetch_owner_accounts(
     mysql_cfg: dict,
     user_id: int,

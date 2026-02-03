@@ -22,6 +22,8 @@ COMMAND_PREFIXES = (
 STOCK_LIST_LIMIT = 8
 STOCK_TITLE = "Свободные лоты:"
 STOCK_EMPTY = "Свободных лотов нет."
+BUSY_TITLE = "Занятые лоты:"
+BUSY_EMPTY = "Занятых лотов нет."
 STOCK_DB_MISSING = (
     "Инвентарь пока не настроен."
 )

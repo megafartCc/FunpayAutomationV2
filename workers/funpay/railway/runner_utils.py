@@ -31,6 +31,8 @@ from .chat_utils import (
 from .account_utils import build_account_message, build_rental_choice_message, get_remaining_label, resolve_rental_minutes
 from .command_handlers import build_stock_messages, handle_command
 from .constants import (
+    BUSY_EMPTY,
+    BUSY_TITLE,
     COMMAND_PREFIXES,
     COMMANDS_RU,
     RENTAL_REFUND_MESSAGE,
@@ -58,7 +60,12 @@ from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_prox
 from .raise_utils import auto_raise_loop, sync_raise_categories
 from .rental_utils import process_rental_monitor, release_account_in_db
 from .db_utils import get_mysql_config
-from .lot_utils import fetch_available_lot_accounts, fetch_lot_by_url, fetch_owner_accounts
+from .lot_utils import (
+    fetch_available_lot_accounts,
+    fetch_busy_lot_accounts,
+    fetch_lot_by_url,
+    fetch_owner_accounts,
+)
 from .user_utils import get_user_id_by_username
 from .text_utils import extract_order_id, parse_command
 
@@ -197,6 +204,29 @@ def _respond_free_lots(
         send_chat_message(logger, account, chat_id, message)
 
 
+def _respond_busy_lots(
+    logger: logging.Logger,
+    account: Account,
+    chat_id: int,
+    accounts: list[dict],
+) -> None:
+    if not accounts:
+        send_chat_message(logger, account, chat_id, BUSY_EMPTY)
+        return
+    lines = build_stock_messages(accounts)
+    if not lines:
+        send_chat_message(logger, account, chat_id, BUSY_EMPTY)
+        return
+    limit = env_int("STOCK_LIST_LIMIT", STOCK_LIST_LIMIT)
+    if limit <= 0:
+        send_chat_message(logger, account, chat_id, "\n".join([BUSY_TITLE, *lines]))
+        return
+    for index in range(0, len(lines), limit):
+        chunk = lines[index : index + limit]
+        message = "\n".join([BUSY_TITLE, *chunk]) if index == 0 else "\n".join(chunk)
+        send_chat_message(logger, account, chat_id, message)
+
+
 def _wants_low_priority_replace(text: str) -> bool:
     if not text:
         return False
@@ -273,6 +303,17 @@ def _wants_stock_list(text: str) -> bool:
         return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
 
+
+
+
+def _wants_busy_list(text: str) -> bool:
+    if not text:
+        return False
+    subjects = ("???????", "????????", "???", "????")
+    hints = ("?????", "busy", "occupied", "? ??????")
+    if "?????" in text and any(word in text for word in subjects) and any(word in text for word in hints):
+        return True
+    return any(word in text for word in hints) and any(word in text for word in subjects)
 
 def _extract_account_id_hint(text: str) -> str:
     if not text:
@@ -904,6 +945,11 @@ def log_message(
             )
             return None
         if mysql_cfg and user_id is not None:
+            wants_busy = _wants_busy_list(lower_text)
+            if wants_busy:
+                accounts = fetch_busy_lot_accounts(mysql_cfg, int(user_id), workspace_id)
+                _respond_busy_lots(logger, account, int(chat_id), accounts)
+                return None
             wants_stock = _wants_stock_list(lower_text)
             if wants_stock:
                 accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
