@@ -342,14 +342,10 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                 : rented
                   ? "bg-amber-50 text-amber-700"
                   : "bg-emerald-50 text-emerald-600";
-            const workspaceLinked = !!selectedAccount.workspaceId;
-            const workspaceLabel = workspaceLinked ? "Пространство: привязан" : "Пространство: не привязан";
-            const workspaceClass = workspaceLinked
-              ? "bg-blue-50 text-blue-700"
-              : "bg-neutral-100 text-neutral-500";
             const lotLinked = !!selectedAccount.lotUrl;
             const lotLabel = lotLinked ? "Лот: привязан" : "Лот: не привязан";
             const lotClass = lotLinked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500";
+            const lotUrlLabel = selectedAccount.lotUrl || "-";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
@@ -403,11 +399,23 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Покупатель: {ownerLabel}</span>
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${workspaceClass}`}>
-                        {workspaceLabel}
-                      </span>
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${lotClass}`}>
                         {lotLabel}
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        Лот:{" "}
+                        {selectedAccount.lotUrl ? (
+                          <a
+                            href={selectedAccount.lotUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-blue-600 underline"
+                          >
+                            {lotUrlLabel}
+                          </a>
+                        ) : (
+                          lotUrlLabel
+                        )}
                       </span>
                     </span>
                     <span>Основное рабочее пространство: {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}</span>
@@ -636,11 +644,6 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const lowPriority = !!acc.lowPriority;
-                  const workspaceLinked = !!acc.workspaceId;
-                  const workspaceLabel = workspaceLinked ? "Пространство: привязан" : "Пространство: не привязан";
-                  const workspaceClass = workspaceLinked
-                    ? "bg-blue-50 text-blue-700"
-                    : "bg-neutral-100 text-neutral-500";
                   const lotLinked = !!acc.lotUrl;
                   const lotLabel = lotLinked ? "Лот: привязан" : "Лот: не привязан";
                   const lotClass = lotLinked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500";
@@ -685,11 +688,11 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                           {acc.name || "Account"}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${workspaceClass}`}>
-                            {workspaceLabel}
-                          </span>
                           <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${lotClass}`}>
                             {lotLabel}
+                          </span>
+                          <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Лот: {acc.lotUrl || "-"}
                           </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
                             Основное: {formatWorkspaceLabel(acc.workspaceName, acc.workspaceId)}
