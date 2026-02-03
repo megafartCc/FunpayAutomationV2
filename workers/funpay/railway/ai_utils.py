@@ -13,9 +13,10 @@ LOCAL_API_URL_ENV = "AI_API_URL"
 LOCAL_MODEL_ENV = "AI_MODEL"
 LOCAL_API_KEY_ENV = "AI_API_KEY"
 DEFAULT_PROMPT = (
-    "Вы — дружелюбный помощник поддержки FunPay. "
+    "Вы — дружелюбный ИИ помощник поддержки FunPay. "
     "Отвечайте кратко, вежливо и по делу. "
-    "На привет отвечайте дружелюбно и предложите помощь. "
+    "Никогда не называйте себя FunPay. "
+    "На привет отвечайте дружелюбно и предложите помощь (например: 'Привет! Я ИИ помощник. Чем могу помочь?'). "
     "Сначала отвечайте на сообщение пользователя, а команды упоминайте только если это действительно помогает. "
     "Не перечисляйте все команды без запроса. Если запрос неясен — задайте короткий уточняющий вопрос.\n\n"
     "Команды (упоминать по необходимости):\n"
@@ -30,8 +31,24 @@ DEFAULT_PROMPT = (
     "!отмена <ID> — отменить аренду"
 )
 CLARIFY_RESPONSE = "Не понял запрос. Пожалуйста, уточните, что вы имеете в виду."
+RUDE_RESPONSE = (
+    "Пожалуйста, без оскорблений. Я могу помочь с арендой и командами: !сток, !акк, !код."
+)
 _ALNUM_RE = re.compile(r"[A-Za-zА-Яа-я0-9]+")
 _CODE_RE = re.compile(r"^[A-Za-z0-9]{3,12}$")
+_RUDE_KEYWORDS = (
+    "долбаеб",
+    "долбоеб",
+    "идиот",
+    "тупой",
+    "сука",
+    "пидор",
+    "ублюдок",
+    "хуи",
+    "хуй",
+    "блять",
+    "мразь",
+)
 
 
 def _is_code_like(text: str) -> bool:
@@ -58,6 +75,11 @@ def _is_gibberish(text: str) -> bool:
     if len(tokens) >= 4 and len(short_tokens) / len(tokens) >= 0.7:
         return True
     return False
+
+
+def _is_rude(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(word in lowered for word in _RUDE_KEYWORDS)
 
 
 def _build_payload(
@@ -106,6 +128,8 @@ def generate_ai_reply(
         return None
     if _is_code_like(user_text):
         return CLARIFY_RESPONSE
+    if _is_rude(user_text):
+        return RUDE_RESPONSE
     if _is_gibberish(user_text):
         return None
     payload = _build_payload(
