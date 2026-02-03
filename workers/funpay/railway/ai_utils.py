@@ -17,6 +17,8 @@ DEFAULT_PROMPT = (
     "Отвечайте кратко, вежливо и по делу. "
     "Никогда не называйте себя FunPay. "
     "На привет отвечайте дружелюбно и предложите помощь (например: 'Привет! Я ИИ помощник. Чем могу помочь?'). "
+    "Не выдавайте логины, пароли или коды Steam Guard. "
+    "Не оформляйте аренды и возвраты — направляйте пользователя к командам. "
     "Сначала отвечайте на сообщение пользователя, а команды упоминайте только если это действительно помогает. "
     "Не перечисляйте все команды без запроса. Если запрос неясен — задайте короткий уточняющий вопрос.\n\n"
     "Команды (упоминать по необходимости):\n"
@@ -34,6 +36,9 @@ CLARIFY_RESPONSE = "Не понял запрос. Пожалуйста, уточ
 RUDE_RESPONSE = (
     "Пожалуйста, без оскорблений. Я могу помочь с арендой и командами: !сток, !акк, !код."
 )
+SENSITIVE_RESPONSE = (
+    "Я не могу выдавать данные аккаунта или коды. Используйте команды !акк и !код, либо напишите !админ."
+)
 _ALNUM_RE = re.compile(r"[A-Za-zА-Яа-я0-9]+")
 _CODE_RE = re.compile(r"^[A-Za-z0-9]{3,12}$")
 _RUDE_KEYWORDS = (
@@ -48,6 +53,13 @@ _RUDE_KEYWORDS = (
     "хуй",
     "блять",
     "мразь",
+)
+_SENSITIVE_KEYWORDS = (
+    "логин",
+    "пароль",
+    "steam guard",
+    "steamguard",
+    "код",
 )
 
 
@@ -80,6 +92,15 @@ def _is_gibberish(text: str) -> bool:
 def _is_rude(text: str) -> bool:
     lowered = (text or "").lower()
     return any(word in lowered for word in _RUDE_KEYWORDS)
+
+
+def _contains_sensitive(text: str) -> bool:
+    lowered = (text or "").lower()
+    if any(word in lowered for word in _SENSITIVE_KEYWORDS):
+        return True
+    if "login:" in lowered or "password:" in lowered:
+        return True
+    return False
 
 
 def _build_payload(
@@ -163,6 +184,8 @@ def generate_ai_reply(
         )
         if not content:
             logger.warning("Groq API returned empty content.")
+        if content and _contains_sensitive(content):
+            return SENSITIVE_RESPONSE
         return content or None
     except Exception as exc:
         logger.warning("Groq API request failed: %s", exc)

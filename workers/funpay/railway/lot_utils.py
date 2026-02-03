@@ -252,6 +252,7 @@ def fetch_lot_by_url(
         cursor.execute(
             f"""
             SELECT a.id, a.owner, a.account_name, a.login,
+                   a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    {('a.account_frozen' if has_account_frozen else '0 AS account_frozen')},
                    {('a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen')},
                    {('a.`low_priority` AS `low_priority`' if has_low_priority else '0 AS low_priority')},

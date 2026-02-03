@@ -92,6 +92,55 @@ def _extract_lot_url(text: str) -> str | None:
     return None
 
 
+def _find_recent_lot_url(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+) -> str | None:
+    try:
+        lines = build_recent_chat_context(
+            mysql_cfg,
+            int(user_id),
+            int(workspace_id) if workspace_id is not None else None,
+            int(chat_id),
+            limit=10,
+            include_bot=False,
+        )
+    except Exception:
+        lines = []
+    for line in reversed(lines):
+        match = LOT_URL_RE.search(line)
+        if match:
+            return match.group(0)
+    return None
+
+
+def _wants_when_free(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    keywords = (
+        "когда освобод",
+        "когда будет свобод",
+        "когда свобод",
+        "when free",
+        "when available",
+        "when it will be free",
+    )
+    return any(word in lowered for word in keywords)
+
+
+def _format_eta_from_row(row: dict) -> str | None:
+    try:
+        expiry_str, remaining_str = get_remaining_label(row, datetime.utcnow())
+    except Exception:
+        return None
+    if not expiry_str:
+        return None
+    return f"Ориентировочно освободится через {remaining_str} (в {expiry_str} МСК)."
+
+
 def _lot_display_name(row: dict) -> str:
     return (
         row.get("display_name")
@@ -757,7 +806,11 @@ def log_message(
                             f"Да, аккаунт {name} сейчас свободен — вы можете его арендовать."
                         )
                     else:
-                        reply = f"Сейчас аккаунт {name} занят. Могу подсказать другие свободные лоты."
+                        eta = _format_eta_from_row(row)
+                        if eta:
+                            reply = f"?????? ??????? {name} ?????. {eta}"
+                        else:
+                            reply = f"?????? ??????? {name} ?????. ???? ?????????? ?????? ????????? ????."
                     send_chat_message(logger, account, int(chat_id), reply)
                 else:
                     send_chat_message(logger, account, int(chat_id), "Лот не найден в базе.")
@@ -768,6 +821,52 @@ def log_message(
                     int(chat_id),
                     "Не могу проверить лот сейчас. Используйте команду !сток.",
                 )
+            return None
+        if _wants_when_free(lower_text):
+            if not mysql_cfg or user_id is None:
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    "?????? ????? ???????????? ??????????. ???????? ?????? ?? ??? ??? ??????????? !????.",
+                )
+                return None
+            lot_url = _find_recent_lot_url(mysql_cfg, int(user_id), workspace_id, int(chat_id))
+            if not lot_url:
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    "??????????, ???????? ?????? ?? ???, ????? ?????????.",
+                )
+                return None
+            row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
+            if row and row.get("owner"):
+                eta = _format_eta_from_row(row)
+                if eta:
+                    send_chat_message(logger, account, int(chat_id), eta)
+                else:
+                    send_chat_message(
+                        logger,
+                        account,
+                        int(chat_id),
+                        "?????? ????? ???????????? ??????????. ?????????? ????? ??? ??????????? !????.",
+                    )
+                return None
+            if row and not row.get("owner"):
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    "?????? ??? ????????. ?????? ??????????.",
+                )
+                return None
+            send_chat_message(
+                logger,
+                account,
+                int(chat_id),
+                "??? ?? ?????? ? ????. ???????? ?????? ??? ???.",
+            )
             return None
         if mysql_cfg and user_id is not None:
             wants_stock = _wants_stock_list(lower_text)
