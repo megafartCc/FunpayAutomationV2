@@ -69,10 +69,12 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
   const [blacklistOwner, setBlacklistOwner] = useState("");
   const [blacklistOrderId, setBlacklistOrderId] = useState("");
   const [blacklistReason, setBlacklistReason] = useState("");
+  const [blacklistPermanent, setBlacklistPermanent] = useState(false);
   const [blacklistSelected, setBlacklistSelected] = useState<string[]>([]);
   const [blacklistEditingId, setBlacklistEditingId] = useState<string | number | null>(null);
   const [blacklistEditOwner, setBlacklistEditOwner] = useState("");
   const [blacklistEditReason, setBlacklistEditReason] = useState("");
+  const [blacklistEditStatus, setBlacklistEditStatus] = useState("confirmed");
   const [blacklistResolving, setBlacklistResolving] = useState(false);
   const [blacklistLogs, setBlacklistLogs] = useState<BlacklistLog[]>([]);
   const [blacklistLogsLoading, setBlacklistLogsLoading] = useState(false);
@@ -194,12 +196,18 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     setBlacklistResolving(true);
     try {
       const entry = await api.createBlacklist(
-        { owner, reason: blacklistReason.trim() || null, order_id: orderId || null },
+        {
+          owner,
+          reason: blacklistReason.trim() || null,
+          order_id: orderId || null,
+          status: blacklistPermanent ? "permanent" : "confirmed",
+        },
         workspaceId ?? undefined,
       );
       setBlacklistOwner("");
       setBlacklistOrderId("");
       setBlacklistReason("");
+      setBlacklistPermanent(false);
       setResolvedWorkspace(null);
       setBlacklistEntries((prev) => [entry, ...prev.filter((item) => item.id !== entry.id)]);
       onToast?.(tr("User added to blacklist.", "Пользователь добавлен в чёрный список."));
@@ -219,12 +227,14 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
     setBlacklistEditingId(entry.id ?? null);
     setBlacklistEditOwner(entry.owner || "");
     setBlacklistEditReason(entry.reason || "");
+    setBlacklistEditStatus(entry.status || "confirmed");
   };
 
   const cancelEditBlacklist = () => {
     setBlacklistEditingId(null);
     setBlacklistEditOwner("");
     setBlacklistEditReason("");
+    setBlacklistEditStatus("confirmed");
   };
 
   const handleSaveBlacklistEdit = async () => {
@@ -235,12 +245,9 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
       return;
     }
     try {
-      const entryStatus =
-        blacklistEntries.find((item) => String(item.id) === String(blacklistEditingId))?.status ||
-        "confirmed";
       const entry = await api.updateBlacklist(
         Number(blacklistEditingId),
-        { owner, reason: blacklistEditReason.trim() || null, status: entryStatus },
+        { owner, reason: blacklistEditReason.trim() || null, status: blacklistEditStatus },
         workspaceId ?? undefined,
       );
       onToast?.(tr("Blacklist entry updated.", "Запись чёрного списка обновлена."));
@@ -422,6 +429,18 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                 placeholder={tr("Reason (optional)", "Причина (необязательно)")}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
+              <label className="flex items-center gap-2 text-xs text-neutral-600">
+                <input
+                  type="checkbox"
+                  checked={blacklistPermanent}
+                  onChange={(e) => setBlacklistPermanent(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300 text-neutral-900"
+                />
+                {tr(
+                  "Permanent blacklist (no compensation unlock).",
+                  "Постоянный чёрный список (без компенсации).",
+                )}
+              </label>
               <button
                 onClick={handleAddBlacklist}
                 disabled={blacklistResolving || (!blacklistOwner.trim() && !blacklistOrderId.trim())}
@@ -522,6 +541,11 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                                 {tr("Pending review", "На проверке")}
                               </span>
                             )}
+                            {(entry.status || "confirmed") === "permanent" && (
+                              <span className="mt-1 inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                {tr("Permanent", "Постоянный")}
+                              </span>
+                            )}
                             {accountDetails?.login ? (
                               <div className="mt-1 text-xs text-neutral-500">
                                 {tr("Account login:", "Логин аккаунта:")}{" "}
@@ -568,12 +592,23 @@ const BlacklistPage: React.FC<BlacklistPageProps> = ({ onToast }) => {
                           )}
                         </div>
                         {isEditing ? (
-                          <input
-                            value={blacklistEditReason}
-                            onChange={(e) => setBlacklistEditReason(e.target.value)}
-                            placeholder={tr("Reason (optional)", "Причина (необязательно)")}
-                            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
-                          />
+                          <div className="grid gap-2">
+                            <input
+                              value={blacklistEditReason}
+                              onChange={(e) => setBlacklistEditReason(e.target.value)}
+                              placeholder={tr("Reason (optional)", "Причина (необязательно)")}
+                              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+                            />
+                            <select
+                              value={blacklistEditStatus}
+                              onChange={(e) => setBlacklistEditStatus(e.target.value)}
+                              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600 outline-none"
+                            >
+                              <option value="confirmed">{tr("Confirmed", "Подтверждён")}</option>
+                              <option value="permanent">{tr("Permanent", "Постоянный")}</option>
+                              <option value="pending">{tr("Pending", "На проверке")}</option>
+                            </select>
+                          </div>
                         ) : (
                           <span className="min-w-0 truncate text-neutral-600">{entry.reason || "-"}</span>
                         )}

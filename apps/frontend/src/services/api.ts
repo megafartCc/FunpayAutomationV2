@@ -142,6 +142,7 @@ export type BlacklistCreatePayload = {
   owner: string;
   reason?: string | null;
   order_id?: string | null;
+  status?: string | null;
 };
 
 export type BlacklistUpdatePayload = {
