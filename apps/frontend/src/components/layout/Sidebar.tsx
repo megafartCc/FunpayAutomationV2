@@ -217,6 +217,25 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const DocumentationIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M7 4H16C17.1046 4 18 4.89543 18 6V20L12.5 17.5L7 20V4Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9.5 8H14.5M9.5 11H14.5"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 type NavItem = { id: string; labelKey: TranslationKey; Icon: React.FC };
 
 const NAV_ITEMS: NavItem[] = [
@@ -233,11 +252,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: "lots", labelKey: "nav.lots", Icon: LotsIcon },
   { id: "chats", labelKey: "nav.chats", Icon: ChatsIcon },
   { id: "add", labelKey: "nav.addAccount", Icon: AddIcon },
+  { id: "documentation", labelKey: "nav.documentation", Icon: DocumentationIcon },
   { id: "plugins", labelKey: "nav.plugins", Icon: PluginsIcon },
   { id: "settings", labelKey: "nav.settings", Icon: SettingsIcon },
 ];
 
-const BOTTOM_NAV_IDS = new Set(["plugins", "settings"]);
+const BOTTOM_NAV_IDS = new Set(["documentation", "plugins", "settings"]);
 
 const navIdToPath: Record<string, string> = {
   "funpay-stats": "/funpay-stats",
@@ -253,6 +273,7 @@ const navIdToPath: Record<string, string> = {
   lots: "/lots",
   chats: "/chats",
   add: "/add-account",
+  documentation: "/documentation",
   plugins: "/plugins",
   settings: "/settings",
 };

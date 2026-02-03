@@ -22,25 +22,72 @@ def is_blacklisted(
         if not table_exists(cursor, "blacklist"):
             return False
         has_status = column_exists(cursor, "blacklist", "status")
-        if has_status:
+        if workspace_id is None:
+            status_clause = " AND status IN ('confirmed', 'permanent')" if has_status else ""
             cursor.execute(
-                """
+                f"""
                 SELECT 1 FROM blacklist
-                WHERE owner = %s AND user_id = %s AND workspace_id <=> %s AND status = 'confirmed'
+                WHERE owner = %s AND user_id = %s{status_clause}
                 LIMIT 1
                 """,
-                (owner_key, int(user_id), int(workspace_id) if workspace_id is not None else None),
+                (owner_key, int(user_id)),
+            )
+        else:
+            status_clause = " AND status IN ('confirmed', 'permanent')" if has_status else ""
+            cursor.execute(
+                f"""
+                SELECT 1 FROM blacklist
+                WHERE owner = %s AND user_id = %s{status_clause}
+                  AND (workspace_id = %s OR workspace_id IS NULL)
+                LIMIT 1
+                """,
+                (owner_key, int(user_id), int(workspace_id)),
+            )
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def get_blacklist_status(
+    mysql_cfg: dict,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None = None,
+) -> str | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "blacklist"):
+            return None
+        if workspace_id is None:
+            cursor.execute(
+                """
+                SELECT status
+                FROM blacklist
+                WHERE owner = %s AND user_id = %s
+                ORDER BY (status = 'permanent') DESC, id DESC
+                LIMIT 1
+                """,
+                (owner_key, int(user_id)),
             )
         else:
             cursor.execute(
                 """
-                SELECT 1 FROM blacklist
-                WHERE owner = %s AND user_id = %s AND workspace_id <=> %s
+                SELECT status
+                FROM blacklist
+                WHERE owner = %s AND user_id = %s
+                  AND (workspace_id = %s OR workspace_id IS NULL)
+                ORDER BY (status = 'permanent') DESC, workspace_id IS NULL ASC, id DESC
                 LIMIT 1
                 """,
-                (owner_key, int(user_id), int(workspace_id) if workspace_id is not None else None),
+                (owner_key, int(user_id), int(workspace_id)),
             )
-        return cursor.fetchone() is not None
+        row = cursor.fetchone()
+        return str(row[0]).strip().lower() if row and row[0] is not None else None
     finally:
         conn.close()
 

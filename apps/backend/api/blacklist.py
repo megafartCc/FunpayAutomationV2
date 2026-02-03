@@ -48,6 +48,7 @@ class BlacklistCreate(BaseModel):
     owner: str | None = Field(None, min_length=1, max_length=255)
     reason: str | None = Field(None, max_length=500)
     order_id: str | None = Field(None, max_length=128)
+    status: str | None = Field(None, max_length=16)
 
 
 class BlacklistUpdate(BaseModel):
@@ -141,7 +142,13 @@ def add_blacklist(
             resolved_workspace_name = resolved.workspace_name
     if not owner:
         raise HTTPException(status_code=400, detail="Owner is required.")
-    ok = blacklist_repo.add_blacklist_entry(owner, payload.reason, user_id, workspace_id, status="confirmed")
+    ok = blacklist_repo.add_blacklist_entry(
+        owner,
+        payload.reason,
+        user_id,
+        workspace_id,
+        status=payload.status or "confirmed",
+    )
     if not ok:
         raise HTTPException(status_code=400, detail="User already blacklisted.")
     details_parts = []
