@@ -10,6 +10,7 @@ from .account_utils import build_account_message, resolve_rental_minutes
 from .bonus_utils import adjust_bonus_balance, has_bonus_event
 from .blacklist_utils import (
     get_blacklist_compensation_total,
+    get_blacklist_status,
     is_blacklisted,
     log_blacklist_event,
     remove_blacklist_entry,
@@ -745,6 +746,24 @@ def handle_order_purchased(
     steam_id = steam_id_from_mafile(lot_mapping.get("mafile_json")) if lot_mapping else None
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
+        blacklist_status = get_blacklist_status(mysql_cfg, buyer, int(user_id), workspace_id)
+        if blacklist_status == "permanent":
+            log_blacklist_event(
+                mysql_cfg,
+                owner=buyer,
+                action="blocked_order_permanent",
+                details=f"order={order_id}; lot={lot_number}; amount={amount}",
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+            send_chat_message(
+                logger,
+                account,
+                chat_id,
+                "Вы в постоянном черном списке. Доступ заблокирован без компенсации.",
+            )
+            mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+            return
         comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
         comp_hours = env_int("BLACKLIST_COMP_HOURS", 5)
         comp_threshold_minutes = max(comp_threshold_minutes, comp_hours * 60, 5 * 60)

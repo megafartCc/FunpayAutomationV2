@@ -27,6 +27,7 @@ const titles: Record<string, TranslationKey> = {
   "/add-account": "title.addAccount",
   "/automations": "title.automations",
   "/notifications": "title.notifications",
+  "/documentation": "title.documentation",
   "/plugins": "title.plugins",
   "/settings": "title.settings",
 };
@@ -43,6 +44,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const hideWorkspaceControls =
     location.pathname === "/inventory" ||
     location.pathname === "/blacklist" ||
+    location.pathname === "/documentation" ||
     location.pathname === "/plugins";
 
   return (

@@ -69,6 +69,7 @@ class AccountItem(BaseModel):
     login: str
     password: str
     lot_url: str | None = None
+    lot_number: int | None = None
     mmr: int | None = None
     owner: str | None = None
     rental_start: str | None = None
@@ -121,6 +122,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         login=record.login,
         password=record.password,
         lot_url=record.lot_url,
+        lot_number=record.lot_number,
         mmr=record.mmr,
         owner=record.owner,
         rental_start=rental_start,
