@@ -217,17 +217,17 @@ const SettingsIcon = () => (
   </svg>
 );
 
-const BotCustomizationIcon = () => (
-  <svg width="22" height="21" viewBox="0 0 22 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+const DocumentationIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
-      d="M10.997 2.0835C6.951 2.0835 3.664 5.3705 3.664 9.4165C3.664 12.5125 5.554 15.1345 8.237 16.2575C8.284 16.2775 8.333 16.2925 8.383 16.3025L8.375 18.1245C8.375 18.8165 8.935 19.3745 9.625 19.3745H12.37C13.06 19.3745 13.62 18.8165 13.62 18.1245L13.613 16.3015C13.663 16.2915 13.711 16.2775 13.758 16.2575C16.44 15.1345 18.33 12.5125 18.33 9.4165C18.33 5.3705 15.043 2.0835 10.997 2.0835Z"
+      d="M7 4H16C17.1046 4 18 4.89543 18 6V20L12.5 17.5L7 20V4Z"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
     <path
-      d="M8.5 9.6665C8.5 8.8385 9.172 8.1665 10 8.1665H12C12.828 8.1665 13.5 8.8385 13.5 9.6665V11.1665C13.5 11.9945 12.828 12.6665 12 12.6665H10C9.172 12.6665 8.5 11.9945 8.5 11.1665V9.6665Z"
+      d="M9.5 8H14.5M9.5 11H14.5"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
@@ -252,12 +252,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: "lots", labelKey: "nav.lots", Icon: LotsIcon },
   { id: "chats", labelKey: "nav.chats", Icon: ChatsIcon },
   { id: "add", labelKey: "nav.addAccount", Icon: AddIcon },
-  { id: "bot-customization", labelKey: "nav.botCustomization", Icon: BotCustomizationIcon },
+  { id: "documentation", labelKey: "nav.documentation", Icon: DocumentationIcon },
   { id: "plugins", labelKey: "nav.plugins", Icon: PluginsIcon },
   { id: "settings", labelKey: "nav.settings", Icon: SettingsIcon },
 ];
 
-const BOTTOM_NAV_IDS = new Set(["bot-customization", "plugins", "settings"]);
+const BOTTOM_NAV_IDS = new Set(["documentation", "plugins", "settings"]);
 
 const navIdToPath: Record<string, string> = {
   "funpay-stats": "/funpay-stats",
@@ -273,7 +273,7 @@ const navIdToPath: Record<string, string> = {
   lots: "/lots",
   chats: "/chats",
   add: "/add-account",
-  "bot-customization": "/bot-customization",
+  documentation: "/documentation",
   plugins: "/plugins",
   settings: "/settings",
 };
