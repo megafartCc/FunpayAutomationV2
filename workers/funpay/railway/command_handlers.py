@@ -29,6 +29,7 @@ from .constants import (
     ORDER_ACCOUNT_BUSY,
     RENTAL_ALREADY_PAUSED_MESSAGE,
     RENTAL_CODE_BLOCKED_MESSAGE,
+    RENTAL_NOT_ACTIVE_MESSAGE,
     RENTAL_EXPIRE_DELAY_MESSAGE,
     RENTAL_FROZEN_MESSAGE,
     RENTAL_NOT_PAUSED_MESSAGE,
@@ -56,6 +57,7 @@ from .lot_utils import (
     start_rental_for_owner,
 )
 from .order_utils import fetch_previous_owner_for_account
+from .pending_utils import set_pending_command
 from .rental_utils import update_rental_freeze_state
 from .steam_guard_utils import get_steam_guard_code, steam_id_from_mafile
 from .text_utils import (
@@ -73,6 +75,10 @@ from .text_utils import (
 from .user_utils import get_user_id_by_username
 
 _lp_replace_rate_limit: dict[tuple[int, str], float] = {}
+
+
+def _get_bot_key(account: Account) -> str:
+    return str(getattr(account, "username", None) or getattr(account, "id", "") or "")
 
 
 def build_stock_messages(accounts: list[dict]) -> list[str]:
@@ -155,6 +161,7 @@ def _select_account_for_command(
     accounts: list[dict],
     args: str,
     command: str,
+    sender_username: str,
 ) -> dict | None:
     if not accounts:
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
@@ -163,6 +170,7 @@ def _select_account_for_command(
         return accounts[0]
     account_id = parse_account_id_arg(args)
     if account_id is None:
+        set_pending_command(_get_bot_key(account), chat_id, sender_username, command, "")
         send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
         return None
     for acc in accounts:
@@ -171,6 +179,7 @@ def _select_account_for_command(
                 return acc
         except Exception:
             continue
+    set_pending_command(_get_bot_key(account), chat_id, sender_username, command, "")
     send_chat_message(logger, account, chat_id, build_rental_choice_message(accounts, command))
     return None
 
@@ -201,6 +210,25 @@ def _select_replacement_account(
         return None
     candidates.sort(key=lambda item: (item[0], item[1], int(item[2].get("id") or 0)))
     return candidates[0][2]
+
+
+def _is_rental_active(account_row: dict) -> bool:
+    if not account_row:
+        return False
+    if not account_row.get("owner"):
+        return False
+    if account_row.get("account_frozen") or account_row.get("rental_frozen"):
+        return False
+    minutes = account_row.get("rental_duration_minutes")
+    if minutes is None:
+        try:
+            minutes = int(account_row.get("rental_duration") or 0) * 60
+        except Exception:
+            minutes = 0
+    try:
+        return int(minutes or 0) > 0
+    except Exception:
+        return False
 
 
 def handle_account_command(
@@ -254,6 +282,7 @@ def handle_account_command(
 
     account_id = parse_account_id_arg(args)
     if len(accounts) > 1 and account_id is None:
+        set_pending_command(_get_bot_key(account), chat_id, sender_username, command, "")
         _send_account_choice()
         return True
 
@@ -267,10 +296,15 @@ def handle_account_command(
             except Exception:
                 continue
         if not selected:
+            set_pending_command(_get_bot_key(account), chat_id, sender_username, command, "")
             _send_account_choice()
             return True
     else:
         selected = accounts[0]
+
+    if not _is_rental_active(selected):
+        send_chat_message(logger, account, chat_id, RENTAL_NOT_ACTIVE_MESSAGE)
+        return True
 
     total_minutes = selected.get("rental_duration_minutes")
     if total_minutes is None:
@@ -536,9 +570,12 @@ def handle_code_command(
         send_chat_message(logger, account, chat_id, RENTALS_EMPTY)
         return True
 
-    active_accounts = [acc for acc in accounts if not acc.get("rental_frozen")]
+    active_accounts = [acc for acc in accounts if _is_rental_active(acc)]
     if not active_accounts:
-        send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
+        if any(acc.get("rental_frozen") for acc in accounts):
+            send_chat_message(logger, account, chat_id, RENTAL_CODE_BLOCKED_MESSAGE)
+        else:
+            send_chat_message(logger, account, chat_id, RENTAL_NOT_ACTIVE_MESSAGE)
         return True
 
     lines = ["Коды Steam Guard:"]
@@ -604,7 +641,7 @@ def handle_low_priority_replace_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command, sender_username)
     if not selected:
         return True
 
@@ -772,7 +809,7 @@ def handle_pause_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command, sender_username)
     if not selected:
         return True
 
@@ -836,7 +873,7 @@ def handle_resume_command(
         return True
 
     accounts = fetch_owner_accounts(mysql_cfg, user_id, sender_username, workspace_id)
-    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command)
+    selected = _select_account_for_command(logger, account, chat_id, accounts, args, command, sender_username)
     if not selected:
         return True
 

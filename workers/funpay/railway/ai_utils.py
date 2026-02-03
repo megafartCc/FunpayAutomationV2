@@ -59,7 +59,8 @@ _SENSITIVE_KEYWORDS = (
     "пароль",
     "steam guard",
     "steamguard",
-    "код",
+    "password",
+    "login",
 )
 
 
