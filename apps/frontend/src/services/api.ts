@@ -22,6 +22,7 @@ export type AccountItem = {
   login: string;
   password: string;
   lot_url?: string | null;
+  lot_number?: number | null;
   mmr?: number | null;
   owner?: string | null;
   rental_start?: string | null;
@@ -142,6 +143,7 @@ export type BlacklistCreatePayload = {
   owner: string;
   reason?: string | null;
   order_id?: string | null;
+  status?: string | null;
 };
 
 export type BlacklistUpdatePayload = {
