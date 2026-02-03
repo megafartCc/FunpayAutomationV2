@@ -9,6 +9,9 @@ import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
+LOCAL_API_URL_ENV = "AI_API_URL"
+LOCAL_MODEL_ENV = "AI_MODEL"
+LOCAL_API_KEY_ENV = "AI_API_KEY"
 DEFAULT_PROMPT = (
     "Вы — дружелюбный помощник поддержки FunPay. "
     "Отвечайте кратко, вежливо и по делу. "
@@ -63,19 +66,22 @@ def _build_payload(
     sender: str | None,
     chat_name: str | None,
     context: str | None = None,
+    model: str,
+    temperature: float,
+    max_tokens: int,
 ) -> dict[str, Any]:
     system_prompt = os.getenv("GROQ_SYSTEM_PROMPT", DEFAULT_PROMPT)
     user_prefix = f"Покупатель: {sender or '-'}\nЧат: {chat_name or '-'}\nСообщение: "
     if context:
         user_text = f"Context:\n{context}\n\nUser message:\n{user_text}"
     return {
-        "model": os.getenv("GROQ_MODEL", DEFAULT_MODEL),
+        "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"{user_prefix}{user_text}"},
         ],
-        "temperature": float(os.getenv("GROQ_TEMPERATURE", "0.4")),
-        "max_tokens": int(os.getenv("GROQ_MAX_TOKENS", "300")),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
     }
 
 
@@ -87,23 +93,37 @@ def generate_ai_reply(
     context: str | None = None,
 ) -> str | None:
     logger = logging.getLogger("funpay.ai")
-    api_key = os.getenv("GROQ_API_KEY", "").strip()
-    if not api_key or not user_text:
-        if not api_key:
-            logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
+    if not user_text:
+        return None
+    local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
+    api_url = local_url or GROQ_API_URL
+    api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
+    model = os.getenv(LOCAL_MODEL_ENV if local_url else "GROQ_MODEL", DEFAULT_MODEL)
+    temperature = float(os.getenv("GROQ_TEMPERATURE", "0.4"))
+    max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "300"))
+    if not api_key and not local_url:
+        logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
         return None
     if _is_code_like(user_text):
         return CLARIFY_RESPONSE
     if _is_gibberish(user_text):
         return None
-    payload = _build_payload(user_text, sender=sender, chat_name=chat_name, context=context)
+    payload = _build_payload(
+        user_text,
+        sender=sender,
+        chat_name=chat_name,
+        context=context,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         response = requests.post(
-            GROQ_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            api_url,
+            headers=headers,
             json=payload,
             timeout=20,
         )
