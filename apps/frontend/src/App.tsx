@@ -12,6 +12,7 @@ import AddAccountPage from "./components/account/AddAccountPage";
 import LotsPage from "./components/lots/LotsPage";
 import SettingsPage from "./components/settings/SettingsPage";
 import BlacklistPage from "./components/blacklist/BlacklistPage";
+import BotCustomizationPage from "./components/botCustomization/BotCustomizationPage";
 import OrdersHistoryPage from "./components/orders/OrdersHistoryPage";
 import StratzGameHistoryPage from "./components/stratz/StratzGameHistoryPage";
 import ChatsPage from "./components/chats/ChatsPage";
@@ -166,6 +167,7 @@ const AppRoutes: React.FC = () => {
             }
           />
           <Route path="blacklist" element={<BlacklistPage onToast={showToast} />} />
+          <Route path="bot-customization" element={<BotCustomizationPage />} />
           <Route path="inventory" element={<InventoryPage onToast={showToast} />} />
           <Route path="low-priority" element={<LowPriorityAccountsPage onToast={showToast} />} />
           <Route path="lots" element={<LotsPage />} />

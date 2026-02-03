@@ -191,13 +191,13 @@ class MySQLBlacklistRepo:
             has_workspace_id = "workspace_id" in columns
             has_status = "status" in columns
             if workspace_id is None or not has_workspace_id:
-                status_clause = " AND status = 'confirmed'" if has_status else ""
+                status_clause = " AND status IN ('confirmed', 'permanent')" if has_status else ""
                 cursor.execute(
                     f"SELECT 1 FROM blacklist WHERE owner = %s AND user_id = %s{status_clause} LIMIT 1",
                     (owner_key, int(user_id)),
                 )
             else:
-                status_clause = " AND status = 'confirmed'" if has_status else ""
+                status_clause = " AND status IN ('confirmed', 'permanent')" if has_status else ""
                 cursor.execute(
                     f"""
                     SELECT 1 FROM blacklist
