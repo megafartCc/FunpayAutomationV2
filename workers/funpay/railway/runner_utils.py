@@ -69,6 +69,17 @@ WELCOME_MESSAGE = os.getenv(
 )
 
 LOT_URL_RE = re.compile(r"https?://funpay\.com/lots/offer\?id=\d+", re.IGNORECASE)
+COMMAND_SUGGESTIONS = {
+    "!free": "!сток",
+    "!stock": "!сток",
+    "!available": "!сток",
+    "!avail": "!сток",
+    "!acc": "!акк",
+    "!account": "!акк",
+    "!code": "!код",
+    "!help": "!команды",
+    "!commands": "!команды",
+}
 
 
 def _is_greeting(text: str) -> bool:
@@ -90,6 +101,18 @@ def _extract_lot_url(text: str) -> str | None:
     if url_match:
         return url_match.group(0)
     return None
+
+
+def _suggest_command(text: str) -> str | None:
+    if not text:
+        return None
+    cleaned = text.strip()
+    if not cleaned.startswith("!"):
+        return None
+    token = cleaned.split(maxsplit=1)[0].lower()
+    if token in COMMAND_PREFIXES:
+        return None
+    return COMMAND_SUGGESTIONS.get(token)
 
 
 def _find_recent_lot_url(
@@ -777,6 +800,18 @@ def log_message(
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             return None
         if account.username and sender_username and sender_username.lower() == account.username.lower():
+            return None
+        suggested = _suggest_command(message_text)
+        if suggested:
+            if suggested == "!команды":
+                send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            else:
+                send_chat_message(
+                    logger,
+                    account,
+                    int(chat_id),
+                    f"Команда не распознана. Возможно, вы имели в виду {suggested}.",
+                )
             return None
         if _wants_command_list(lower_text):
             send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
