@@ -21,7 +21,8 @@ class AccountRecord:
     login: str
     password: str
     lot_url: Optional[str]
-    mmr: Optional[int]
+    lot_number: Optional[int] = None
+    mmr: Optional[int] = None
     owner: Optional[str]
     rental_start: Optional[str]
     rental_duration: int
@@ -120,12 +121,16 @@ class MySQLAccountRepo:
                        w.name AS workspace_name,
                        a.last_rented_workspace_id,
                        lw.name AS last_rented_workspace_name,
-                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
+                       a.account_name, a.login, a.password,
+                       COALESCE(l.lot_url, a.lot_url) AS lot_url,
+                       l.lot_number AS lot_number,
+                       a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        a.account_frozen, a.rental_frozen{low_priority_select}
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
+                LEFT JOIN lots l ON l.account_id = a.id AND l.workspace_id = a.workspace_id
                 WHERE a.user_id = %s
                 ORDER BY a.id DESC
                 """,
@@ -144,6 +149,7 @@ class MySQLAccountRepo:
                     login=row["login"],
                     password=row["password"],
                     lot_url=row.get("lot_url"),
+                    lot_number=row.get("lot_number"),
                     mmr=row.get("mmr"),
                     owner=row.get("owner"),
                     rental_start=row.get("rental_start"),
@@ -171,12 +177,16 @@ class MySQLAccountRepo:
                        w.name AS workspace_name,
                        a.last_rented_workspace_id,
                        lw.name AS last_rented_workspace_name,
-                       a.account_name, a.login, a.password, a.lot_url, a.mmr, a.mafile_json,
+                       a.account_name, a.login, a.password,
+                       COALESCE(l.lot_url, a.lot_url) AS lot_url,
+                       l.lot_number AS lot_number,
+                       a.mmr, a.mafile_json,
                        a.owner, a.rental_start, a.rental_duration, a.rental_duration_minutes,
                        a.account_frozen, a.rental_frozen{low_priority_select}
                 FROM accounts a
                 LEFT JOIN workspaces w ON w.id = a.workspace_id
                 LEFT JOIN workspaces lw ON lw.id = a.last_rented_workspace_id
+                LEFT JOIN lots l ON l.account_id = a.id AND l.workspace_id = a.workspace_id
                 WHERE a.user_id = %s AND a.workspace_id = %s
                 ORDER BY a.id DESC
                 """,
@@ -195,6 +205,7 @@ class MySQLAccountRepo:
                     login=row["login"],
                     password=row["password"],
                     lot_url=row.get("lot_url"),
+                    lot_number=row.get("lot_number"),
                     mmr=row.get("mmr"),
                     owner=row.get("owner"),
                     rental_start=row.get("rental_start"),
@@ -312,6 +323,7 @@ class MySQLAccountRepo:
                 login=row["login"],
                 password=row["password"],
                 lot_url=row.get("lot_url"),
+                lot_number=None,
                 mmr=row.get("mmr"),
                 owner=row.get("owner"),
                 rental_start=row.get("rental_start"),
@@ -444,6 +456,7 @@ class MySQLAccountRepo:
                     login=row["login"],
                     password=row["password"],
                     lot_url=row.get("lot_url"),
+                    lot_number=None,
                     mmr=row.get("mmr"),
                     owner=row.get("owner"),
                     rental_start=row.get("rental_start"),

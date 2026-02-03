@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 
 import mysql.connector
@@ -23,6 +24,7 @@ from .constants import (
     LP_REPLACE_NO_MMR_MESSAGE,
     LP_REPLACE_SUCCESS_PREFIX,
     LP_REPLACE_TOO_LATE_MESSAGE,
+    LP_REPLACE_RATE_LIMIT_MESSAGE,
     LP_REPLACE_WINDOW_MINUTES,
     ORDER_ACCOUNT_BUSY,
     RENTAL_ALREADY_PAUSED_MESSAGE,
@@ -69,6 +71,8 @@ from .text_utils import (
     parse_lot_number,
 )
 from .user_utils import get_user_id_by_username
+
+_lp_replace_rate_limit: dict[tuple[int, str], float] = {}
 
 
 def build_stock_messages(accounts: list[dict]) -> list[str]:
@@ -640,6 +644,14 @@ def handle_low_priority_replace_command(
     if datetime.utcnow() - rental_start > timedelta(minutes=LP_REPLACE_WINDOW_MINUTES):
         send_chat_message(logger, account, chat_id, LP_REPLACE_TOO_LATE_MESSAGE)
         return True
+    owner_key = normalize_owner_name(sender_username)
+    if owner_key:
+        rate_key = (int(user_id), owner_key)
+        now = time.time()
+        last_request = _lp_replace_rate_limit.get(rate_key)
+        if last_request is not None and now - last_request < 3600:
+            send_chat_message(logger, account, chat_id, LP_REPLACE_RATE_LIMIT_MESSAGE)
+            return True
     raw_mmr = selected.get("mmr")
     try:
         target_mmr = int(raw_mmr)
@@ -708,6 +720,8 @@ def handle_low_priority_replace_command(
     replacement_info["rental_frozen"] = 0
     message = f"{LP_REPLACE_SUCCESS_PREFIX}\n{build_account_message(replacement_info, rental_minutes, False)}"
     send_chat_message(logger, account, chat_id, message)
+    if owner_key:
+        _lp_replace_rate_limit[(int(user_id), owner_key)] = time.time()
     if suggestion_added:
         log_blacklist_event(
             mysql_cfg,
