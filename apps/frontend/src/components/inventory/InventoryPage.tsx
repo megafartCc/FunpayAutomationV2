@@ -340,6 +340,11 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                 : rented
                   ? "bg-amber-50 text-amber-700"
                   : "bg-emerald-50 text-emerald-600";
+            const workspaceLinked = !!selectedAccount.workspaceId;
+            const workspaceLabel = workspaceLinked ? "Привязан" : "Не привязан";
+            const workspaceClass = workspaceLinked
+              ? "bg-blue-50 text-blue-700"
+              : "bg-neutral-100 text-neutral-500";
             const ownerLabel = selectedAccount.owner ? String(selectedAccount.owner) : "-";
             const totalMinutes =
               selectedAccount.rentalDurationMinutes ??
@@ -392,6 +397,12 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                     </span>
                     <span>Steam ID: {selectedAccount.steamId || "-"}</span>
                     <span>Покупатель: {ownerLabel}</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>Связь с пространством:</span>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${workspaceClass}`}>
+                        {workspaceLabel}
+                      </span>
+                    </span>
                     <span>Основное рабочее пространство: {formatWorkspaceLabel(selectedAccount.workspaceName, selectedAccount.workspaceId)}</span>
                     <span>
                       Last rented:{" "}
@@ -618,6 +629,11 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const lowPriority = !!acc.lowPriority;
+                  const workspaceLinked = !!acc.workspaceId;
+                  const workspaceLabel = workspaceLinked ? "Привязан" : "Не привязан";
+                  const workspaceClass = workspaceLinked
+                    ? "bg-blue-50 text-blue-700"
+                    : "bg-neutral-100 text-neutral-500";
                   const stateLabel = lowPriority ? "Низкий приоритет" : frozen ? "Заморожено" : rented ? "В аренде" : "Доступен";
                   const stateClass = lowPriority
                     ? "bg-rose-50 text-rose-600"
@@ -659,6 +675,9 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                           {acc.name || "Account"}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
+                          <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${workspaceClass}`}>
+                            {workspaceLabel}
+                          </span>
                           <span className="inline-flex w-fit rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
                             Основное: {formatWorkspaceLabel(acc.workspaceName, acc.workspaceId)}
                           </span>
