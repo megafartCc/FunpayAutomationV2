@@ -40,6 +40,7 @@ from .constants import (
     STOCK_TITLE,
 )
 from .env_utils import env_bool, env_int
+from .knowledge_utils import build_knowledge_context
 from .logging_utils import configure_logging
 from .models import RentalMonitorState
 from .notifications_utils import log_notification_event, upsert_workspace_status
@@ -221,6 +222,7 @@ def _build_rental_summary(accounts: list[dict], limit: int) -> list[str]:
 
 
 def _build_ai_context(
+    user_text: str,
     mysql_cfg: dict,
     user_id: int,
     workspace_id: int | None,
@@ -231,6 +233,7 @@ def _build_ai_context(
     summary_limit = env_int("AI_RENTAL_SUMMARY_LIMIT", 5)
     history_lines: list[str] = []
     rental_lines: list[str] = []
+    knowledge_text = ""
     try:
         history_lines = build_recent_chat_context(
             mysql_cfg,
@@ -247,7 +250,18 @@ def _build_ai_context(
         rental_lines = _build_rental_summary(accounts, summary_limit)
     except Exception:
         rental_lines = []
+    try:
+        knowledge_text = build_knowledge_context(
+            user_text,
+            max_chars=env_int("AI_KNOWLEDGE_MAX_CHARS", 1400),
+            max_items=env_int("AI_KNOWLEDGE_MAX_ITEMS", 3),
+        ) or ""
+    except Exception:
+        knowledge_text = ""
     sections: list[str] = []
+    if knowledge_text:
+        sections.append("Knowledge base:")
+        sections.append(knowledge_text)
     if history_lines:
         sections.append("Recent buyer messages:")
         sections.extend(history_lines)
@@ -789,6 +803,7 @@ def log_message(
         ai_context = None
         if mysql_cfg and user_id is not None and chat_id is not None:
             ai_context = _build_ai_context(
+                message_text,
                 mysql_cfg,
                 int(user_id),
                 workspace_id,
