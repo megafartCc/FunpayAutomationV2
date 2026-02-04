@@ -360,6 +360,10 @@ def _wants_stock_list(text: str) -> bool:
     )
     if "\u043a\u0430\u043a\u0438\u0435" in text and any(word in text for word in subjects):
         return True
+    if "\u0441\u0432\u043e\u0431\u043e\u0434" in text and (
+        "\u0447\u0442\u043e" in text or "\u0447\u0451" in text or "\u0447\u0435" in text or "\u0435\u0441\u0442\u044c" in text
+    ):
+        return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
 
 
