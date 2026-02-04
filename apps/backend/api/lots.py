@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.deps import get_current_user
+from db.account_repo import MySQLAccountRepo
 from db.lot_repo import MySQLLotRepo, LotRecord, LotCreateError
 from db.workspace_repo import MySQLWorkspaceRepo
+from services.funpay_lot_title import maybe_update_funpay_lot_title
 
 
 router = APIRouter()
 lots_repo = MySQLLotRepo()
 workspace_repo = MySQLWorkspaceRepo()
+accounts_repo = MySQLAccountRepo()
+logger = logging.getLogger("backend.lots")
 
 
 class LotCreate(BaseModel):
@@ -64,6 +70,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
     if not payload.lot_url.strip():
         raise HTTPException(status_code=400, detail="Lot URL is required")
     _ensure_workspace(payload.workspace_id, int(user.id))
+    workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
     try:
         created = lots_repo.create(
             user_id=int(user.id),
@@ -85,6 +92,16 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
         else:
             detail = "Failed to create lot"
         raise HTTPException(status_code=400, detail=detail)
+    if workspace:
+        try:
+            account = accounts_repo.get_by_id(int(payload.account_id), int(user.id))
+            maybe_update_funpay_lot_title(
+                workspace=workspace,
+                account=account,
+                lot_url=created.lot_url,
+            )
+        except Exception as exc:
+            logger.warning("Lot title update failed: %s", exc)
     return _to_item(created)
 
 
@@ -110,6 +127,7 @@ def update_lot(
     user=Depends(get_current_user),
 ) -> LotItem:
     _ensure_workspace(workspace_id, int(user.id))
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
     updated = lots_repo.update(
         user_id=int(user.id),
         workspace_id=int(workspace_id),
@@ -119,4 +137,14 @@ def update_lot(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Lot not found")
+    if payload.lot_url is not None and workspace:
+        try:
+            account = accounts_repo.get_by_id(int(updated.account_id), int(user.id))
+            maybe_update_funpay_lot_title(
+                workspace=workspace,
+                account=account,
+                lot_url=updated.lot_url,
+            )
+        except Exception as exc:
+            logger.warning("Lot title update failed: %s", exc)
     return _to_item(updated)
