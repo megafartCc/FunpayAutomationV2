@@ -223,16 +223,24 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
     [accounts],
   );
+  const accountById = useMemo(
+    () => new Map(accounts.map((acc) => [acc.id, acc])),
+    [accounts],
+  );
   const selectedRental = useMemo(
     () => rentals.find((row) => row.rowKey === selectedRowKey) ?? null,
     [rentals, selectedRowKey],
   );
   const selectedAccount = useMemo(() => {
     if (selectedRental) {
-      return accountByKey.get(selectedRental.accountKey) ?? null;
+      return (
+        accountByKey.get(selectedRental.accountKey) ??
+        accountById.get(selectedRental.id) ??
+        null
+      );
     }
     return accounts.find((acc) => acc.rowKey === selectedRowKey) ?? null;
-  }, [accounts, accountByKey, selectedRental, selectedRowKey]);
+  }, [accounts, accountById, accountByKey, selectedRental, selectedRowKey]);
 
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -312,6 +320,23 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     setAccountEditMmr(selectedAccount.mmr !== "-" && selectedAccount.mmr !== undefined ? String(selectedAccount.mmr) : "");
   }, [selectedAccount]);
 
+  const resolveRentalTarget = () => {
+    if (selectedAccount) {
+      return {
+        id: selectedAccount.id,
+        workspaceId: selectedAccount.workspaceId ?? selectedRental?.workspaceId ?? undefined,
+      };
+    }
+    if (selectedRental) {
+      return {
+        id: selectedRental.id,
+        workspaceId: selectedRental.workspaceId ?? undefined,
+      };
+    }
+    return null;
+  };
+
+
   const handleAssignAccount = async () => {
     if (!selectedAccount) {
       onToast?.("Сначала выберите аккаунт.", true);
@@ -388,7 +413,8 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   };
 
   const handleExtendRental = async () => {
-    if (!selectedAccount) {
+    const target = resolveRentalTarget();
+    if (!target) {
       onToast?.("Сначала выберите аренду.", true);
       return;
     }
@@ -405,7 +431,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     }
     setRentalActionBusy(true);
     try {
-      await api.extendAccount(selectedAccount.id, hours, minutes, selectedAccount.workspaceId ?? undefined);
+      await api.extendAccount(target.id, hours, minutes, target.workspaceId ?? undefined);
       onToast?.("Аренда продлена.");
       setRentalExtendHours("");
       setRentalExtendMinutes("");
@@ -419,14 +445,15 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   };
 
   const handleReleaseRental = async () => {
-    if (!selectedAccount) {
+    const target = resolveRentalTarget();
+    if (!target) {
       onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(selectedAccount.id, selectedAccount.workspaceId ?? undefined);
+      await api.releaseAccount(target.id, target.workspaceId ?? undefined);
       onToast?.("Аренда завершена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -438,14 +465,15 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   };
 
   const handleToggleRentalFreeze = async (nextFrozen: boolean) => {
-    if (!selectedAccount) {
+    const target = resolveRentalTarget();
+    if (!target) {
       onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.freezeRental(selectedAccount.id, nextFrozen, selectedAccount.workspaceId ?? undefined);
+      await api.freezeRental(target.id, nextFrozen, target.workspaceId ?? undefined);
       onToast?.(nextFrozen ? "Аренда заморожена." : "Аренда разморожена.");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
@@ -771,7 +799,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                 {rentals.map((row, idx) => {
                 const isSelected = selectedRowKey === row.rowKey;
                 const pill = statusPill(row.status);
-                const account = accountByKey.get(row.accountKey);
+                const account = accountByKey.get(row.accountKey) ?? accountById.get(row.id);
                 const workspaceLabel = resolveWorkspaceName(
                   row.workspaceId ?? account?.workspaceId,
                   row.workspaceName ?? account?.workspaceName,
@@ -818,7 +846,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
                     <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                     <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
-                      {getCountdownLabel(accountByKey.get(row.accountKey), row.timeLeft, now)}
+                      {getCountdownLabel(account, row.timeLeft, now)}
                     </span>
                     <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
                       {getMatchTimeLabel(row, now)}

@@ -15,6 +15,19 @@ const LotsPage: React.FC = () => {
   const [editingLot, setEditingLot] = useState<number | null>(null);
   const [displayName, setDisplayName] = useState("");
 
+  const accountById = useMemo(
+    () => new Map(accounts.map((acc) => [acc.id, acc])),
+    [accounts],
+  );
+
+  const lotStatus = (account?: AccountItem | null) => {
+    if (!account) return { label: "—", className: "bg-neutral-100 text-neutral-500" };
+    if (account.rental_frozen) return { label: "Заморожено", className: "bg-slate-100 text-slate-700" };
+    if (account.owner) return { label: "В аренде", className: "bg-amber-50 text-amber-700" };
+    if (account.account_frozen) return { label: "Заморожен", className: "bg-rose-50 text-rose-700" };
+    return { label: "Свободен", className: "bg-emerald-50 text-emerald-700" };
+  };
+
   const accountOptions = useMemo(
     () =>
       accounts.map((acc) => {
@@ -237,6 +250,7 @@ const LotsPage: React.FC = () => {
               <tr>
                 <th className="px-3 py-2 text-left">Лот</th>
                 <th className="px-3 py-2 text-left">Аккаунт</th>
+                <th className="px-3 py-2 text-left">??????</th>
                 <th className="px-3 py-2 text-left">Ссылка на лот</th>
                 <th className="px-3 py-2 text-left">Отображаемое имя</th>
                 <th className="px-3 py-2"></th>
@@ -244,11 +258,19 @@ const LotsPage: React.FC = () => {
             </thead>
             <tbody>
               {lots.length ? (
-                lots.map((lot) => (
+                lots.map((lot) => {
+                  const account = accountById.get(lot.account_id);
+                  const status = lotStatus(account ?? null);
+                  return (
                   <tr key={lot.lot_number} className="bg-neutral-50">
                     <td className="rounded-l-xl px-3 py-3 font-semibold text-neutral-900">#{lot.lot_number}</td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.account_name ?? "-"} (ID {lot.account_id})
+                    </td>
+                    <td className="px-3 py-3 text-neutral-700">
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${status.className}`}>
+                        {status.label}
+                      </span>
                     </td>
                     <td className="px-3 py-3 text-neutral-700">
                       {lot.lot_url ? (
@@ -291,11 +313,12 @@ const LotsPage: React.FC = () => {
                       </button>
                     </td>
                   </tr>
-                ))
+                );
+                })
               ) : (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={6}
                     className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500"
                   >
                     {loading ? "Загружаем лоты..." : "Лоты ещё не настроены."}
