@@ -17,9 +17,12 @@ for _parent in _HERE.parents:
         break
 
 try:
-    from workers.funpay.FunPayAPI.account import Account
-except Exception:  # pragma: no cover - optional dependency in backend runtime
-    Account = None
+    from FunPayAPI.account import Account
+except Exception:
+    try:
+        from workers.funpay.FunPayAPI.account import Account
+    except Exception:  # pragma: no cover - optional dependency in backend runtime
+        Account = None
 
 
 _LOT_ID_RE = re.compile(r"(?:offer\?id=|offer/)(\d+)")
