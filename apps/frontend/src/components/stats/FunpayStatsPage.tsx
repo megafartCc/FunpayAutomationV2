@@ -1,4 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useI18n } from "../../i18n/useI18n";
 import { api, ActiveRentalItem, OrderHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
@@ -66,19 +74,11 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, delta, deltaTone, ico
   </div>
 );
 
-const getChartBarColor = (index: number) => {
-  if (index % 6 === 0) return "bg-indigo-500";
-  if (index % 6 === 1) return "bg-sky-500";
-  if (index % 6 === 2) return "bg-emerald-500";
-  if (index % 6 === 3) return "bg-amber-500";
-  if (index % 6 === 4) return "bg-rose-500";
-  return "bg-violet-500";
-};
-
 type ActivityPoint = {
   label: string;
   value: number;
 };
+
 
 type BuyerStat = {
   name: string;
@@ -87,6 +87,7 @@ type BuyerStat = {
 };
 
 const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
+const formatCurrency = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 
 type BlankCardProps = {
   minHeight?: number;
@@ -273,6 +274,37 @@ const FunpayStatsPage: React.FC = () => {
     });
   }, [ordersInRange]);
 
+  const totalRevenue = useMemo(() => {
+    return ordersInRange.reduce((sum, order) => {
+      if (typeof order.price === "number") return sum + order.price;
+      if (typeof order.amount === "number") return sum + order.amount;
+      return sum;
+    }, 0);
+  }, [ordersInRange]);
+
+  const totalRentalHours = useMemo(() => {
+    const minutes = ordersInRange.reduce((sum, order) => sum + (order.rental_minutes || 0), 0);
+    return minutes / 60;
+  }, [ordersInRange]);
+
+  const averageOrdersPerDay = useMemo(() => {
+    if (!ordersInRange.length) return 0;
+    if (range === "all") {
+      const dates = ordersInRange
+        .map((order) => order.created_at)
+        .filter(Boolean)
+        .map((value) => new Date(value as string))
+        .filter((dt) => !Number.isNaN(dt.getTime()));
+      if (!dates.length) return 0;
+      const min = Math.min(...dates.map((dt) => dt.getTime()));
+      const max = Math.max(...dates.map((dt) => dt.getTime()));
+      const days = Math.max(1, Math.ceil((max - min) / (1000 * 60 * 60 * 24)) + 1);
+      return ordersInRange.length / days;
+    }
+    const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
+    return ordersInRange.length / days;
+  }, [ordersInRange, range]);
+
   const mostPopularBuyer = buyers[0]?.name || tr("No data", "Нет данных");
   const topBuyerOrders = buyers[0]?.orders ?? 0;
 
@@ -298,7 +330,32 @@ const FunpayStatsPage: React.FC = () => {
       delta: topBuyerOrders ? `${topBuyerOrders} ${tr("orders", "заказов")}` : undefined,
       icon: <CardUsersIcon />,
     },
+    {
+      label: tr("Revenue", "Выручка"),
+      value: totalRevenue ? formatCurrency(totalRevenue) : "-",
+      icon: <CardBarsIcon />,
+    },
+    {
+      label: tr("Rental hours", "Часы аренды"),
+      value: totalRentalHours ? formatHoursLabel(totalRentalHours) : "-",
+      icon: <CardCloudCheckIcon />,
+    },
+    {
+      label: tr("Orders per day", "Заказов в день"),
+      value: averageOrdersPerDay ? averageOrdersPerDay.toFixed(1) : "-",
+      icon: <CardBarsIcon />,
+    },
   ];
+
+  const chartData = useMemo(
+    () =>
+      weeklyOverview.map((item) => ({
+        label: item.label,
+        orders: item.orders,
+        avg: item.avg,
+      })),
+    [weeklyOverview],
+  );
 
   return (
     <div className="space-y-6">
@@ -369,7 +426,7 @@ const FunpayStatsPage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900">
-                {tr("Rental activity by time", "Активность аренд по времени")}
+                {tr("Rental activity by day", "Активность аренд по дням")}
               </h2>
               <p className="text-sm text-neutral-500">
                 {tr("Peak hour: {hour}", "Пиковый час: {hour}", { hour: peakHour.label })}
@@ -379,18 +436,53 @@ const FunpayStatsPage: React.FC = () => {
               {rangeLabel}
             </span>
           </div>
-          <div className="mt-6 grid grid-cols-12 items-end gap-2">
-            {hourlyActivity.map((point, index) => (
-              <div key={point.label} className="flex flex-col items-center gap-2">
-                <div className="text-[10px] font-semibold text-neutral-500">{point.value}</div>
-                <div
-                  className={`w-7 rounded-full ${getChartBarColor(index)}`}
-                  style={{ height: `${Math.max(24, point.value * 6)}px` }}
-                  title={`${point.label}: ${point.value}`}
-                />
-                <div className="text-[10px] text-neutral-400">{point.label}</div>
+          <div className="mt-6">
+            <div className="relative overflow-hidden rounded-2xl bg-neutral-900/95 px-4 py-4">
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <defs>
+                      <linearGradient id="funpay-line" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity="1" />
+                        <stop offset="60%" stopColor="#16a34a" stopOpacity="1" />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity="1" />
+                      </linearGradient>
+                      <linearGradient id="funpay-area" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" tick={{ fill: "#cbd5f5", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis hide domain={[0, "dataMax + 2"]} />
+                    <Tooltip
+                      cursor={{ stroke: "#22c55e", strokeDasharray: "4 4" }}
+                      contentStyle={{
+                        background: "#0f172a",
+                        border: "1px solid rgba(148, 163, 184, 0.2)",
+                        borderRadius: 12,
+                        color: "#e2e8f0",
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: "#cbd5f5", fontWeight: 600 }}
+                      formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="orders"
+                      stroke="url(#funpay-line)"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: "#22c55e", stroke: "#0f172a", strokeWidth: 2 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-            ))}
+              <div className="mt-3 grid grid-cols-7 text-[11px] font-semibold text-neutral-300">
+                {weeklyOverview.map((day) => (
+                  <span key={day.label} className="text-center">{day.label}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
