@@ -262,6 +262,34 @@ class MySQLLotRepo:
         finally:
             conn.close()
 
+    def get_by_number(self, user_id: int, workspace_id: int, lot_number: int) -> LotRecord | None:
+        conn = self._get_conn()
+        try:
+            cursor_dict = conn.cursor(dictionary=True)
+            cursor_dict.execute(
+                """
+                SELECT l.lot_number, l.account_id, l.lot_url, l.display_name, a.account_name, l.workspace_id
+                FROM lots l
+                JOIN accounts a ON a.id = l.account_id
+                WHERE l.user_id = %s AND l.workspace_id = %s AND l.lot_number = %s
+                LIMIT 1
+                """,
+                (user_id, workspace_id, lot_number),
+            )
+            row = cursor_dict.fetchone()
+            if not row:
+                return None
+            return LotRecord(
+                lot_number=int(row["lot_number"]),
+                account_id=int(row["account_id"]),
+                account_name=row["account_name"],
+                lot_url=row.get("lot_url"),
+                display_name=row.get("display_name"),
+                workspace_id=row.get("workspace_id"),
+            )
+        finally:
+            conn.close()
+
     def update(
         self,
         *,

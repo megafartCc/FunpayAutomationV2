@@ -39,6 +39,11 @@ class LotListResponse(BaseModel):
     items: list[LotItem]
 
 
+class LotSyncResponse(BaseModel):
+    ok: bool
+    updated: bool
+
+
 def _to_item(record: LotRecord) -> LotItem:
     return LotItem(
         lot_number=record.lot_number,
@@ -148,3 +153,31 @@ def update_lot(
         except Exception as exc:
             logger.warning("Lot title update failed: %s", exc)
     return _to_item(updated)
+
+
+@router.post("/lots/{lot_number}/sync-title", response_model=LotSyncResponse)
+def sync_lot_title(
+    lot_number: int,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> LotSyncResponse:
+    _ensure_workspace(workspace_id, int(user.id))
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    record = lots_repo.get_by_number(int(user.id), int(workspace_id), int(lot_number))
+    if not record:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    account = accounts_repo.get_by_id(int(record.account_id), int(user.id))
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    try:
+        updated = maybe_update_funpay_lot_title(
+            workspace=workspace,
+            account=account,
+            lot_url=record.lot_url,
+        )
+    except Exception as exc:
+        logger.warning("Lot title update failed: %s", exc)
+        updated = False
+    return LotSyncResponse(ok=True, updated=bool(updated))

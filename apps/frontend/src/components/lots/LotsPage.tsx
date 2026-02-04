@@ -14,6 +14,7 @@ const LotsPage: React.FC = () => {
   const [lotUrl, setLotUrl] = useState("");
   const [editingLot, setEditingLot] = useState<number | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [syncingLot, setSyncingLot] = useState<number | null>(null);
 
   const accountById = useMemo(
     () => new Map(accounts.map((acc) => [acc.id, acc])),
@@ -169,6 +170,29 @@ const LotsPage: React.FC = () => {
     }
   };
 
+  const handleSyncTitle = async (lotNum: number) => {
+    if (selectedWorkspaceId === "all") {
+      setStatus({ message: "Сначала выберите рабочее пространство.", isError: true });
+      return;
+    }
+    setSyncingLot(lotNum);
+    try {
+      const result = await api.syncLotTitle(lotNum, selectedWorkspaceId as number);
+      if (result.updated) {
+        setStatus({ message: "Заголовок лота обновлён на FunPay." });
+      } else {
+        setStatus({ message: "Синхронизация завершена: изменений нет." });
+      }
+    } catch (err) {
+      setStatus({
+        message: (err as { message?: string })?.message || "Не удалось синхронизировать заголовок.",
+        isError: true,
+      });
+    } finally {
+      setSyncingLot(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
@@ -304,13 +328,23 @@ const LotsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="rounded-r-xl px-3 py-3 text-right">
-                      <button
-                        className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
-                        type="button"
-                        onClick={() => handleDelete(lot.lot_number)}
-                      >
-                        Удалить
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60"
+                          type="button"
+                          onClick={() => handleSyncTitle(lot.lot_number)}
+                          disabled={syncingLot === lot.lot_number}
+                        >
+                          {syncingLot === lot.lot_number ? "Синхр..." : "Синхр. заголовок"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                          type="button"
+                          onClick={() => handleDelete(lot.lot_number)}
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

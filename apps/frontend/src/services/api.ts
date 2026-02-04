@@ -65,6 +65,11 @@ export type LotItem = {
   workspace_id?: number | null;
 };
 
+export type LotSyncResult = {
+  ok: boolean;
+  updated: boolean;
+};
+
 export type RaiseCategoryItem = {
   category_id: number;
   category_name: string;
@@ -453,6 +458,11 @@ export const api = {
     request<{ ok: boolean }>(
       workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
       { method: "DELETE" },
+    ),
+  syncLotTitle: (lotNumber: number, workspaceId?: number) =>
+    request<LotSyncResult>(
+      workspaceId ? `/lots/${lotNumber}/sync-title?workspace_id=${workspaceId}` : `/lots/${lotNumber}/sync-title`,
+      { method: "POST" },
     ),
   listActiveRentals: (workspaceId?: number) =>
     request<{ items: ActiveRentalItem[] }>(withWorkspace("/rentals/active", workspaceId), { method: "GET" }),
