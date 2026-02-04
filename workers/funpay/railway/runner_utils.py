@@ -309,9 +309,9 @@ def _wants_stock_list(text: str) -> bool:
 def _wants_busy_list(text: str) -> bool:
     if not text:
         return False
-    subjects = ("???????", "????????", "???", "????")
-    hints = ("?????", "busy", "occupied", "? ??????")
-    if "?????" in text and any(word in text for word in subjects) and any(word in text for word in hints):
+    subjects = ("\u0430\u043a\u043a\u0430\u0443\u043d\u0442", "\u0430\u043a\u043a\u0430\u0443\u043d\u0442\u044b", "\u043b\u043e\u0442", "\u043b\u043e\u0442\u044b")
+    hints = ("\u0437\u0430\u043d\u044f\u0442", "busy", "occupied", "\u0432 \u0430\u0440\u0435\u043d\u0434\u0435")
+    if "\u043a\u0430\u043a\u0438\u0435" in text and any(word in text for word in subjects) and any(word in text for word in hints):
         return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
 

@@ -250,7 +250,7 @@ const LotsPage: React.FC = () => {
               <tr>
                 <th className="px-3 py-2 text-left">Лот</th>
                 <th className="px-3 py-2 text-left">Аккаунт</th>
-                <th className="px-3 py-2 text-left">??????</th>
+                <th className="px-3 py-2 text-left">{"\u0421\u0442\u0430\u0442\u0443\u0441"}</th>
                 <th className="px-3 py-2 text-left">Ссылка на лот</th>
                 <th className="px-3 py-2 text-left">Отображаемое имя</th>
                 <th className="px-3 py-2"></th>
