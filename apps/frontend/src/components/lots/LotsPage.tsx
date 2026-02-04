@@ -24,9 +24,19 @@ const LotsPage: React.FC = () => {
 
   const lotStatus = (account?: AccountItem | null) => {
     if (!account) return { label: "—", className: "bg-neutral-100 text-neutral-500" };
-    if (account.rental_frozen) return { label: "Заморожено", className: "bg-slate-100 text-slate-700" };
-    if (account.owner) return { label: "В аренде", className: "bg-amber-50 text-amber-700" };
-    if (account.account_frozen) return { label: "Заморожен", className: "bg-rose-50 text-rose-700" };
+    const state = (account.state || "").toLowerCase();
+    if (hasFlag(account.low_priority) || state.includes("low")) {
+      return { label: "Низкий приоритет", className: "bg-rose-50 text-rose-600" };
+    }
+    if (hasFlag(account.account_frozen) || state.includes("frozen")) {
+      return { label: "Заморожен", className: "bg-rose-50 text-rose-700" };
+    }
+    if (hasFlag(account.rental_frozen)) {
+      return { label: "Заморожено", className: "bg-slate-100 text-slate-700" };
+    }
+    if ((account.owner || "").trim() || state.includes("rented")) {
+      return { label: "В аренде", className: "bg-amber-50 text-amber-700" };
+    }
     return { label: "Свободен", className: "bg-emerald-50 text-emerald-700" };
   };
 
@@ -39,10 +49,12 @@ const LotsPage: React.FC = () => {
 
   const accountStatusLabel = (account?: AccountItem | null) => {
     if (!account) return "Без статуса";
-    if (hasFlag(account.low_priority)) return "Низкий приоритет";
-    if (hasFlag(account.account_frozen)) return "Заморожен";
+    const state = (account.state || "").toLowerCase();
+    if (hasFlag(account.low_priority) || state.includes("low")) return "Низкий приоритет";
+    if (hasFlag(account.account_frozen) || state.includes("frozen")) return "Заморожен";
     if (hasFlag(account.rental_frozen)) return "Аренда заморожена";
-    if ((account.owner || "").trim()) return "В аренде";
+    if ((account.owner || "").trim() || state.includes("rented")) return "В аренде";
+    if (state.includes("available")) return "Свободен";
     return "Свободен";
   };
 
