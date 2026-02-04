@@ -984,10 +984,11 @@ def log_message(
                     else:
                         line = "Лот не найден."
                     lines.append(line)
-                message = "По последним лотам из чата:
-- " + "
-- ".join(lines) + "
-Чтобы узнать точно, пришлите ссылку на конкретный лот."
+                message = (
+                    "По последним лотам из чата:\n- "
+                    + "\n- ".join(lines)
+                    + "\nЧтобы узнать точно, пришлите ссылку на конкретный лот."
+                )
                 send_chat_message(logger, account, int(chat_id), message)
                 return None
             lot_url = lot_urls[0]
