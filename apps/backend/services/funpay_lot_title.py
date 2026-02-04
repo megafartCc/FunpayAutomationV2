@@ -166,7 +166,7 @@ def update_funpay_lot_title(
     if "active" not in fields:
         logger.warning("Lot %s missing active flag in fields, skipping.", lot_id)
         return False
-    new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
+    new_title = _compose_ranked_title(current_title, rank_label)
     if new_title == current_title:
         return False
     fields["fields[summary][ru]"] = new_title
