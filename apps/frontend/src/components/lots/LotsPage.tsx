@@ -30,16 +30,38 @@ const LotsPage: React.FC = () => {
     return { label: "Свободен", className: "bg-emerald-50 text-emerald-700" };
   };
 
+  const accountStatusLabel = (account?: AccountItem | null) => {
+    if (!account) return "Без статуса";
+    if (account.low_priority) return "Низкий приоритет";
+    if (account.account_frozen) return "Заморожен";
+    if (account.rental_frozen) return "Аренда заморожена";
+    if (account.owner) return "В аренде";
+    return "Свободен";
+  };
+
+  const workspaceLabel = (account: AccountItem) => {
+    const base = account.workspace_name || (account.workspace_id ? `ID ${account.workspace_id}` : null);
+    if (!base) return "";
+    return `Основное: ${base}`;
+  };
+
+  const lastRentedLabel = (account: AccountItem) => {
+    const base = account.last_rented_workspace_name || (account.last_rented_workspace_id ? `ID ${account.last_rented_workspace_id}` : null);
+    if (!base) return "";
+    return `Последнее: ${base}`;
+  };
+
   const accountOptions = useMemo(
     () =>
       accounts.map((acc) => {
-        const hasWorkspace = Boolean(acc.workspace_name || acc.workspace_id);
-        const workspaceLabel = hasWorkspace
-          ? `• ${acc.workspace_name || `ID ${acc.workspace_id}`}`
-          : "";
+        const statusLabel = accountStatusLabel(acc);
+        const workspaceInfo = workspaceLabel(acc);
+        const lastInfo = lastRentedLabel(acc);
+        const workspaceInfoLabel = [workspaceInfo, lastInfo].filter(Boolean).join(" • ");
+        const details = [statusLabel, workspaceInfoLabel].filter(Boolean).join(" • ");
         return {
           id: acc.id,
-          label: `${acc.account_name} (ID ${acc.id}) ${workspaceLabel}`.trim(),
+          label: `${acc.account_name} (ID ${acc.id})${details ? ` • ${details}` : ""}`,
         };
       }),
     [accounts],
