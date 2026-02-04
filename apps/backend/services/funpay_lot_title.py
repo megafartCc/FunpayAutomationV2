@@ -40,6 +40,16 @@ _RANK_WORDS = (
     "\u0411\u041e\u0416\u0415\u0421\u0422\u0412\u041e",
     "\u0422\u0418\u0422\u0410\u041d",
 )
+_RANK_WORDS_EN = (
+    "RECRUIT",
+    "GUARDIAN",
+    "CRUSADER",
+    "ARCHON",
+    "LEGEND",
+    "ANCIENT",
+    "DIVINE",
+    "TITAN",
+)
 
 _RANK_RANGES = (
     (0, 150, "\u0420\u0435\u043a\u0440\u0443\u0442 I"),
@@ -78,6 +88,42 @@ _RANK_RANGES = (
     (5220, 5420, "\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u043e IV"),
 )
 
+_RANK_RANGES_EN = (
+    (0, 150, "Recruit I"),
+    (150, 300, "Recruit II"),
+    (300, 460, "Recruit III"),
+    (460, 610, "Recruit IV"),
+    (610, 770, "Recruit V"),
+    (770, 920, "Guardian I"),
+    (920, 1080, "Guardian II"),
+    (1080, 1230, "Guardian III"),
+    (1230, 1400, "Guardian IV"),
+    (1400, 1540, "Guardian V"),
+    (1540, 1700, "Crusader I"),
+    (1700, 1850, "Crusader II"),
+    (1850, 2000, "Crusader III"),
+    (2000, 2150, "Crusader IV"),
+    (2150, 2310, "Crusader V"),
+    (2310, 2450, "Archon I"),
+    (2450, 2610, "Archon II"),
+    (2610, 2770, "Archon III"),
+    (2770, 2930, "Archon IV"),
+    (2930, 3080, "Archon V"),
+    (3080, 3230, "Legend I"),
+    (3230, 3390, "Legend II"),
+    (3390, 3540, "Legend III"),
+    (3540, 3700, "Legend IV"),
+    (3700, 3850, "Legend V"),
+    (3850, 4000, "Ancient I"),
+    (4000, 4150, "Ancient II"),
+    (4150, 4300, "Ancient III"),
+    (4300, 4460, "Ancient IV"),
+    (4460, 4620, "Ancient V"),
+    (4620, 4820, "Divine I"),
+    (4820, 5020, "Divine II"),
+    (5020, 5220, "Divine III"),
+    (5220, 5420, "Divine IV"),
+)
 
 def _build_proxy_config(proxy_url: str | None) -> dict | None:
     raw = (proxy_url or "").strip()
@@ -113,6 +159,17 @@ def _rank_label(mmr: int) -> str | None:
     return None
 
 
+def _rank_label_en(mmr: int) -> str | None:
+    if mmr < 0:
+        return None
+    for low, high, label in _RANK_RANGES_EN:
+        if low <= mmr < high:
+            return label
+    if mmr >= 5420:
+        return "Titan"
+    return None
+
+
 def _strip_rank_prefix(title: str) -> str:
     if not title:
         return title
@@ -120,7 +177,7 @@ def _strip_rank_prefix(title: str) -> str:
     if not match:
         return title
     tag = match.group(0).upper()
-    if any(word in tag for word in _RANK_WORDS):
+    if any(word in tag for word in (*_RANK_WORDS, *_RANK_WORDS_EN)):
         return title[match.end() :].lstrip()
     return title
 
@@ -149,6 +206,7 @@ def update_funpay_lot_title(
     proxy_url: str | None,
     lot_id: int,
     rank_label: str,
+    rank_label_en: str,
     user_agent: str | None = None,
 ) -> bool:
     if not Account:
@@ -160,16 +218,21 @@ def update_funpay_lot_title(
     lot_fields = account.get_lot_fields(lot_id)
     fields = dict(lot_fields.fields)
     current_title = str(fields.get("fields[summary][ru]", "") or "")
+    current_title_en = str(fields.get("fields[summary][en]", "") or "")
     if not current_title:
         logger.warning("Lot %s has empty RU title, skipping.", lot_id)
         return False
     if "active" not in fields:
         logger.warning("Lot %s missing active flag in fields, skipping.", lot_id)
         return False
-    new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
+    new_title = _compose_ranked_title(current_title, rank_label)
+    base_en_title = current_title_en or current_title
+    new_title_en = _compose_ranked_title(base_en_title, rank_label_en)
     if new_title == current_title:
-        return False
+        if current_title_en and new_title_en == current_title_en:
+            return False
     fields["fields[summary][ru]"] = new_title
+    fields["fields[summary][en]"] = new_title_en
     if "offer_id" not in fields:
         fields["offer_id"] = str(lot_id)
     if not fields.get("csrf_token"):
@@ -201,6 +264,9 @@ def maybe_update_funpay_lot_title(
     rank_label = _rank_label(mmr_value)
     if not rank_label:
         return False
+    rank_label_en = _rank_label_en(mmr_value)
+    if not rank_label_en:
+        return False
     lot_id = _parse_lot_id(lot_url)
     if not lot_id:
         return False
@@ -214,6 +280,7 @@ def maybe_update_funpay_lot_title(
             proxy_url=_get_value(workspace, "proxy_url"),
             lot_id=lot_id,
             rank_label=rank_label,
+            rank_label_en=rank_label_en,
             user_agent=user_agent,
         )
     except Exception as exc:
@@ -241,8 +308,14 @@ def _post_lot_fields(account: Account, lot_id: int, fields: dict) -> None:
         "x-requested-with": "XMLHttpRequest",
     }
     fields.setdefault("location", "trade")
+    logger.info("FunPay lot sync request for %s: %s", lot_id, {k: fields.get(k) for k in sorted(fields.keys())})
     response = account.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
-    json_response = response.json()
+    try:
+        json_response = response.json()
+    except Exception as exc:
+        logger.warning("FunPay lot sync response parse failed for %s: %s", lot_id, exc)
+        raise
+    logger.info("FunPay lot sync response for %s (status %s): %s", lot_id, getattr(response, "status_code", "n/a"), json_response)
     errors_dict: dict = {}
     if (errors := json_response.get("errors")) or json_response.get("error"):
         if errors:
