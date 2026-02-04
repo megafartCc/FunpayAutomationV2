@@ -30,12 +30,19 @@ const LotsPage: React.FC = () => {
     return { label: "Свободен", className: "bg-emerald-50 text-emerald-700" };
   };
 
+  const hasFlag = (value?: number | string | null) => {
+    if (value === null || value === undefined) return false;
+    const parsed = Number(value);
+    if (Number.isNaN(parsed)) return false;
+    return parsed > 0;
+  };
+
   const accountStatusLabel = (account?: AccountItem | null) => {
     if (!account) return "Без статуса";
-    if (account.low_priority) return "Низкий приоритет";
-    if (account.account_frozen) return "Заморожен";
-    if (account.rental_frozen) return "Аренда заморожена";
-    if (account.owner) return "В аренде";
+    if (hasFlag(account.low_priority)) return "Низкий приоритет";
+    if (hasFlag(account.account_frozen)) return "Заморожен";
+    if (hasFlag(account.rental_frozen)) return "Аренда заморожена";
+    if ((account.owner || "").trim()) return "В аренде";
     return "Свободен";
   };
 
