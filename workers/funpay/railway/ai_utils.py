@@ -9,7 +9,7 @@ from typing import Any
 import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "llama-3.1-8b-instant"
 LOCAL_API_URL_ENV = "AI_API_URL"
 LOCAL_MODEL_ENV = "AI_MODEL"
 LOCAL_API_KEY_ENV = "AI_API_KEY"
@@ -171,7 +171,7 @@ def generate_ai_reply(
     local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
     api_url = local_url or GROQ_API_URL
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
-    model = os.getenv(LOCAL_MODEL_ENV if local_url else "GROQ_MODEL", DEFAULT_MODEL)
+    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL) if local_url else DEFAULT_MODEL
     temperature = float(os.getenv("GROQ_TEMPERATURE", "0.4"))
     max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "300"))
     if not api_key and not local_url:
@@ -207,10 +207,7 @@ def classify_intent(
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
     if not api_key and not local_url:
         return None
-    model = os.getenv(LOCAL_MODEL_ENV if local_url else "GROQ_INTENT_MODEL", "").strip() or os.getenv(
-        LOCAL_MODEL_ENV if local_url else "GROQ_MODEL",
-        DEFAULT_MODEL,
-    )
+    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL).strip() if local_url else DEFAULT_MODEL
     payload = {
         "model": model,
         "messages": [
