@@ -232,6 +232,14 @@ export type WorkspaceProxyCheck = {
   error?: string | null;
 };
 
+export type LotBulkSyncResponse = {
+  ok: boolean;
+  total: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+};
+
 export type WorkspaceStatusItem = {
   workspace_id?: number | null;
   platform: string;
@@ -464,6 +472,8 @@ export const api = {
       workspaceId ? `/lots/${lotNumber}/sync-title?workspace_id=${workspaceId}` : `/lots/${lotNumber}/sync-title`,
       { method: "POST" },
     ),
+  syncLotTitles: (workspaceId: number) =>
+    request<LotBulkSyncResponse>(`/lots/sync-titles?workspace_id=${workspaceId}`, { method: "POST" }),
   listActiveRentals: (workspaceId?: number) =>
     request<{ items: ActiveRentalItem[] }>(withWorkspace("/rentals/active", workspaceId), { method: "GET" }),
   listBlacklist: (workspaceId?: number, query?: string, status?: string) => {

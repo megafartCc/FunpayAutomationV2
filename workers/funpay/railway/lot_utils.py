@@ -377,9 +377,9 @@ def assign_account_to_buyer(
             "rental_start = NULL",
         ]
         params: list = [owner_value, int(units), int(total_minutes)]
-        if workspace_id is not None and has_last_rented_workspace:
+        if has_last_rented_workspace:
             updates.append("last_rented_workspace_id = %s")
-            params.append(int(workspace_id))
+            params.append(int(workspace_id) if workspace_id is not None else None)
         params.extend([int(account_id), int(user_id)])
         cursor.execute(
             f"""
@@ -583,9 +583,9 @@ def replace_rental_account(
         params: list = [owner_value, int(rental_duration), int(rental_duration_minutes), rental_start_str]
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
-        if workspace_id is not None and has_last_rented:
+        if has_last_rented:
             updates.append("last_rented_workspace_id = %s")
-            params.append(int(workspace_id))
+            params.append(int(workspace_id) if workspace_id is not None else None)
         params.extend([int(new_account_id), int(user_id)])
         where_clauses = ["id = %s", "user_id = %s", "(owner IS NULL OR owner = '')"]
         if has_account_frozen:

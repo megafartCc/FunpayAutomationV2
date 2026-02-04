@@ -15,6 +15,7 @@ const LotsPage: React.FC = () => {
   const [editingLot, setEditingLot] = useState<number | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [syncingLot, setSyncingLot] = useState<number | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const accountById = useMemo(
     () => new Map(accounts.map((acc) => [acc.id, acc])),
@@ -193,6 +194,27 @@ const LotsPage: React.FC = () => {
     }
   };
 
+  const handleSyncAllTitles = async () => {
+    if (selectedWorkspaceId === "all") {
+      setStatus({ message: "Сначала выберите рабочее пространство.", isError: true });
+      return;
+    }
+    setSyncingAll(true);
+    try {
+      const result = await api.syncLotTitles(selectedWorkspaceId as number);
+      setStatus({
+        message: `Синхронизация завершена: обновлено ${result.updated} из ${result.total}, пропущено ${result.skipped}, ошибок ${result.failed}.`,
+      });
+    } catch (err) {
+      setStatus({
+        message: (err as { message?: string })?.message || "Не удалось синхронизировать заголовки.",
+        isError: true,
+      });
+    } finally {
+      setSyncingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
@@ -201,9 +223,19 @@ const LotsPage: React.FC = () => {
             <h3 className="text-lg font-semibold text-neutral-900">Привязка лотов</h3>
             <p className="text-sm text-neutral-500">Для выбранного рабочего пространства. Используется для !сток и автоматизации.</p>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
-            <span className="uppercase tracking-wide text-neutral-500">Рабочее пространство</span>
-            <span className="text-xs font-semibold text-neutral-700">{currentWorkspaceLabel}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60"
+              type="button"
+              onClick={handleSyncAllTitles}
+              disabled={syncingAll || selectedWorkspaceId === "all" || lots.length === 0}
+            >
+              {syncingAll ? "Синхр. все..." : "Синхр. все заголовки"}
+            </button>
+            <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] font-semibold text-neutral-600">
+              <span className="uppercase tracking-wide text-neutral-500">Рабочее пространство</span>
+              <span className="text-xs font-semibold text-neutral-700">{currentWorkspaceLabel}</span>
+            </div>
           </div>
         </div>
 
