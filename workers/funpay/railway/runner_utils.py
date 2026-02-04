@@ -336,13 +336,31 @@ def _wants_command_list(text: str) -> bool:
 def _wants_stock_list(text: str) -> bool:
     if not text:
         return False
-    subjects = ("аккаунт", "аккаунты", "лот", "лоты", "сток", "stock")
-    hints = ("свобод", "налич", "free", "available")
-    if "какие" in text and any(word in text for word in subjects):
+    subjects = (
+        "\u0430\u043a\u043a",
+        "\u0430\u043a\u043a\u0430\u0443\u043d\u0442",
+        "\u0430\u043a\u043a\u0430\u0443\u043d\u0442\u044b",
+        "\u043b\u043e\u0442",
+        "\u043b\u043e\u0442\u044b",
+        "\u0441\u0442\u043e\u043a",
+        "stock",
+        "account",
+        "acc",
+    )
+    hints = (
+        "\u0441\u0432\u043e\u0431\u043e\u0434",
+        "\u043d\u0430\u043b\u0438\u0447",
+        "\u0435\u0441\u0442\u044c",
+        "\u043f\u043e\u043a\u0430\u0437",
+        "\u0441\u043f\u0438\u0441\u043e\u043a",
+        "free",
+        "available",
+        "list",
+        "show",
+    )
+    if "\u043a\u0430\u043a\u0438\u0435" in text and any(word in text for word in subjects):
         return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
-
-
 
 
 def _wants_busy_list(text: str) -> bool:
