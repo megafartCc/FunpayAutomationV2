@@ -155,14 +155,40 @@ def update_funpay_lot_title(
     account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
     account.get()
     lot_fields = account.get_lot_fields(lot_id)
-    current_title = lot_fields.title_ru or lot_fields.title_en or ""
+    current_title = lot_fields.title_ru or ""
     if not current_title:
-        logger.warning("Lot %s has empty title, skipping.", lot_id)
+        logger.warning("Lot %s has empty RU title, skipping.", lot_id)
         return False
     new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
     if new_title == lot_fields.title_ru:
         return False
+    original = {
+        "title_en": lot_fields.title_en,
+        "description_ru": lot_fields.description_ru,
+        "description_en": lot_fields.description_en,
+        "payment_msg_ru": lot_fields.payment_msg_ru,
+        "payment_msg_en": lot_fields.payment_msg_en,
+        "images": list(lot_fields.images),
+        "auto_delivery": lot_fields.auto_delivery,
+        "secrets": list(lot_fields.secrets),
+        "amount": lot_fields.amount,
+        "price": lot_fields.price,
+        "active": lot_fields.active,
+        "deactivate_after_sale": lot_fields.deactivate_after_sale,
+    }
     lot_fields.title_ru = new_title
+    lot_fields.title_en = original["title_en"]
+    lot_fields.description_ru = original["description_ru"]
+    lot_fields.description_en = original["description_en"]
+    lot_fields.payment_msg_ru = original["payment_msg_ru"]
+    lot_fields.payment_msg_en = original["payment_msg_en"]
+    lot_fields.images = original["images"]
+    lot_fields.auto_delivery = original["auto_delivery"]
+    lot_fields.secrets = original["secrets"]
+    lot_fields.amount = original["amount"]
+    lot_fields.price = original["price"]
+    lot_fields.active = original["active"]
+    lot_fields.deactivate_after_sale = original["deactivate_after_sale"]
     account.save_lot(lot_fields)
     return True
 
