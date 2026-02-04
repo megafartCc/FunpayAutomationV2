@@ -22,8 +22,8 @@ except Exception:  # pragma: no cover - optional dependency in backend runtime
     Account = None
 
 
-_LOT_ID_RE = re.compile(r"(?:offer\\?id=|offer/)(\\d+)")
-_RANK_PREFIX_RE = re.compile(r"^\\s*\\[[^\\]]+\\]\\s*")
+_LOT_ID_RE = re.compile(r"(?:offer\?id=|offer/)(\d+)")
+_RANK_PREFIX_RE = re.compile(r"^\s*\[[^\]]+\]\s*")
 _RANK_WORDS = (
     "\u0420\u0415\u041a\u0420\u0423\u0422",
     "\u0421\u0422\u0420\u0410\u0416",
