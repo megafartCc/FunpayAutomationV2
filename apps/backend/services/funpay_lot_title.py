@@ -9,9 +9,12 @@ from pathlib import Path
 
 logger = logging.getLogger("backend.funpay.lot_title")
 
-_ROOT = Path(__file__).resolve().parents[3]
-if str(_ROOT) not in sys.path:
-    sys.path.append(str(_ROOT))
+_HERE = Path(__file__).resolve()
+for _parent in _HERE.parents:
+    if (_parent / "workers").exists():
+        if str(_parent) not in sys.path:
+            sys.path.append(str(_parent))
+        break
 
 try:
     from workers.funpay.FunPayAPI.account import Account
