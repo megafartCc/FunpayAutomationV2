@@ -227,7 +227,8 @@ def update_funpay_lot_title(
         return False
     new_title = _compose_ranked_title(current_title, rank_label)
     base_en_title = current_title_en or current_title
-    new_title_en = _compose_ranked_title(base_en_title, rank_label_en)
+    max_len_en = len(current_title_en or current_title or "")
+    new_title_en = _compose_ranked_title(base_en_title, rank_label_en, max_len=max_len_en or None)
     if new_title == current_title:
         if current_title_en and new_title_en == current_title_en:
             return False
