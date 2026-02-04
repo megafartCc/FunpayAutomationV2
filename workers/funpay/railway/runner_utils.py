@@ -36,6 +36,7 @@ from .constants import (
     COMMAND_PREFIXES,
     COMMANDS_RU,
     RENT_CONFIRM_MESSAGE,
+    RENT_PRE_REQUEST_MESSAGE,
     RENT_FLOW_MESSAGE,
     RENTAL_REFUND_MESSAGE,
     RENTALS_EMPTY,
@@ -351,6 +352,45 @@ def _wants_busy_list(text: str) -> bool:
     if "\u043a\u0430\u043a\u0438\u0435" in text and any(word in text for word in subjects) and any(word in text for word in hints):
         return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
+
+
+def _wants_pre_rent_request(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    account_words = (
+        "\u0430\u043a\u043a",
+        "\u0430\u043a\u043a\u0430\u0443\u043d\u0442",
+        "account",
+        "acc",
+    )
+    need_words = (
+        "\u043d\u0443\u0436",
+        "\u043d\u0430\u0434\u043e",
+        "\u0445\u043e\u0447\u0443",
+        "\u0441\u0434\u0435\u043b\u0430\u0435\u0448\u044c",
+        "\u0441\u0434\u0435\u043b\u0430\u0439",
+        "\u043e\u043f\u043b\u0430\u0447",
+        "\u043e\u043f\u043b\u0430\u0442",
+        "\u043a\u0443\u043f\u043b",
+    )
+    time_words = (
+        "\u0447\u0430\u0441",
+        "\u0447\u0430\u0441\u0430",
+        "\u0447\u0430\u0441\u043e\u0432",
+        "hour",
+        "hours",
+        "h",
+    )
+    if not any(word in lowered for word in account_words):
+        return False
+    if any(word in lowered for word in need_words):
+        return True
+    if any(word in lowered for word in time_words):
+        return True
+    if re.search(r"\b\d+\s*(?:\u0430\u043a\u043a|\u0430\u043a\u043a\u0430\u0443\u043d\u0442|acc|account)\b", lowered):
+        return True
+    return False
 
 
 def _wants_rent_flow(text: str) -> bool:
@@ -966,6 +1006,10 @@ def log_message(
             return None
         if _wants_command_list(lower_text):
             send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            return None
+
+        if _wants_pre_rent_request(lower_text):
+            send_chat_message(logger, account, int(chat_id), RENT_PRE_REQUEST_MESSAGE)
             return None
 
         if _wants_rent_flow(lower_text):
