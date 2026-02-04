@@ -1,4 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useI18n } from "../../i18n/useI18n";
 import { api, ActiveRentalItem, OrderHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
@@ -71,10 +79,6 @@ type ActivityPoint = {
   value: number;
 };
 
-type LinePoint = {
-  x: number;
-  y: number;
-};
 
 type BuyerStat = {
   name: string;
@@ -84,20 +88,6 @@ type BuyerStat = {
 
 const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
 const formatCurrency = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
-
-const buildLinePath = (points: LinePoint[]) => {
-  if (!points.length) return "";
-  const [first, ...rest] = points;
-  return rest.reduce((path, point) => `${path} L ${point.x} ${point.y}`, `M ${first.x} ${first.y}`);
-};
-
-const buildAreaPath = (points: LinePoint[], height: number) => {
-  if (!points.length) return "";
-  const line = buildLinePath(points);
-  const last = points[points.length - 1];
-  const first = points[0];
-  return `${line} L ${last.x} ${height} L ${first.x} ${height} Z`;
-};
 
 type BlankCardProps = {
   minHeight?: number;
@@ -357,26 +347,15 @@ const FunpayStatsPage: React.FC = () => {
     },
   ];
 
-  const lineChart = useMemo(() => {
-    const data = weeklyOverview.map((item) => item.orders);
-    const maxValue = Math.max(1, ...data);
-    const width = 520;
-    const height = 180;
-    const paddingX = 24;
-    const paddingY = 24;
-    const step = data.length > 1 ? (width - paddingX * 2) / (data.length - 1) : 0;
-    const points = data.map((value, idx) => ({
-      x: paddingX + idx * step,
-      y: height - paddingY - (value / maxValue) * (height - paddingY * 2),
-    }));
-    return {
-      width,
-      height,
-      points,
-      path: buildLinePath(points),
-      area: buildAreaPath(points, height - paddingY),
-    };
-  }, [weeklyOverview]);
+  const chartData = useMemo(
+    () =>
+      weeklyOverview.map((item) => ({
+        label: item.label,
+        orders: item.orders,
+        avg: item.avg,
+      })),
+    [weeklyOverview],
+  );
 
   return (
     <div className="space-y-6">
@@ -459,35 +438,45 @@ const FunpayStatsPage: React.FC = () => {
           </div>
           <div className="mt-6">
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/95 px-4 py-4">
-              <svg
-                viewBox={`0 0 ${lineChart.width} ${lineChart.height}`}
-                className="h-[200px] w-full"
-                preserveAspectRatio="none"
-              >
-                <defs>
-                  <linearGradient id="funpay-line" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity="1" />
-                    <stop offset="60%" stopColor="#16a34a" stopOpacity="1" />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity="1" />
-                  </linearGradient>
-                  <linearGradient id="funpay-area" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                  </linearGradient>
-                  <filter id="funpay-glow" x="-50%" y="-50%" width="200%" height="200%">
-                    <feGaussianBlur stdDeviation="6" result="coloredBlur" />
-                    <feMerge>
-                      <feMergeNode in="coloredBlur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                <path d={lineChart.area} fill="url(#funpay-area)" />
-                <path d={lineChart.path} stroke="url(#funpay-line)" strokeWidth="3" fill="none" filter="url(#funpay-glow)" />
-                {lineChart.points.map((point, idx) => (
-                  <circle key={idx} cx={point.x} cy={point.y} r="4" fill="#22c55e" stroke="#0f172a" strokeWidth="1.5" />
-                ))}
-              </svg>
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <defs>
+                      <linearGradient id="funpay-line" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity="1" />
+                        <stop offset="60%" stopColor="#16a34a" stopOpacity="1" />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity="1" />
+                      </linearGradient>
+                      <linearGradient id="funpay-area" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" tick={{ fill: "#cbd5f5", fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis hide domain={[0, "dataMax + 2"]} />
+                    <Tooltip
+                      cursor={{ stroke: "#22c55e", strokeDasharray: "4 4" }}
+                      contentStyle={{
+                        background: "#0f172a",
+                        border: "1px solid rgba(148, 163, 184, 0.2)",
+                        borderRadius: 12,
+                        color: "#e2e8f0",
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: "#cbd5f5", fontWeight: 600 }}
+                      formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="orders"
+                      stroke="url(#funpay-line)"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: "#22c55e", stroke: "#0f172a", strokeWidth: 2 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
               <div className="mt-3 grid grid-cols-7 text-[11px] font-semibold text-neutral-300">
                 {weeklyOverview.map((day) => (
                   <span key={day.label} className="text-center">{day.label}</span>
