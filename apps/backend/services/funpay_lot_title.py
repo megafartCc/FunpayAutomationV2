@@ -156,19 +156,20 @@ def update_funpay_lot_title(
 
 def maybe_update_funpay_lot_title(
     *,
-    workspace: dict,
-    account: dict | None,
+    workspace: object,
+    account: object | None,
     lot_url: str | None,
 ) -> bool:
     if not workspace:
         return False
-    if workspace.get("platform") != "funpay":
+    platform = _get_value(workspace, "platform")
+    if platform != "funpay":
         return False
     if not env_enabled():
         return False
     if not account:
         return False
-    mmr = account.get("mmr")
+    mmr = _get_value(account, "mmr")
     try:
         mmr_value = int(mmr)
     except (TypeError, ValueError):
@@ -179,14 +180,14 @@ def maybe_update_funpay_lot_title(
     lot_id = _parse_lot_id(lot_url)
     if not lot_id:
         return False
-    golden_key = (workspace.get("golden_key") or "").strip()
+    golden_key = str(_get_value(workspace, "golden_key") or "").strip()
     if not golden_key:
         return False
     user_agent = os.getenv("FUNPAY_USER_AGENT")
     try:
         return update_funpay_lot_title(
             golden_key=golden_key,
-            proxy_url=workspace.get("proxy_url"),
+            proxy_url=_get_value(workspace, "proxy_url"),
             lot_id=lot_id,
             rank_label=rank_label,
             user_agent=user_agent,
@@ -199,3 +200,11 @@ def maybe_update_funpay_lot_title(
 def env_enabled() -> bool:
     raw = os.getenv("FUNPAY_LOT_RANK_PREFIX", "1").strip().lower()
     return raw not in {"0", "false", "no", "off"}
+
+
+def _get_value(obj: object, key: str, default: object | None = None) -> object | None:
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
