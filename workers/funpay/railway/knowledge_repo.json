@@ -1,0 +1,50 @@
+{
+  "items": [
+    {
+      "id": "funpay_readme",
+      "keywords": [
+        "funpay",
+        "cardinal",
+        "бот",
+        "features",
+        "возможности",
+        "установка",
+        "install"
+      ],
+      "content": "FunPay Cardinal\nПростой и эффективный бот для автоматизации FunPay\n\nчат (клик). Тут и поможем чем сможем и посидеть можно.\n\n## :clipboard: **Содержание**\n\n- [Возможности](#robot-возможности)\n - [FunPay](#shopping_cart-funpay)\n - [Дополнительные возможности](#gear-дополнительные-возможности)\n\n- [Преимущества](#1st_place_medal-преимущества)\n - [Для пользователей](#grinning-для-пользователей)\n - [Для разработчиков](#computer-для-разработчиков)\n\n- [Плагины](#electric_plug-плагины)\n- [Установка](#arrow_down-установка)\n - [Windows](#large_blue_diamond-windows)\n - [Linux (Ubuntu)](#hotsprings-linux-ubuntu)\n- [Установка плагинов](#electric_plug-установка-плагинов)\n- [Мне нужна помощь](#question-мне-нужна-помощь)\n- [Star it](#star-star-it)\n\n## :robot: **Возможности**\n\n### :shopping_cart: **FunPay**\n\n- Автовыдача товаров.\n- Автоподнятие лотов.\n- Автоответ на заготовленные команды.\n- Автовосстановление лотов после продажи.\n- Автодеактивация лотов, если товары закончились.\n- Вечный онлайн.\n- Уведомления в телеграм.\n\n- Возможность установки нескольких чатов для уведомлений.\n- Уведомления о поднятии лотов.\n- Уведомления о новых заказах.\n- Уведомления о выдаче товара.\n- Уведомления о новых сообщениях\n- Возможность полностью настраивать автовыдачу / автоответчик и все остальные модули FPC.\n- Возможность добавлять автовыдачу для лотов, получая лоты прямо с FunPay.\n\n### :gear: **Дополнительные возможности**\n\n- Использование переменных в тексте для автоответа / автовыдачи.\n- Создание плагинов для кастомизации функционала без редактирования исходного кода самого Кардинала.\n\n## :1st_place_medal…"
+    },
+    {
+      "id": "funpay_commands",
+      "keywords": [
+        "команды",
+        "help",
+        "commands",
+        "бот",
+        "funpay"
+      ],
+      "content": "Команды:\\n\n!акк — данные аккаунта\\n\n!код — код Steam Guard\\n\n!сток — наличие аккаунтов\\n\n!продлить <часы> <ID_аккаунта> — продлить аренду\\n\n!пауза <ID> — пауза аренды на 1 час\\n\n!продолжить <ID> — снять паузу раньше срока\\n\n!админ — вызвать продавца\\n\n!лпзамена <ID> — замена аккаунта (10 минут после !код)\\n\n!отмена <ID> — отменить аренду\\n\n!бонус — применить время, полученное с бонусов"
+    },
+    {
+      "id": "backend_env",
+      "keywords": [
+        "env",
+        "environment",
+        "переменные",
+        "backend",
+        "mysql"
+      ],
+      "content": "Backend .env variables:\n# Required\nFUNPAY_GOLDEN_KEY=\n# Optional tuning\nHOURS_FOR_REVIEW=\nAUTO_EXTEND_ENABLED=\nMAX_EXTENSION_HOURS=\nRENTAL_CHECK_INTERVAL=\n# Steam (optional)\nAUTO_STEAM_DEAUTHORIZE_ON_EXPIRE=\n# Encrypt sensitive fields at rest (Fernet key, base64-encoded)\nDATA_ENCRYPTION_KEY=\n# Steam presence bot (optional, required for \"in match\" detection via rich presence)\nSTEAM_PRESENCE_ENABLED=\nSTEAM_PRESENCE_LOGIN=\nSTEAM_PRESENCE_PASSWORD=\nSTEAM_PRESENCE_SHARED_SECRET=\nSTEAM_PRESENCE_IDENTITY_SECRET=\nSTEAM_PRESENCE_REFRESH_TOKEN=\n# Dota 2 match handling (requires STEAM_PRESENCE_ENABLED=true)\nDOTA_MATCH_BLOCK_MANUAL_DEAUTHORIZE=\nDOTA_MATCH_DELAY_EXPIRE=\nDOTA_MATCH_GRACE_MINUTES=\n# MySQL (required)\nMYSQLHOST=\nMYSQLPORT=\nMYSQLUSER=\nMYSQLPASSWORD=\nMYSQLDATABASE=\n# Safety\nREQUIRE_PAID_ORDER="
+    },
+    {
+      "id": "node_bridge_env",
+      "keywords": [
+        "env",
+        "environment",
+        "steam",
+        "bridge",
+        "node"
+      ],
+      "content": "Node bridge .env variables:\n# Steam bridge credentials\nSTEAM_BRIDGE_USERNAME=\nSTEAM_BRIDGE_PASSWORD=\nSTEAM_BRIDGE_SHARED_SECRET=\n# Optional: simple auth for debug endpoints\nPRESENCE_DEBUG_TOKEN=\n# Port (Railway sets PORT automatically)\nPORT="
+    }
+  ]
+}
