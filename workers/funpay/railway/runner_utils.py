@@ -832,6 +832,33 @@ def log_message(
         chat_url,
         message_text,
     )
+
+    if (
+        not is_system
+        and chat_id is not None
+        and not getattr(msg, "by_bot", False)
+        and message_text.strip().startswith("!")
+        and not command
+    ):
+        if getattr(msg, "author_id", None) == getattr(account, "id", None):
+            return None
+        if account.username and sender_username and sender_username.lower() == account.username.lower():
+            return None
+        suggested = _suggest_command(message_text)
+        if suggested:
+            reply = (
+                "\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u043d\u0430. "
+                f"\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u0432\u044b \u0438\u043c\u0435\u043b\u0438 \u0432 \u0432\u0438\u0434\u0443 {suggested}.\n\n"
+                + COMMANDS_RU
+            )
+        else:
+            reply = (
+                "\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u043d\u0430. "
+                "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
+                + COMMANDS_RU
+            )
+        send_chat_message(logger, account, int(chat_id), reply)
+        return None
     user_id = site_user_id
     try:
         mysql_cfg = get_mysql_config()
