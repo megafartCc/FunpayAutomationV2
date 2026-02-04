@@ -73,10 +73,6 @@ client.on("user", (sid, user) => {
     ? Object.fromEntries(rpRaw.map((entry) => [entry.key, entry.value]))
     : rpRaw;
 
-  if (user.gameid === "570" || user.gameid === 570) {
-    console.log("[bridge] Dota RP", id64, rpRaw);
-  }
-
   presence.set(id64, {
     steamid64: id64,
     persona_state: user.persona_state,
