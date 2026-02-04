@@ -122,12 +122,22 @@ def _strip_rank_prefix(title: str) -> str:
     return title
 
 
-def _compose_ranked_title(title: str, rank_label: str) -> str:
+def _compose_ranked_title(title: str, rank_label: str, max_len: int | None = None) -> str:
     base = _strip_rank_prefix(title)
     tag = f"[{rank_label.upper()}]"
     if base:
-        return f"{tag} {base}"
-    return tag
+        result = f"{tag} {base}"
+    else:
+        result = tag
+    if max_len is not None and max_len > 0 and len(result) > max_len:
+        if base:
+            max_base_len = max_len - len(tag) - 1
+            if max_base_len <= 0:
+                return tag[:max_len]
+            trimmed = base[:max_base_len].rstrip()
+            return f"{tag} {trimmed}"
+        return tag[:max_len]
+    return result
 
 
 def update_funpay_lot_title(
@@ -149,7 +159,7 @@ def update_funpay_lot_title(
     if not current_title:
         logger.warning("Lot %s has empty title, skipping.", lot_id)
         return False
-    new_title = _compose_ranked_title(current_title, rank_label)
+    new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
     if new_title == lot_fields.title_ru:
         return False
     lot_fields.title_ru = new_title
