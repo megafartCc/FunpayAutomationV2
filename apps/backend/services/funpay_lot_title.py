@@ -18,11 +18,14 @@ for _parent in _HERE.parents:
 
 try:
     from FunPayAPI.account import Account
+    from FunPayAPI.common import exceptions as fp_exceptions
 except Exception:
     try:
         from workers.funpay.FunPayAPI.account import Account
+        from workers.funpay.FunPayAPI.common import exceptions as fp_exceptions
     except Exception:  # pragma: no cover - optional dependency in backend runtime
         Account = None
+        fp_exceptions = None
 
 
 _LOT_ID_RE = re.compile(r"(?:offer\?id=|offer/)(\d+)")
@@ -155,41 +158,23 @@ def update_funpay_lot_title(
     account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
     account.get()
     lot_fields = account.get_lot_fields(lot_id)
-    current_title = lot_fields.title_ru or ""
+    fields = dict(lot_fields.fields)
+    current_title = str(fields.get("fields[summary][ru]", "") or "")
     if not current_title:
         logger.warning("Lot %s has empty RU title, skipping.", lot_id)
         return False
-    new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
-    if new_title == lot_fields.title_ru:
+    if "active" not in fields:
+        logger.warning("Lot %s missing active flag in fields, skipping.", lot_id)
         return False
-    original = {
-        "title_en": lot_fields.title_en,
-        "description_ru": lot_fields.description_ru,
-        "description_en": lot_fields.description_en,
-        "payment_msg_ru": lot_fields.payment_msg_ru,
-        "payment_msg_en": lot_fields.payment_msg_en,
-        "images": list(lot_fields.images),
-        "auto_delivery": lot_fields.auto_delivery,
-        "secrets": list(lot_fields.secrets),
-        "amount": lot_fields.amount,
-        "price": lot_fields.price,
-        "active": lot_fields.active,
-        "deactivate_after_sale": lot_fields.deactivate_after_sale,
-    }
-    lot_fields.title_ru = new_title
-    lot_fields.title_en = original["title_en"]
-    lot_fields.description_ru = original["description_ru"]
-    lot_fields.description_en = original["description_en"]
-    lot_fields.payment_msg_ru = original["payment_msg_ru"]
-    lot_fields.payment_msg_en = original["payment_msg_en"]
-    lot_fields.images = original["images"]
-    lot_fields.auto_delivery = original["auto_delivery"]
-    lot_fields.secrets = original["secrets"]
-    lot_fields.amount = original["amount"]
-    lot_fields.price = original["price"]
-    lot_fields.active = original["active"]
-    lot_fields.deactivate_after_sale = original["deactivate_after_sale"]
-    account.save_lot(lot_fields)
+    new_title = _compose_ranked_title(current_title, rank_label, max_len=len(current_title))
+    if new_title == current_title:
+        return False
+    fields["fields[summary][ru]"] = new_title
+    if "offer_id" not in fields:
+        fields["offer_id"] = str(lot_id)
+    if not fields.get("csrf_token"):
+        fields["csrf_token"] = account.csrf_token
+    _post_lot_fields(account, lot_id, fields)
     return True
 
 
@@ -247,3 +232,22 @@ def _get_value(obj: object, key: str, default: object | None = None) -> object |
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _post_lot_fields(account: Account, lot_id: int, fields: dict) -> None:
+    headers = {
+        "accept": "*/*",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest",
+    }
+    fields.setdefault("location", "trade")
+    response = account.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
+    json_response = response.json()
+    errors_dict: dict = {}
+    if (errors := json_response.get("errors")) or json_response.get("error"):
+        if errors:
+            for key, value in errors:
+                errors_dict.update({key: value})
+        if fp_exceptions:
+            raise fp_exceptions.LotSavingError(response, json_response.get("error"), lot_id, errors_dict)
+        raise RuntimeError(f"FunPay save failed: {json_response}")
