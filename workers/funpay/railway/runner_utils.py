@@ -35,6 +35,7 @@ from .constants import (
     BUSY_TITLE,
     COMMAND_PREFIXES,
     COMMANDS_RU,
+    RENT_CONFIRM_MESSAGE,
     RENT_FLOW_MESSAGE,
     RENTAL_REFUND_MESSAGE,
     RENTALS_EMPTY,
@@ -360,6 +361,39 @@ def _wants_rent_flow(text: str) -> bool:
         "rental",
     )
     return any(word in text for word in keywords)
+
+
+def _wants_rent_confirmation(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    triggers = (
+        "\u0435\u0441\u043b\u0438 \u044f \u043e\u043f\u043b\u0430",
+        "\u043f\u043e\u0441\u043b\u0435 \u043e\u043f\u043b\u0430\u0442",
+        "\u043e\u043f\u043b\u0430\u0447\u0443 \u043b\u043e\u0442",
+        "\u043a\u0443\u043f\u043b\u044e \u043b\u043e\u0442",
+    )
+    asks = (
+        "\u0432\u044b\u0434\u0430\u0434\u0438\u0442\u0435",
+        "\u0432\u044b\u0434\u0430\u0448\u044c",
+        "\u0434\u0430\u0434\u0438\u0442\u0435",
+        "\u0434\u0430\u0448\u044c",
+        "\u043f\u043e\u043b\u0443\u0447\u0443",
+        "\u0434\u0430\u043d\u043d\u044b\u0435",
+        "\u043b\u043e\u0433\u0438\u043d",
+        "\u043f\u0430\u0440\u043e\u043b\u044c",
+        "\u0434\u043e\u0441\u0442\u0443\u043f",
+    )
+    pay_words = (
+        "\u043e\u043f\u043b\u0430",
+        "\u043e\u043f\u043b\u0430\u0442",
+        "\u043e\u043f\u043b\u0430\u0447",
+        "\u043f\u043e\u043a\u0443\u043f",
+        "\u043a\u0443\u043f\u043b",
+    )
+    if any(word in lowered for word in triggers):
+        return True
+    return any(word in lowered for word in pay_words) and any(word in lowered for word in asks)
 
 def _extract_account_id_hint(text: str) -> str:
     if not text:
@@ -908,6 +942,10 @@ def log_message(
             send_chat_message(logger, account, int(chat_id), RENT_FLOW_MESSAGE)
             return None
 
+        if _wants_rent_confirmation(lower_text):
+            send_chat_message(logger, account, int(chat_id), RENT_CONFIRM_MESSAGE)
+            return None
+
         lot_url = _extract_lot_url(normalized_text)
         if lot_url:
             logger.info(
@@ -1037,6 +1075,23 @@ def log_message(
                 if not accounts:
                     send_chat_message(logger, account, int(chat_id), RENTALS_EMPTY)
                     return None
+                if len(accounts) > 1:
+                    send_chat_message(
+                        logger,
+                        account,
+                        int(chat_id),
+                        build_rental_choice_message(accounts, "!\u0430\u043a\u043a"),
+                    )
+                    return None
+                selected = accounts[0]
+                message = build_account_message(
+                    selected,
+                    resolve_rental_minutes(selected),
+                    include_timer_note=True,
+                )
+                send_chat_message(logger, account, int(chat_id), message)
+                return None
+
             if _wants_low_priority_replace(lower_text):
                 handle_command(
                     logger,
@@ -1051,22 +1106,6 @@ def log_message(
                     _extract_account_id_hint(message_text),
                     chat_url,
                 )
-                return None
-                if len(accounts) > 1:
-                    send_chat_message(
-                        logger,
-                        account,
-                        int(chat_id),
-                        build_rental_choice_message(accounts, "!акк"),
-                    )
-                    return None
-                selected = accounts[0]
-                message = build_account_message(
-                    selected,
-                    resolve_rental_minutes(selected),
-                    include_timer_note=True,
-                )
-                send_chat_message(logger, account, int(chat_id), message)
                 return None
         if _wants_refund(lower_text):
             send_chat_message(
