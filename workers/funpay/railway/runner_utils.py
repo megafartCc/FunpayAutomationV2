@@ -146,6 +146,38 @@ def _find_recent_lot_url(
     return None
 
 
+
+def _find_recent_lot_urls(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    *,
+    limit: int = 6,
+) -> list[str]:
+    try:
+        lines = build_recent_chat_context(
+            mysql_cfg,
+            int(user_id),
+            int(workspace_id) if workspace_id is not None else None,
+            int(chat_id),
+            limit=12,
+            include_bot=True,
+        )
+    except Exception:
+        lines = []
+    urls: list[str] = []
+    seen: set[str] = set()
+    for line in reversed(lines):
+        for match in LOT_URL_RE.findall(line):
+            if match in seen:
+                continue
+            seen.add(match)
+            urls.append(match)
+            if len(urls) >= limit:
+                return urls
+    return urls
+
 def _wants_when_free(text: str) -> bool:
     if not text:
         return False
@@ -908,7 +940,8 @@ def log_message(
                 )
                 return None
             lot_url = _find_recent_lot_url(mysql_cfg, int(user_id), workspace_id, int(chat_id))
-            if not lot_url:
+            lot_urls = [lot_url] if lot_url else _find_recent_lot_urls(mysql_cfg, int(user_id), workspace_id, int(chat_id))
+            if not lot_urls:
                 send_chat_message(
                     logger,
                     account,
@@ -916,6 +949,31 @@ def log_message(
                     "Пожалуйста, пришлите ссылку на лот, чтобы проверить.",
                 )
                 return None
+            if not lot_url and len(lot_urls) > 1:
+                lines: list[str] = []
+                for url in lot_urls[:5]:
+                    row = fetch_lot_by_url(mysql_cfg, url, user_id=int(user_id), workspace_id=workspace_id)
+                    if row:
+                        name = _lot_display_name(row)
+                        if row.get("owner"):
+                            eta = _format_eta_from_row(row)
+                            if eta:
+                                line = f"{name}: {eta}"
+                            else:
+                                line = f"{name}: занят, время неизвестно."
+                        else:
+                            line = f"{name}: свободен."
+                    else:
+                        line = "Лот не найден."
+                    lines.append(line)
+                message = "По последним лотам из чата:
+- " + "
+- ".join(lines) + "
+Чтобы узнать точно, пришлите ссылку на конкретный лот."
+                send_chat_message(logger, account, int(chat_id), message)
+                return None
+            lot_url = lot_urls[0]
+            row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
             row = fetch_lot_by_url(mysql_cfg, lot_url, user_id=int(user_id), workspace_id=workspace_id)
             if row and row.get("owner"):
                 eta = _format_eta_from_row(row)
