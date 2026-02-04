@@ -99,9 +99,19 @@ def _to_item(record: AccountRecord) -> AccountItem:
     if record.mafile_json:
         try:
             data = json.loads(record.mafile_json) if isinstance(record.mafile_json, str) else record.mafile_json
-            steam_value = (data or {}).get("Session", {}).get("SteamID")
-            if steam_value is None:
-                steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+            session = (data or {}).get("Session") if isinstance(data, dict) else None
+            steam_value = None
+            if isinstance(session, dict):
+                steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
+            if steam_value is None and isinstance(data, dict):
+                steam_value = (
+                    data.get("steamid")
+                    or data.get("SteamID")
+                    or data.get("steam_id")
+                    or data.get("steamId")
+                    or data.get("steamid64")
+                    or data.get("SteamID64")
+                )
             if steam_value is not None:
                 steam_id = str(int(steam_value))
         except Exception:

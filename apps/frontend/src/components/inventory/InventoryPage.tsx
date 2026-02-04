@@ -83,6 +83,9 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   const [accountEditWorkspaceId, setAccountEditWorkspaceId] = useState<number | null>(null);
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [accountControlBusy, setAccountControlBusy] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [mmrMin, setMmrMin] = useState("");
+  const [mmrMax, setMmrMax] = useState("");
   const { workspaces } = useWorkspace();
 
   const resolveWorkspaceName = (workspaceName?: string | null, workspaceId?: number | null) => {
@@ -106,6 +109,49 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     () => accounts.find((acc) => acc.id === selectedId) ?? null,
     [accounts, selectedId],
   );
+
+  const getAccountStatus = (acc: AccountRow) => {
+    if (acc.lowPriority) return { key: "low_priority", label: "Низкий приоритет" };
+    if (acc.accountFrozen) return { key: "frozen", label: "Заморожено" };
+    if (acc.owner) return { key: "rented", label: "В аренде" };
+    return { key: "available", label: "Доступен" };
+  };
+
+  const statusCounts = useMemo(() => {
+    const base = {
+      all: accounts.length,
+      available: 0,
+      rented: 0,
+      frozen: 0,
+      low_priority: 0,
+    };
+    return accounts.reduce((acc, item) => {
+      const status = getAccountStatus(item).key as keyof typeof base;
+      acc[status] += 1;
+      return acc;
+    }, base);
+  }, [accounts]);
+
+  const filteredAccounts = useMemo(() => {
+    const min = mmrMin.trim() === "" ? null : Number(mmrMin);
+    const max = mmrMax.trim() === "" ? null : Number(mmrMax);
+    return accounts.filter((acc) => {
+      const status = getAccountStatus(acc).key;
+      if (statusFilter !== "all" && status !== statusFilter) return false;
+      const mmrValue = typeof acc.mmr === "number" ? acc.mmr : Number(acc.mmr);
+      if (Number.isFinite(min) && (Number.isNaN(mmrValue) || mmrValue < min)) return false;
+      if (Number.isFinite(max) && (Number.isNaN(mmrValue) || mmrValue > max)) return false;
+      return true;
+    });
+  }, [accounts, mmrMin, mmrMax, statusFilter]);
+
+  const statusOptions = [
+    { key: "all", label: "Все" },
+    { key: "available", label: "Доступные" },
+    { key: "rented", label: "В аренде" },
+    { key: "frozen", label: "Замороженные" },
+    { key: "low_priority", label: "Низкий приоритет" },
+  ];
 
   const workspaceOptions = useMemo(() => {
     const baseOptions = workspaces.map((workspace) => ({
@@ -627,6 +673,49 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
               )}
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
+            <div className="flex flex-wrap items-center gap-2">
+              {statusOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setStatusFilter(option.key)}
+                  className={`rounded-full px-3 py-1 font-semibold transition ${
+                    statusFilter === option.key
+                      ? "bg-neutral-900 text-white"
+                      : "bg-white text-neutral-600 hover:bg-neutral-100"
+                  }`}
+                >
+                  {option.label} · {statusCounts[option.key as keyof typeof statusCounts]}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-neutral-500">MMR</span>
+              <input
+                className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 outline-none focus:border-neutral-400"
+                placeholder="Мин."
+                value={mmrMin}
+                onChange={(event) => setMmrMin(event.target.value)}
+              />
+              <input
+                className="w-20 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 outline-none focus:border-neutral-400"
+                placeholder="Макс."
+                value={mmrMax}
+                onChange={(event) => setMmrMax(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setMmrMin("");
+                  setMmrMax("");
+                }}
+                className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600 hover:bg-neutral-100"
+              >
+                Сброс
+              </button>
+            </div>
+          </div>
           <div className="overflow-x-hidden">
             <div className="min-w-0">
               <div className="mt-3 list-scroll">
@@ -643,7 +732,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                   <span className="text-center">Статус</span>
                 </div>
                 <div className="mt-3 space-y-3">
-                  {accounts.map((acc, idx) => {
+                  {filteredAccounts.map((acc, idx) => {
                   const rented = !!acc.owner;
                   const frozen = !!acc.accountFrozen;
                   const lowPriority = !!acc.lowPriority;
@@ -741,9 +830,9 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                     </motion.div>
                   );
                   })}
-                  {accounts.length === 0 && (
+                  {filteredAccounts.length === 0 && (
                     <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
-                      {emptyMessage}
+                      {accounts.length === 0 ? emptyMessage : "Нет аккаунтов по текущим фильтрам."}
                     </div>
                   )}
                 </div>
