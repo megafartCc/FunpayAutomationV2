@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -31,6 +32,34 @@ DEFAULT_PROMPT = (
     "!админ — вызвать продавца\n"
     "!лпзамена <ID> — замена аккаунта (10 минут после !код)\n"
     "!отмена <ID> — отменить аренду"
+)
+INTENT_LABELS = (
+    "stock_list",
+    "busy_list",
+    "rent_flow",
+    "pre_rent",
+    "refund",
+    "account_info",
+    "when_free",
+    "commands",
+    "greeting",
+    "unknown",
+)
+INTENT_PROMPT = (
+    "You are a strict intent classifier for a FunPay rental support bot.\n"
+    "Return ONLY valid JSON with keys: intent, confidence, reason.\n"
+    "Allowed intents:\n"
+    "- stock_list: user wants free/available accounts or asks what's free\n"
+    "- busy_list: user asks which accounts are busy/occupied\n"
+    "- rent_flow: asks how to rent or what to do to rent\n"
+    "- pre_rent: wants multiple accounts or time before payment (e.g., \"need 2 accounts for 3 hours\")\n"
+    "- refund: asks to refund or вернуть деньги/средства\n"
+    "- account_info: asks for login/password, account data, rental time left\n"
+    "- when_free: asks when a specific lot/account will be free\n"
+    "- commands: asks for command list or help\n"
+    "- greeting: greeting only\n"
+    "- unknown: unclear\n"
+    "Confidence: 0-1. If unclear, use intent=unknown and confidence<=0.4.\n"
 )
 CLARIFY_RESPONSE = "Не понял запрос. Пожалуйста, уточните, что вы имеете в виду."
 RUDE_RESPONSE = (
@@ -147,6 +176,88 @@ def generate_ai_reply(
     max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "300"))
     if not api_key and not local_url:
         logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
+        return None
+
+
+def _extract_json(text: str) -> dict[str, Any] | None:
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start : end + 1])
+        except Exception:
+            return None
+    return None
+
+
+def classify_intent(
+    user_text: str,
+    *,
+    context: str | None = None,
+) -> dict[str, Any] | None:
+    logger = logging.getLogger("funpay.ai")
+    if not user_text:
+        return None
+    local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
+    api_url = local_url or GROQ_API_URL
+    api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
+    if not api_key and not local_url:
+        return None
+    model = os.getenv(LOCAL_MODEL_ENV if local_url else "GROQ_INTENT_MODEL", "").strip() or os.getenv(
+        LOCAL_MODEL_ENV if local_url else "GROQ_MODEL",
+        DEFAULT_MODEL,
+    )
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": INTENT_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Context:\n{context}\n\nUser: {user_text}" if context else f"User: {user_text}"
+                ),
+            },
+        ],
+        "temperature": 0.0,
+        "max_tokens": 120,
+    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=12,
+        )
+        if response.status_code >= 400:
+            logger.warning("Intent API error %s: %s", response.status_code, response.text[:200])
+            return None
+        data = response.json()
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        if not content:
+            return None
+        obj = _extract_json(content)
+        if not obj:
+            return None
+        intent = str(obj.get("intent") or "").strip()
+        confidence = float(obj.get("confidence") or 0.0)
+        reason = str(obj.get("reason") or "").strip()
+        if intent not in INTENT_LABELS:
+            return None
+        return {"intent": intent, "confidence": confidence, "reason": reason}
+    except Exception as exc:
+        logger.warning("Intent classification failed: %s", exc)
         return None
     if _is_code_like(user_text):
         return CLARIFY_RESPONSE
