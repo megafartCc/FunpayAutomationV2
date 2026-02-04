@@ -125,9 +125,19 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
         return None
     try:
         data = json.loads(mafile_json) if isinstance(mafile_json, str) else mafile_json
-        steam_value = (data or {}).get("Session", {}).get("SteamID")
-        if steam_value is None:
-            steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+        session = (data or {}).get("Session") if isinstance(data, dict) else None
+        steam_value = None
+        if isinstance(session, dict):
+            steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
+        if steam_value is None and isinstance(data, dict):
+            steam_value = (
+                data.get("steamid")
+                or data.get("SteamID")
+                or data.get("steam_id")
+                or data.get("steamId")
+                or data.get("steamid64")
+                or data.get("SteamID64")
+            )
         if steam_value is not None:
             return str(int(steam_value))
     except Exception:
