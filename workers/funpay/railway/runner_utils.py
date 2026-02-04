@@ -35,6 +35,7 @@ from .constants import (
     BUSY_TITLE,
     COMMAND_PREFIXES,
     COMMANDS_RU,
+    RENT_FLOW_MESSAGE,
     RENTAL_REFUND_MESSAGE,
     RENTALS_EMPTY,
     STOCK_EMPTY,
@@ -346,6 +347,19 @@ def _wants_busy_list(text: str) -> bool:
     if "\u043a\u0430\u043a\u0438\u0435" in text and any(word in text for word in subjects) and any(word in text for word in hints):
         return True
     return any(word in text for word in hints) and any(word in text for word in subjects)
+
+
+def _wants_rent_flow(text: str) -> bool:
+    if not text:
+        return False
+    keywords = (
+        "\u0430\u0440\u0435\u043d\u0434",
+        "\u0432\u0437\u044f\u0442\u044c \u0430\u0440\u0435\u043d\u0434",
+        "\u0445\u043e\u0447\u0443 \u0430\u0440\u0435\u043d\u0434",
+        "rent",
+        "rental",
+    )
+    return any(word in text for word in keywords)
 
 def _extract_account_id_hint(text: str) -> str:
     if not text:
@@ -888,6 +902,10 @@ def log_message(
             return None
         if _wants_command_list(lower_text):
             send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            return None
+
+        if _wants_rent_flow(lower_text):
+            send_chat_message(logger, account, int(chat_id), RENT_FLOW_MESSAGE)
             return None
 
         lot_url = _extract_lot_url(normalized_text)
