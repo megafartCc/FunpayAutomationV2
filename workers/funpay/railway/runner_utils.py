@@ -37,6 +37,7 @@ from .constants import (
     COMMANDS_RU,
     RENT_CONFIRM_MESSAGE,
     RENT_PRE_REQUEST_MESSAGE,
+    RENT_STOCK_NOTE,
     RENT_FLOW_MESSAGE,
     RENTAL_REFUND_MESSAGE,
     RENTALS_EMPTY,
@@ -1008,6 +1009,20 @@ def log_message(
             send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
             return None
 
+        if mysql_cfg and user_id is not None:
+            wants_busy = _wants_busy_list(lower_text)
+            if wants_busy:
+                accounts = fetch_busy_lot_accounts(mysql_cfg, int(user_id), workspace_id)
+                _respond_busy_lots(logger, account, int(chat_id), accounts)
+                return None
+            wants_stock = _wants_stock_list(lower_text)
+            if wants_stock:
+                accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
+                _respond_free_lots(logger, account, int(chat_id), accounts)
+                if _wants_rent_flow(lower_text) or _wants_pre_rent_request(lower_text):
+                    send_chat_message(logger, account, int(chat_id), RENT_STOCK_NOTE)
+                return None
+
         if _wants_pre_rent_request(lower_text):
             send_chat_message(logger, account, int(chat_id), RENT_PRE_REQUEST_MESSAGE)
             return None
@@ -1134,16 +1149,6 @@ def log_message(
             )
             return None
         if mysql_cfg and user_id is not None:
-            wants_busy = _wants_busy_list(lower_text)
-            if wants_busy:
-                accounts = fetch_busy_lot_accounts(mysql_cfg, int(user_id), workspace_id)
-                _respond_busy_lots(logger, account, int(chat_id), accounts)
-                return None
-            wants_stock = _wants_stock_list(lower_text)
-            if wants_stock:
-                accounts = fetch_available_lot_accounts(mysql_cfg, int(user_id), workspace_id)
-                _respond_free_lots(logger, account, int(chat_id), accounts)
-                return None
             if _wants_account_info(lower_text):
                 accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
                 if not accounts:
