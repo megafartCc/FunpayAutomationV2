@@ -280,16 +280,19 @@ def _wants_low_priority_replace(text: str) -> bool:
 def _wants_refund(text: str) -> bool:
     if not text:
         return False
+    lowered = text.lower()
     keywords = (
-        "возврат",
-        "верни",
-        "верните",
-        "деньги",
-        "деньги обратно",
+        "\u0432\u043e\u0437\u0432\u0440\u0430\u0442",
+        "\u0432\u0435\u0440\u043d\u0438",
+        "\u0432\u0435\u0440\u043d\u0438\u0442\u0435",
+        "\u0432\u0435\u0440\u043d\u0443\u0442\u044c",
+        "\u0434\u0435\u043d\u044c\u0433\u0438",
+        "\u0441\u0440\u0435\u0434\u0441\u0442\u0432\u0430",
+        "\u0434\u0435\u043d\u044c\u0433\u0438 \u043e\u0431\u0440\u0430\u0442\u043d\u043e",
         "moneyback",
         "refund",
     )
-    return any(key in text for key in keywords)
+    return any(key in lowered for key in keywords)
 
 
 def _wants_account_info(text: str) -> bool:
