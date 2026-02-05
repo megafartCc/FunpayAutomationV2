@@ -348,10 +348,14 @@ export const api = {
     }),
   deleteAccount: (accountId: number, workspaceId?: number | null) =>
     request<{ status: string }>(withWorkspace(`/accounts/${accountId}`, workspaceId), { method: "DELETE" }),
-  assignAccount: (accountId: number, owner: string, workspaceId?: number | null) =>
+  assignAccount: (accountId: number, owner: string, hours?: number | null, minutes?: number | null, workspaceId?: number | null) =>
     request<{ status: string }>(withWorkspace(`/accounts/${accountId}/assign`, workspaceId), {
       method: "POST",
-      body: { owner },
+      body: {
+        owner,
+        ...(hours !== null && hours !== undefined ? { hours } : {}),
+        ...(minutes !== null && minutes !== undefined ? { minutes } : {}),
+      },
     }),
   releaseAccount: (accountId: number, workspaceId?: number | null) =>
     request<{ status: string }>(withWorkspace(`/accounts/${accountId}/release`, workspaceId), {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Line,
   LineChart,
+  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -79,6 +80,12 @@ type ActivityPoint = {
   value: number;
 };
 
+type DailyStat = {
+  key: string;
+  label: string;
+  orders: number;
+  avg: number;
+};
 
 type BuyerStat = {
   name: string;
@@ -88,14 +95,6 @@ type BuyerStat = {
 
 const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
 const formatCurrency = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
-
-type BlankCardProps = {
-  minHeight?: number;
-};
-
-const BlankCard: React.FC<BlankCardProps> = ({ minHeight = 260 }) => (
-  <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm" style={{ minHeight }} />
-);
 
 const FunpayStatsPage: React.FC = () => {
   const { tr } = useI18n();
@@ -242,20 +241,15 @@ const FunpayStatsPage: React.FC = () => {
     return `${startLabel}:00 - ${endLabel}:59`;
   }, [peakHour.label]);
 
-  const weeklyOverview = useMemo(() => {
-    const now = new Date();
-    const days = Array.from({ length: 7 }, (_, idx) => {
-      const date = new Date(now);
-      date.setDate(now.getDate() - (6 - idx));
-      const key = date.toISOString().slice(0, 10);
-      return { key, label: date.toLocaleDateString(undefined, { weekday: "short" }) };
-    });
+  const dailyOverview = useMemo<DailyStat[]>(() => {
     const map = new Map<string, { orders: number; totalMinutes: number; countMinutes: number }>();
+    const dates: Date[] = [];
     ordersInRange.forEach((order) => {
       if (!order.created_at) return;
       const dt = new Date(order.created_at);
       if (Number.isNaN(dt.getTime())) return;
-      const key = dt.toISOString().slice(0, 10);
+      dates.push(dt);
+      const key = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).toISOString().slice(0, 10);
       const entry = map.get(key) ?? { orders: 0, totalMinutes: 0, countMinutes: 0 };
       entry.orders += 1;
       if (order.rental_minutes) {
@@ -264,15 +258,31 @@ const FunpayStatsPage: React.FC = () => {
       }
       map.set(key, entry);
     });
-    return days.map((day) => {
-      const stats = map.get(day.key);
-      return {
-        label: day.label,
+
+    const today = new Date();
+    const rangeStart = rangeCutoff
+      ? new Date(rangeCutoff.getFullYear(), rangeCutoff.getMonth(), rangeCutoff.getDate())
+      : dates.length
+        ? new Date(Math.min(...dates.map((dt) => dt.getTime())))
+        : new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const results: DailyStat[] = [];
+    const cursor = new Date(rangeStart);
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      const label = cursor.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const stats = map.get(key);
+      results.push({
+        key,
+        label,
         orders: stats?.orders ?? 0,
         avg: stats?.countMinutes ? stats.totalMinutes / 60 / stats.countMinutes : 0,
-      };
-    });
-  }, [ordersInRange]);
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return results;
+  }, [ordersInRange, rangeCutoff]);
 
   const totalRevenue = useMemo(() => {
     return ordersInRange.reduce((sum, order) => {
@@ -349,12 +359,13 @@ const FunpayStatsPage: React.FC = () => {
 
   const chartData = useMemo(
     () =>
-      weeklyOverview.map((item) => ({
+      dailyOverview.map((item) => ({
         label: item.label,
+        dateKey: item.key,
         orders: item.orders,
         avg: item.avg,
       })),
-    [weeklyOverview],
+    [dailyOverview],
   );
 
   return (
@@ -426,7 +437,7 @@ const FunpayStatsPage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900">
-                {tr("Rental activity by day", "Активность аренд по дням")}
+                {tr("Orders by day", "Заказы по дням")}
               </h2>
               <p className="text-sm text-neutral-500">
                 {tr("Peak hour: {hour}", "Пиковый час: {hour}", { hour: peakHour.label })}
@@ -438,7 +449,7 @@ const FunpayStatsPage: React.FC = () => {
           </div>
           <div className="mt-6">
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/95 px-4 py-4">
-              <div className="h-[220px] w-full">
+              <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <defs>
@@ -447,13 +458,33 @@ const FunpayStatsPage: React.FC = () => {
                         <stop offset="60%" stopColor="#16a34a" stopOpacity="1" />
                         <stop offset="100%" stopColor="#22c55e" stopOpacity="1" />
                       </linearGradient>
-                      <linearGradient id="funpay-area" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                      </linearGradient>
                     </defs>
-                    <XAxis dataKey="label" tick={{ fill: "#cbd5f5", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis hide domain={[0, "dataMax + 2"]} />
+                    <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="4 4" />
+                    <XAxis
+                      dataKey="dateKey"
+                      tickFormatter={(value) => {
+                        const dt = new Date(value);
+                        if (Number.isNaN(dt.getTime())) return value;
+                        return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                      }}
+                      tick={{ fill: "#cbd5f5", fontSize: 11 }}
+                      axisLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
+                      tickLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      tick={{ fill: "#cbd5f5", fontSize: 11 }}
+                      axisLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
+                      tickLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
+                      domain={[0, "dataMax + 2"]}
+                      label={{
+                        value: tr("Orders", "Заказы"),
+                        angle: -90,
+                        position: "insideLeft",
+                        fill: "#cbd5f5",
+                        fontSize: 11,
+                      }}
+                    />
                     <Tooltip
                       cursor={{ stroke: "#22c55e", strokeDasharray: "4 4" }}
                       contentStyle={{
@@ -464,6 +495,12 @@ const FunpayStatsPage: React.FC = () => {
                         fontSize: 12,
                       }}
                       labelStyle={{ color: "#cbd5f5", fontWeight: 600 }}
+                      labelFormatter={(value) => {
+                        const dt = new Date(value as string);
+                        return Number.isNaN(dt.getTime())
+                          ? value
+                          : dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+                      }}
                       formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
                     />
                     <Line
@@ -476,11 +513,6 @@ const FunpayStatsPage: React.FC = () => {
                     />
                   </LineChart>
                 </ResponsiveContainer>
-              </div>
-              <div className="mt-3 grid grid-cols-7 text-[11px] font-semibold text-neutral-300">
-                {weeklyOverview.map((day) => (
-                  <span key={day.label} className="text-center">{day.label}</span>
-                ))}
               </div>
             </div>
           </div>
@@ -627,8 +659,8 @@ const FunpayStatsPage: React.FC = () => {
           </span>
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {weeklyOverview.map((day) => (
-            <div key={day.label} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+          {dailyOverview.slice(-4).map((day) => (
+            <div key={day.key} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
               <p className="text-xs font-semibold uppercase text-neutral-400">{day.label}</p>
               <p className="mt-2 text-2xl font-semibold text-neutral-900">{day.orders}</p>
               <p className="text-xs text-neutral-500">
@@ -638,35 +670,6 @@ const FunpayStatsPage: React.FC = () => {
           ))}
         </div>
       </div>
-
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-900">
-              {tr("Orders overview", "Сводка заказов")}
-            </h2>
-            <p className="text-sm text-neutral-500">
-              {tr("Track overall volume and average rental time by day.", "Отслеживайте объем и среднее время аренды по дням.")}
-            </p>
-          </div>
-          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-            {loading ? tr("Loading...", "Загрузка...") : tr("{count} orders", "{count} заказов", { count: ordersInRange.length })}
-          </span>
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {weeklyOverview.map((day) => (
-            <div key={day.label} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
-              <p className="text-xs font-semibold uppercase text-neutral-400">{day.label}</p>
-              <p className="mt-2 text-2xl font-semibold text-neutral-900">{day.orders}</p>
-              <p className="text-xs text-neutral-500">
-                {tr("Avg rental", "Средняя аренда")}: {day.avg ? formatHoursLabel(day.avg) : "-"}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <BlankCard minHeight={120} />
     </div>
   );
 };

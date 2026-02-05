@@ -44,6 +44,8 @@ class AccountUpdate(BaseModel):
 
 class AssignRequest(BaseModel):
     owner: str = Field(..., min_length=1, max_length=255)
+    hours: int | None = Field(None, ge=0, le=9999)
+    minutes: int | None = Field(None, ge=0, le=59)
 
 
 class FreezeRequest(BaseModel):
@@ -319,8 +321,19 @@ def assign_account(
     user=Depends(get_current_user),
 ) -> dict:
     _ensure_workspace(workspace_id, int(user.id))
+    hours = payload.hours
+    minutes = payload.minutes
+    if hours is not None or minutes is not None:
+        total_minutes = (hours or 0) * 60 + (minutes or 0)
+        if total_minutes <= 0:
+            raise HTTPException(status_code=400, detail="Rental duration must be greater than 0")
     success = accounts_repo.set_account_owner(
-        account_id, int(user.id), int(workspace_id), payload.owner.strip()
+        account_id,
+        int(user.id),
+        int(workspace_id),
+        payload.owner.strip(),
+        rental_hours=hours,
+        rental_minutes=minutes,
     )
     if not success:
         raise HTTPException(status_code=400, detail="Account already assigned")
