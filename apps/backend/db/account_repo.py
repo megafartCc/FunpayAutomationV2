@@ -472,19 +472,34 @@ class MySQLAccountRepo:
         finally:
             conn.close()
 
-    def set_account_owner(self, account_id: int, user_id: int, workspace_id: int, owner: str) -> bool:
+    def set_account_owner(
+        self,
+        account_id: int,
+        user_id: int,
+        workspace_id: int,
+        owner: str,
+        rental_hours: int | None = None,
+        rental_minutes: int | None = None,
+    ) -> bool:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            updates = ["owner = %s", "rental_start = NULL", "last_rented_workspace_id = %s"]
+            params: list = [owner, workspace_id]
+            if rental_hours is not None or rental_minutes is not None:
+                hours = int(rental_hours or 0)
+                minutes = int(rental_minutes or 0)
+                total_minutes = hours * 60 + minutes
+                updates.append("rental_duration = %s")
+                updates.append("rental_duration_minutes = %s")
+                params.extend([hours, total_minutes])
             cursor.execute(
-                """
+                f"""
                 UPDATE accounts
-                SET owner = %s,
-                    rental_start = NULL,
-                    last_rented_workspace_id = %s
+                SET {', '.join(updates)}
                 WHERE id = %s AND user_id = %s AND (owner IS NULL OR owner = '')
                 """,
-                (owner, workspace_id, account_id, user_id),
+                (*params, account_id, user_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -693,9 +708,9 @@ class MySQLAccountRepo:
             params: list = [owner, int(rental_duration), int(rental_duration_minutes), rental_start]
             if has_frozen_at:
                 updates.append("rental_frozen_at = NULL")
-            if workspace_id is not None and has_last_rented:
+            if has_last_rented:
                 updates.append("last_rented_workspace_id = %s")
-                params.append(int(workspace_id))
+                params.append(int(workspace_id) if workspace_id is not None else None)
             params.extend([int(new_account_id), int(user_id)])
             where_clauses = ["id = %s", "user_id = %s", "(owner IS NULL OR owner = '')"]
             if has_account_frozen:

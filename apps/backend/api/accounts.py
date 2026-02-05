@@ -44,6 +44,8 @@ class AccountUpdate(BaseModel):
 
 class AssignRequest(BaseModel):
     owner: str = Field(..., min_length=1, max_length=255)
+    hours: int | None = Field(None, ge=0, le=9999)
+    minutes: int | None = Field(None, ge=0, le=59)
 
 
 class FreezeRequest(BaseModel):
@@ -99,9 +101,19 @@ def _to_item(record: AccountRecord) -> AccountItem:
     if record.mafile_json:
         try:
             data = json.loads(record.mafile_json) if isinstance(record.mafile_json, str) else record.mafile_json
-            steam_value = (data or {}).get("Session", {}).get("SteamID")
-            if steam_value is None:
-                steam_value = (data or {}).get("steamid") or (data or {}).get("SteamID")
+            session = (data or {}).get("Session") if isinstance(data, dict) else None
+            steam_value = None
+            if isinstance(session, dict):
+                steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
+            if steam_value is None and isinstance(data, dict):
+                steam_value = (
+                    data.get("steamid")
+                    or data.get("SteamID")
+                    or data.get("steam_id")
+                    or data.get("steamId")
+                    or data.get("steamid64")
+                    or data.get("SteamID64")
+                )
             if steam_value is not None:
                 steam_id = str(int(steam_value))
         except Exception:
@@ -309,8 +321,19 @@ def assign_account(
     user=Depends(get_current_user),
 ) -> dict:
     _ensure_workspace(workspace_id, int(user.id))
+    hours = payload.hours
+    minutes = payload.minutes
+    if hours is not None or minutes is not None:
+        total_minutes = (hours or 0) * 60 + (minutes or 0)
+        if total_minutes <= 0:
+            raise HTTPException(status_code=400, detail="Rental duration must be greater than 0")
     success = accounts_repo.set_account_owner(
-        account_id, int(user.id), int(workspace_id), payload.owner.strip()
+        account_id,
+        int(user.id),
+        int(workspace_id),
+        payload.owner.strip(),
+        rental_hours=hours,
+        rental_minutes=minutes,
     )
     if not success:
         raise HTTPException(status_code=400, detail="Account already assigned")

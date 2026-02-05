@@ -307,6 +307,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [now, setNow] = useState(Date.now());
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
+  const [assignHours, setAssignHours] = useState("");
+  const [assignMinutes, setAssignMinutes] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
   const [accountEditLogin, setAccountEditLogin] = useState("");
   const [accountEditPassword, setAccountEditPassword] = useState("");
@@ -468,15 +470,42 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       onToast?.("Введите имя пользователя покупателя.", true);
       return;
     }
+    const hasManualDuration = assignHours.trim() !== "" || assignMinutes.trim() !== "";
+    let manualHours: number | null = null;
+    let manualMinutes: number | null = null;
+    if (hasManualDuration) {
+      const hoursValue = Number(assignHours || 0);
+      const minutesValue = Number(assignMinutes || 0);
+      if (!Number.isFinite(hoursValue) || !Number.isFinite(minutesValue) || hoursValue < 0 || minutesValue < 0) {
+        onToast?.("Введите корректное количество часов и минут.", true);
+        return;
+      }
+      if (minutesValue >= 60) {
+        onToast?.("Минуты должны быть меньше 60.", true);
+        return;
+      }
+      if (hoursValue > 9999) {
+        onToast?.("Слишком большое количество часов.", true);
+        return;
+      }
+      if (hoursValue * 60 + minutesValue <= 0) {
+        onToast?.("Укажите продолжительность больше 0.", true);
+        return;
+      }
+      manualHours = hoursValue;
+      manualMinutes = minutesValue;
+    }
     setAccountActionBusy(true);
     try {
       const workspaceId =
         accountWorkspaceId === "all"
           ? selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined
           : (accountWorkspaceId as number);
-      await api.assignAccount(selectedAccount.id, owner, workspaceId);
+      await api.assignAccount(selectedAccount.id, owner, manualHours, manualMinutes, workspaceId);
       onToast?.("Аренда назначена.");
       setAssignOwner("");
+      setAssignHours("");
+      setAssignMinutes("");
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Не удалось назначить аренду.";
@@ -769,6 +798,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       placeholder="Логин покупателя"
                       className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
                     />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={assignHours}
+                        onChange={(e) => setAssignHours(e.target.value)}
+                        placeholder="Часы (опционально)"
+                        type="number"
+                        min="0"
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+                      />
+                      <input
+                        value={assignMinutes}
+                        onChange={(e) => setAssignMinutes(e.target.value)}
+                        placeholder="Минуты (опционально)"
+                        type="number"
+                        min="0"
+                        max="59"
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
+                      />
+                    </div>
                     <button
                       onClick={handleAssignAccount}
                       disabled={accountActionBusy || !assignOwner.trim() || !canAssign}
