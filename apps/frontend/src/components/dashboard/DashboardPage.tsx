@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 
 import { api, AccountItem, ActiveRentalItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import BuyerChatPanel from "../chats/BuyerChatPanel";
 
 type DeltaTone = "up" | "down";
 
@@ -231,12 +232,12 @@ const parseUtcMs = (value?: string | null) => {
   if (!value) return null;
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
   const hasZone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized);
-  const localTs = Date.parse(normalized);
-  if (!Number.isNaN(localTs)) return localTs;
   if (!hasZone) {
     const utcTs = Date.parse(`${normalized}Z`);
-    return Number.isNaN(utcTs) ? null : utcTs;
+    if (!Number.isNaN(utcTs)) return utcTs;
   }
+  const localTs = Date.parse(normalized);
+  if (!Number.isNaN(localTs)) return localTs;
   return null;
 };
 
@@ -299,6 +300,7 @@ const formatWorkspaceLabel = (
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, selectedPlatform, workspaces } = useWorkspace();
+  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number | null);
   const accountWorkspaceId = selectedPlatform === "all" ? selectedWorkspaceId : "all";
   const [allAccounts, setAllAccounts] = useState<AccountRow[]>([]);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
@@ -317,6 +319,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [rentalExtendMinutes, setRentalExtendMinutes] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
+  const [chatTarget, setChatTarget] = useState<{ buyer: string; workspaceId?: number | null } | null>(null);
 
   const filteredAccounts = useMemo(() => {
     if (accountWorkspaceId === "all") {
@@ -970,7 +973,25 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>{presenceLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Покупатель: {selectedRental.buyer || "-"}</span>
+                    <span>
+                      Покупатель:{" "}
+                      {selectedRental.buyer ? (
+                        <button
+                          type="button"
+                          className="font-semibold text-neutral-800 hover:text-neutral-900"
+                          onClick={() =>
+                            setChatTarget({
+                              buyer: selectedRental.buyer,
+                              workspaceId: selectedRental.workspaceId ?? selectedAccount?.workspaceId ?? null,
+                            })
+                          }
+                        >
+                          {selectedRental.buyer}
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </span>
                     <span>
                       Осталось:{" "}
                       {selectedRental
@@ -1272,7 +1293,21 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                           {workspaceBadge}
                         </span>
                       </div>
-                      <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
+                      <button
+                        type="button"
+                        className="min-w-0 truncate text-left text-neutral-700 hover:text-neutral-900"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (row.buyer) {
+                            setChatTarget({
+                              buyer: row.buyer,
+                              workspaceId: row.workspaceId ?? account?.workspaceId ?? null,
+                            });
+                          }
+                        }}
+                      >
+                        {row.buyer || "-"}
+                      </button>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
                         {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
@@ -1305,6 +1340,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         {renderAccountActionsPanel()}
         {renderRentalActionsPanel()}
       </div>
+      <BuyerChatPanel
+        open={!!chatTarget}
+        buyer={chatTarget?.buyer}
+        workspaceId={chatTarget?.workspaceId ?? workspaceId}
+        onClose={() => setChatTarget(null)}
+      />
     </div>
   );
 };
