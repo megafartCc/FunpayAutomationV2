@@ -178,7 +178,11 @@ def _suggest_price(prices: list[float]) -> tuple[float | None, float | None, flo
 
 
 def _format_prices(prices: list[float]) -> str:
-    return ", ".join(f"{price:.2f}" for price in prices[:50])
+    return ", ".join(f"{price:.2f}" for price in prices)
+
+
+def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float = 150.0) -> list[float]:
+    return [price for price in prices if min_price <= price <= max_price]
 
 
 def _analyze_prices_with_groq(
@@ -192,12 +196,15 @@ def _analyze_prices_with_groq(
     if not api_key:
         raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured.")
     model = os.getenv("GROQ_MODEL", _DEFAULT_GROQ_MODEL)
+    filtered_prices = _filter_prices(prices)
     prompt = (
         "Ты аналитик рынка FunPay. На основе цен конкурентов дай краткий анализ и рекомендацию цены,\n"
         "чтобы быть почти первым в списке (рядом с самым дешевым предложением).\n"
         "Сформулируй ответ кратко на русском: 2-4 пункта и короткая итоговая строка.\n"
         "Данные:\n"
-        f"- Цены: { _format_prices(prices) }\n"
+        f"- Всего цен: {len(prices)}\n"
+        f"- Цены в диапазоне 0-150: {len(filtered_prices)}\n"
+        f"- Список цен (0-150): { _format_prices(filtered_prices) }\n"
         f"- Валюта: {currency or 'не указана'}\n"
         f"- Минимальная цена: {lowest_price}\n"
         f"- Вторая цена: {second_price}\n"
@@ -295,9 +302,12 @@ def analyze_price_dumper(
     prices = [item.price for item in payload.items if item.price is not None]
     if not prices:
         raise HTTPException(status_code=400, detail="No prices provided for analysis.")
-    recommended_price, lowest_price, second_price = _suggest_price(prices)
+    filtered_prices = _filter_prices(prices)
+    if not filtered_prices:
+        raise HTTPException(status_code=400, detail="No prices in the 0-150 range for analysis.")
+    recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
     analysis, model = _analyze_prices_with_groq(
-        prices=sorted(prices),
+        prices=sorted(filtered_prices),
         currency=payload.currency,
         recommended_price=recommended_price,
         lowest_price=lowest_price,
@@ -308,7 +318,7 @@ def analyze_price_dumper(
         currency=payload.currency,
         lowest_price=lowest_price,
         second_price=second_price,
-        price_count=len(prices),
+        price_count=len(filtered_prices),
         analysis=analysis,
         model=model,
     )
