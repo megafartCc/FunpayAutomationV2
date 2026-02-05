@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 from typing import Iterable
 
@@ -39,6 +41,24 @@ class PriceDumpResponse(BaseModel):
     price_texts: list[str]
     labels: list[str]
     items: list[PriceDumpItem]
+
+class PriceDumpAnalysisRequest(BaseModel):
+    items: list[PriceDumpItem]
+    currency: str | None = None
+
+
+class PriceDumpAnalysisResponse(BaseModel):
+    recommended_price: float | None = None
+    currency: str | None = None
+    lowest_price: float | None = None
+    second_price: float | None = None
+    price_count: int = 0
+    analysis: str
+    model: str | None = None
+
+
+_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+_DEFAULT_GROQ_MODEL = "llama-3.1-70b-versatile"
 
 def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list[str], list[str]]:
     prices: list[float] = []
@@ -137,7 +157,84 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
                     rent=_is_rent_offer(text),
                 )
             )
+    items.sort(key=lambda item: item.price)
     return items
+
+
+def _suggest_price(prices: list[float]) -> tuple[float | None, float | None, float | None]:
+    if not prices:
+        return None, None, None
+    sorted_prices = sorted(prices)
+    lowest = sorted_prices[0]
+    second = sorted_prices[1] if len(sorted_prices) > 1 else None
+    if second is not None and second > lowest:
+        gap = second - lowest
+        delta = max(gap * 0.15, 0.01)
+        suggested = min(lowest + delta, second - 0.01)
+        if suggested <= lowest:
+            suggested = lowest + 0.01
+    else:
+        suggested = lowest * 0.99
+    return suggested, lowest, second
+
+
+def _format_prices(prices: list[float]) -> str:
+    return ", ".join(f"{price:.2f}" for price in prices)
+
+
+def _analyze_prices_with_groq(
+    prices: list[float],
+    currency: str | None,
+    recommended_price: float | None,
+    lowest_price: float | None,
+    second_price: float | None,
+) -> tuple[str, str | None]:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured.")
+    model = os.getenv("GROQ_MODEL", _DEFAULT_GROQ_MODEL)
+    prompt = (
+        "Ты аналитик рынка FunPay. На основе цен конкурентов дай краткий анализ и рекомендацию цены,\n"
+        "чтобы быть почти первым в списке (рядом с самым дешевым предложением).\n"
+        "Сформулируй ответ кратко на русском: 2-4 пункта и короткая итоговая строка.\n"
+        "Данные:\n"
+        f"- Цены: { _format_prices(prices) }\n"
+        f"- Валюта: {currency or 'не указана'}\n"
+        f"- Минимальная цена: {lowest_price}\n"
+        f"- Вторая цена: {second_price}\n"
+        f"- Рекомендованная цена: {recommended_price}\n"
+    )
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": "Ты помогаешь продавцу подобрать конкурентную цену."},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    try:
+        response = requests.post(
+            _GROQ_API_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=20,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Groq API request failed: {exc}") from exc
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Groq API response is not valid JSON.") from exc
+    content = (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+    if not content:
+        raise HTTPException(status_code=502, detail="Groq API returned an empty response.")
+    return content, model
 
 
 @router.post("/plugins/price-dumper/scrape", response_model=PriceDumpResponse)
@@ -170,15 +267,43 @@ def scrape_price_dumper(
     )
     price_texts = [node.get_text(" ", strip=True) for node in price_nodes]
     prices, currency, extracted_texts, labels = _extract_prices(price_texts)
+    prices_sorted = sorted(prices)
     items = _extract_items(soup, payload.rent_only)
 
     return PriceDumpResponse(
         url=str(payload.url),
         title=title,
         description=description,
-        prices=prices,
+        prices=prices_sorted,
         currency=currency,
         price_texts=extracted_texts,
         labels=labels,
         items=items,
+    )
+
+
+@router.post("/plugins/price-dumper/analyze", response_model=PriceDumpAnalysisResponse)
+def analyze_price_dumper(
+    payload: PriceDumpAnalysisRequest,
+    _user=Depends(get_current_user),
+) -> PriceDumpAnalysisResponse:
+    prices = [item.price for item in payload.items if item.price is not None]
+    if not prices:
+        raise HTTPException(status_code=400, detail="No prices provided for analysis.")
+    recommended_price, lowest_price, second_price = _suggest_price(prices)
+    analysis, model = _analyze_prices_with_groq(
+        prices=sorted(prices),
+        currency=payload.currency,
+        recommended_price=recommended_price,
+        lowest_price=lowest_price,
+        second_price=second_price,
+    )
+    return PriceDumpAnalysisResponse(
+        recommended_price=recommended_price,
+        currency=payload.currency,
+        lowest_price=lowest_price,
+        second_price=second_price,
+        price_count=len(prices),
+        analysis=analysis,
+        model=model,
     )

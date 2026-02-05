@@ -316,6 +316,16 @@ export type PriceDumperResponse = {
   }[];
 };
 
+export type PriceDumperAnalysisResponse = {
+  recommended_price?: number | null;
+  currency?: string | null;
+  lowest_price?: number | null;
+  second_price?: number | null;
+  price_count: number;
+  analysis: string;
+  model?: string | null;
+};
+
 export type TelegramStatus = {
   connected: boolean;
   chat_id?: number | null;
@@ -638,5 +648,10 @@ export const api = {
     request<PriceDumperResponse>("/plugins/price-dumper/scrape", {
       method: "POST",
       body: { url, rent_only: true },
+    }),
+  analyzePriceDumper: (items: PriceDumperResponse["items"], currency?: string | null) =>
+    request<PriceDumperAnalysisResponse>("/plugins/price-dumper/analyze", {
+      method: "POST",
+      body: { items, currency },
     }),
 };

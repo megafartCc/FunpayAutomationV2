@@ -57,6 +57,17 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [scrapeBusy, setScrapeBusy] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<PriceDumperResponse | null>(null);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{
+    recommended_price?: number | null;
+    currency?: string | null;
+    lowest_price?: number | null;
+    second_price?: number | null;
+    price_count: number;
+    analysis: string;
+    model?: string | null;
+  } | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -255,6 +266,8 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     }
     setScrapeBusy(true);
     setScrapeError(null);
+    setAnalysisError(null);
+    setAnalysisResult(null);
     try {
       const result = await api.scrapePriceDumper(scrapeUrl.trim());
       setScrapeResult(result);
@@ -267,6 +280,31 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       setScrapeBusy(false);
     }
   };
+
+  const handleAnalyze = async () => {
+    if (!scrapeResult?.items?.length) {
+      onToast?.("Сначала соберите цены.", true);
+      return;
+    }
+    setAnalysisBusy(true);
+    setAnalysisError(null);
+    try {
+      const result = await api.analyzePriceDumper(scrapeResult.items, scrapeResult.currency);
+      setAnalysisResult(result);
+      onToast?.("AI аналитика готова.");
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось получить AI аналитику.";
+      setAnalysisError(message);
+      onToast?.(message, true);
+    } finally {
+      setAnalysisBusy(false);
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    if (!scrapeResult?.items?.length) return [];
+    return [...scrapeResult.items].sort((a, b) => a.price - b.price);
+  }, [scrapeResult]);
 
   return (
     <div className="space-y-6">
@@ -370,8 +408,8 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                     <div className="mt-4 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
                       <div className="text-xs font-semibold text-neutral-500">Лоты аренды</div>
                       <div className="mt-2 space-y-1 text-sm text-neutral-900">
-                        {scrapeResult.items?.length ? (
-                          scrapeResult.items.map((item, idx) => (
+                        {sortedItems.length ? (
+                          sortedItems.map((item, idx) => (
                             <div key={`${item.title}-${idx}`} className="flex items-center justify-between gap-3">
                               <span className="min-w-0 truncate">
                                 {item.title || scrapeResult.labels?.[idx] || `Лот ${idx + 1}`}
@@ -385,6 +423,50 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                           <div className="text-xs text-neutral-400">Лоты аренды не найдены.</div>
                         )}
                       </div>
+                    </div>
+                    <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-neutral-900">AI аналитика цены</div>
+                          <div className="mt-1 text-xs text-neutral-500">
+                            Рассчитать цену, чтобы быть почти первым в списке.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAnalyze}
+                          disabled={analysisBusy}
+                          className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
+                        >
+                          {analysisBusy ? "Анализ..." : "Запустить AI"}
+                        </button>
+                      </div>
+                      {analysisError ? (
+                        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-600">
+                          {analysisError}
+                        </div>
+                      ) : null}
+                      {analysisResult ? (
+                        <div className="mt-3 space-y-2 text-xs text-neutral-600">
+                          <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                            Рекомендуемая цена:{" "}
+                            <span className="font-semibold">
+                              {analysisResult.recommended_price?.toLocaleString("ru-RU") ?? "—"}{" "}
+                              {analysisResult.currency || scrapeResult.currency || "₽"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-[11px] text-neutral-500">
+                            <span>Минимум: {analysisResult.lowest_price?.toLocaleString("ru-RU") ?? "—"}</span>
+                            <span>Вторая цена: {analysisResult.second_price?.toLocaleString("ru-RU") ?? "—"}</span>
+                            <span>Всего цен: {analysisResult.price_count}</span>
+                          </div>
+                          <div className="whitespace-pre-line">{analysisResult.analysis}</div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-xs text-neutral-400">
+                          Нажмите «Запустить AI», чтобы получить рекомендацию цены.
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
