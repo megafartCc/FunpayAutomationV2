@@ -79,6 +79,12 @@ class PriceDumpHistoryResponse(BaseModel):
     items: list[PriceDumpHistoryItem]
 
 
+class PriceDumpRefreshResponse(BaseModel):
+    ok: bool
+    processed: int = 0
+    urls: list[str] = []
+
+
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
 
@@ -381,6 +387,61 @@ def _load_latest_price_dumper_url(user_id: int) -> str | None:
         conn.close()
 
 
+def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        if user_id:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                SELECT DISTINCT l.user_id, LEFT(l.lot_url, 512), 1, 24, NULL
+                FROM lots l
+                WHERE l.user_id = %s
+                  AND l.lot_url IS NOT NULL
+                  AND l.lot_url <> ''
+                  AND l.lot_url LIKE %s
+                """,
+                (int(user_id), "%funpay.com/%"),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                SELECT DISTINCT l.user_id, LEFT(l.lot_url, 512), 1, 24, NULL
+                FROM lots l
+                WHERE l.lot_url IS NOT NULL
+                  AND l.lot_url <> ''
+                  AND l.lot_url LIKE %s
+                """,
+                ("%funpay.com/%",),
+            )
+        conn.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        conn.close()
+
+
+def _fetch_price_dumper_urls(user_id: int, limit: int = 5) -> list[str]:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT url
+            FROM price_dumper_settings
+            WHERE user_id = %s AND enabled = 1
+            ORDER BY updated_at DESC
+            LIMIT %s
+            """,
+            (int(user_id), int(limit)),
+        )
+        rows = cursor.fetchall() or []
+        return [str(row.get("url") or "") for row in rows if row.get("url")]
+    finally:
+        conn.close()
+
+
 def _fetch_price_dumper_history(user_id: int, url: str, days: int = 30) -> list[PriceDumpHistoryItem]:
     conn = get_base_connection()
     try:
@@ -606,12 +667,41 @@ def price_dumper_history(
     days: int = 30,
     _user=Depends(get_current_user),
 ) -> PriceDumpHistoryResponse:
+    try:
+        _seed_price_dumper_settings_from_lots(int(_user.id))
+    except Exception:
+        logger.debug("Price dumper settings seed failed.", exc_info=True)
     if not url:
         url = _load_latest_price_dumper_url(int(_user.id))
     if not url:
         return PriceDumpHistoryResponse(url=None, items=[])
     items = _fetch_price_dumper_history(int(_user.id), url, days=days)
     return PriceDumpHistoryResponse(url=url, items=items)
+
+
+@router.post("/plugins/price-dumper/refresh", response_model=PriceDumpRefreshResponse)
+def price_dumper_refresh(_user=Depends(get_current_user)) -> PriceDumpRefreshResponse:
+    try:
+        _seed_price_dumper_settings_from_lots(int(_user.id))
+    except Exception:
+        logger.debug("Price dumper settings seed failed.", exc_info=True)
+    limit_env = os.getenv("PRICE_DUMPER_REFRESH_LIMIT", "3")
+    try:
+        limit = int(limit_env)
+    except ValueError:
+        limit = 3
+    limit = max(1, min(limit, 10))
+    urls = _fetch_price_dumper_urls(int(_user.id), limit=limit)
+    processed = 0
+    for url in urls:
+        if not url:
+            continue
+        try:
+            _execute_price_dumper_job(int(_user.id), url, use_groq=False)
+            processed += 1
+        except Exception:
+            logger.debug("Price dumper refresh failed for %s.", url, exc_info=True)
+    return PriceDumpRefreshResponse(ok=True, processed=processed, urls=urls[:processed])
 
 
 _PRICE_DUMPER_THREAD: threading.Thread | None = None
@@ -646,6 +736,10 @@ def _price_dumper_scheduler_loop() -> None:
 
 
 def _run_due_price_dumper_jobs(limit: int = 10) -> None:
+    try:
+        _seed_price_dumper_settings_from_lots()
+    except Exception:
+        logger.debug("Price dumper settings sync failed.", exc_info=True)
     conn = get_base_connection()
     try:
         cursor = conn.cursor(dictionary=True)
@@ -694,7 +788,7 @@ def _claim_price_dumper_job(setting_id: int, interval_hours: int) -> bool:
         conn.close()
 
 
-def _execute_price_dumper_job(user_id: int, url: str) -> None:
+def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None = None) -> None:
     try:
         result = _scrape_price_dumper_url(url, True)
     except Exception as exc:
@@ -710,13 +804,14 @@ def _execute_price_dumper_job(user_id: int, url: str) -> None:
     recommended_price, lowest_price, second_price = _suggest_price(filtered)
     avg_price, median_price = _compute_stats(filtered)
 
-    use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
-    if use_groq_flag in {"0", "false", "no", "off"}:
-        use_groq = False
-    elif use_groq_flag in {"1", "true", "yes", "on"}:
-        use_groq = True
-    else:
-        use_groq = bool(os.getenv("GROQ_API_KEY"))
+    if use_groq is None:
+        use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
+        if use_groq_flag in {"0", "false", "no", "off"}:
+            use_groq = False
+        elif use_groq_flag in {"1", "true", "yes", "on"}:
+            use_groq = True
+        else:
+            use_groq = bool(os.getenv("GROQ_API_KEY"))
     if use_groq:
         try:
             _analyze_prices_with_groq(

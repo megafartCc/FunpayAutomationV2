@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
 import {
@@ -77,9 +77,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   } | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [historyItems, setHistoryItems] = useState<PriceDumperHistoryItem[]>([]);
-  const [historyUrl, setHistoryUrl] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRefresh, setHistoryRefresh] = useState(false);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -323,7 +323,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       try {
         const res = await api.priceDumperHistory(url || undefined, 30);
         setHistoryItems(res.items || []);
-        setHistoryUrl(res.url || url || null);
       } catch (err) {
         const message = (err as { message?: string })?.message || "Failed to load price history.";
         setHistoryError(message);
@@ -339,6 +338,16 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     if (historyItems.length) return;
     void loadHistory(null);
   }, [selectedPlugin, historyLoading, historyItems.length, loadHistory]);
+
+  useEffect(() => {
+    if (selectedPlugin !== "price_dumper") return;
+    if (historyRefresh) return;
+    setHistoryRefresh(true);
+    api
+      .refreshPriceDumper()
+      .then(() => loadHistory(null))
+      .catch(() => null);
+  }, [selectedPlugin, historyRefresh, loadHistory]);
 
 
   const historyChart = useMemo(() => {
@@ -541,11 +550,11 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                           </div>
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
                             <span className="flex items-center gap-1">
-                              <span className="inline-block h-2 w-2 rounded-full bg-slate-900" />
+                              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                               Avg
                             </span>
                             <span className="flex items-center gap-1">
-                              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                              <span className="inline-block h-2 w-2 rounded-full bg-slate-900" />
                               Median
                             </span>
                             <span className="flex items-center gap-1">
@@ -561,13 +570,23 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                             {historyError}
                           </div>
                         ) : historyChart.length ? (
-                          <div className="mt-3 h-56 w-full">
+                          <div className="mt-4 h-[260px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={historyChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="4 4" stroke="#e5e7eb" />
-                                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                              <AreaChart data={historyChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                                <defs>
+                                  <linearGradient id="price-avg-fill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.45} />
+                                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis
+                                  dataKey="label"
+                                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                                  interval="preserveStartEnd"
+                                />
                                 <YAxis
-                                  tick={{ fontSize: 11 }}
+                                  tick={{ fill: "#6b7280", fontSize: 11 }}
                                   tickFormatter={(value) => Number(value).toLocaleString("ru-RU")}
                                 />
                                 <Tooltip
@@ -575,16 +594,33 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                                     typeof value === "number" ? value.toLocaleString("ru-RU") : value
                                   }
                                 />
-                                <Line type="monotone" dataKey="avg" stroke="#0f172a" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="median" stroke="#10b981" strokeWidth={2} dot={false} />
-                                <Line
+                                <Area
                                   type="monotone"
-                                  dataKey="recommended"
-                                  stroke="#f97316"
+                                  dataKey="avg"
+                                  stroke="#22c55e"
+                                  fill="url(#price-avg-fill)"
                                   strokeWidth={2}
                                   dot={false}
                                 />
-                              </LineChart>
+                                <Area
+                                  type="monotone"
+                                  dataKey="median"
+                                  stroke="#0f172a"
+                                  fill="none"
+                                  fillOpacity={0}
+                                  strokeWidth={2}
+                                  dot={false}
+                                />
+                                <Area
+                                  type="monotone"
+                                  dataKey="recommended"
+                                  stroke="#f97316"
+                                  fill="none"
+                                  fillOpacity={0}
+                                  strokeWidth={2}
+                                  dot={false}
+                                />
+                              </AreaChart>
                             </ResponsiveContainer>
                           </div>
                         ) : (

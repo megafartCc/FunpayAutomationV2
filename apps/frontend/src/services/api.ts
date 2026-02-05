@@ -342,6 +342,12 @@ export type PriceDumperHistoryResponse = {
   items: PriceDumperHistoryItem[];
 };
 
+export type PriceDumperRefreshResponse = {
+  ok: boolean;
+  processed: number;
+  urls: string[];
+};
+
 export type TelegramStatus = {
   connected: boolean;
   chat_id?: number | null;
@@ -669,6 +675,10 @@ export const api = {
     request<PriceDumperAnalysisResponse>("/plugins/price-dumper/analyze", {
       method: "POST",
       body: { items, currency, url },
+    }),
+  refreshPriceDumper: () =>
+    request<PriceDumperRefreshResponse>("/plugins/price-dumper/refresh", {
+      method: "POST",
     }),
   priceDumperHistory: (url?: string | null, days: number = 30) => {
     const params = new URLSearchParams();
