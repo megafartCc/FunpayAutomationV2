@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, AutoRaiseLogItem, AutoRaiseSettings, RaiseCategoryItem } from "../../services/api";
+import { api, AutoRaiseLogItem, AutoRaiseSettings, PriceDumperResponse, RaiseCategoryItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -55,6 +55,8 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [selectedPlugin, setSelectedPlugin] = useState<"auto_raise" | "price_dumper">("auto_raise");
   const [scrapeUrl, setScrapeUrl] = useState("https://funpay.com/lots/81/");
   const [scrapeBusy, setScrapeBusy] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<PriceDumperResponse | null>(null);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -252,9 +254,15 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       return;
     }
     setScrapeBusy(true);
+    setScrapeError(null);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      onToast?.("Скрапинг запущен. Результаты появятся после обработки.");
+      const result = await api.scrapePriceDumper(scrapeUrl.trim());
+      setScrapeResult(result);
+      onToast?.("Цены и описание загружены.");
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось собрать данные.";
+      setScrapeError(message);
+      onToast?.(message, true);
     } finally {
       setScrapeBusy(false);
     }
@@ -336,9 +344,68 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                     {scrapeBusy ? "Сбор..." : "Собрать цены"}
                   </button>
                 </div>
-                <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-3 text-xs text-neutral-500">
-                  Результаты будут доступны после подключения серверной обработки.
-                </div>
+                {scrapeError ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-600">
+                    {scrapeError}
+                  </div>
+                ) : null}
+                {scrapeResult ? (
+                  <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-neutral-900">
+                          {scrapeResult.title || "Лот FunPay"}
+                        </div>
+                        <div className="text-xs text-neutral-400">{scrapeResult.url}</div>
+                      </div>
+                      <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                        {scrapeResult.prices.length} цен
+                      </span>
+                    </div>
+                    {scrapeResult.description ? (
+                      <p className="mt-3 text-xs text-neutral-600">{scrapeResult.description}</p>
+                    ) : (
+                      <p className="mt-3 text-xs text-neutral-400">Описание не найдено.</p>
+                    )}
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                        <div className="text-xs font-semibold text-neutral-500">Цены</div>
+                        <div className="mt-2 space-y-1 text-sm text-neutral-900">
+                          {scrapeResult.prices.length ? (
+                            scrapeResult.prices.map((price, idx) => (
+                              <div key={`${price}-${idx}`} className="flex items-center justify-between">
+                                <span>Вариант {idx + 1}</span>
+                                <span className="font-semibold">
+                                  {price.toLocaleString("ru-RU")} {scrapeResult.currency || "₽"}
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-neutral-400">Цены не найдены.</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                        <div className="text-xs font-semibold text-neutral-500">Сырые значения</div>
+                        <div className="mt-2 space-y-1 text-xs text-neutral-600">
+                          {scrapeResult.price_texts.length ? (
+                            scrapeResult.price_texts.map((text, idx) => (
+                              <div key={`${text}-${idx}`} className="truncate">
+                                {text}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-neutral-400">Нет данных.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-3 text-xs text-neutral-500">
+                    Нажмите “Собрать цены”, чтобы увидеть результат.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-2 text-sm text-neutral-600">
@@ -353,6 +420,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
         </div>
       </div>
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -447,7 +515,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
         </div>
         {settingsError ? <div className="mt-2 text-xs text-rose-500">{settingsError}</div> : null}
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -517,7 +587,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         )}
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -600,7 +672,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -664,6 +738,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           )}
         </div>
       </div>
+      ) : null}
     </div>
   );
 };
