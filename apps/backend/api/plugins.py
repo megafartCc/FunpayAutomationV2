@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from typing import Iterable
@@ -179,7 +178,7 @@ def _suggest_price(prices: list[float]) -> tuple[float | None, float | None, flo
 
 
 def _format_prices(prices: list[float]) -> str:
-    return ", ".join(f"{price:.2f}" for price in prices)
+    return ", ".join(f"{price:.2f}" for price in prices[:50])
 
 
 def _analyze_prices_with_groq(
@@ -207,6 +206,8 @@ def _analyze_prices_with_groq(
     payload = {
         "model": model,
         "temperature": 0.2,
+        "max_tokens": 350,
+        "top_p": 0.9,
         "messages": [
             {"role": "system", "content": "Ты помогаешь продавцу подобрать конкурентную цену."},
             {"role": "user", "content": prompt},
@@ -216,12 +217,16 @@ def _analyze_prices_with_groq(
         response = requests.post(
             _GROQ_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            data=json.dumps(payload),
+            json=payload,
             timeout=20,
         )
         response.raise_for_status()
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Groq API request failed: {exc}") from exc
+        detail = getattr(exc.response, "text", None) if hasattr(exc, "response") else None
+        message = f"Groq API request failed: {exc}"
+        if detail:
+            message = f"{message} | {detail}"
+        raise HTTPException(status_code=502, detail=message) from exc
     try:
         data = response.json()
     except ValueError as exc:
