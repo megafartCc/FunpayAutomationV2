@@ -57,7 +57,7 @@ class PriceDumpAnalysisResponse(BaseModel):
 
 
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-_DEFAULT_GROQ_MODEL = "llama-3.1-70b-instant"
+_DEFAULT_GROQ_MODEL = "llama-3.1-70b-versatile"
 
 def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list[str], list[str]]:
     prices: list[float] = []
