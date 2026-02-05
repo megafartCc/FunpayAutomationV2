@@ -412,6 +412,9 @@ const FunpayStatsPage: React.FC = () => {
 
   const mostPopularBuyer = buyers[0]?.name || tr("No data", "Нет данных");
   const topBuyerOrders = buyers[0]?.orders ?? 0;
+  const topAccount = accountPopularity[0];
+  const revenuePerOrder = ordersInRange.length ? totalRevenue / ordersInRange.length : 0;
+  const repeatBuyersRate = totalBuyers ? ((ordersInRange.length - totalBuyers) / totalBuyers) * 100 : 0;
 
   const stats: Stat[] = [
     {
@@ -542,74 +545,48 @@ const FunpayStatsPage: React.FC = () => {
               {rangeLabel}
             </span>
           </div>
-          <div className="mt-6">
-            <div className="relative overflow-hidden rounded-2xl bg-neutral-900/95 px-4 py-4">
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <defs>
-                      <linearGradient id="funpay-line" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#22c55e" stopOpacity="1" />
-                        <stop offset="60%" stopColor="#16a34a" stopOpacity="1" />
-                        <stop offset="100%" stopColor="#22c55e" stopOpacity="1" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="4 4" />
-                    <XAxis
-                      dataKey="dateKey"
-                      tickFormatter={(value) => {
-                        const dt = new Date(value);
-                        if (Number.isNaN(dt.getTime())) return value;
-                        return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                      }}
-                      tick={{ fill: "#cbd5f5", fontSize: 11 }}
-                      axisLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
-                      tickLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      tick={{ fill: "#cbd5f5", fontSize: 11 }}
-                      axisLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
-                      tickLine={{ stroke: "rgba(148, 163, 184, 0.4)" }}
-                      domain={[0, "dataMax + 2"]}
-                      label={{
-                        value: tr("Orders", "Заказы"),
-                        angle: -90,
-                        position: "insideLeft",
-                        fill: "#cbd5f5",
-                        fontSize: 11,
-                      }}
-                    />
-                    <Tooltip
-                      cursor={{ stroke: "#22c55e", strokeDasharray: "4 4" }}
-                      contentStyle={{
-                        background: "#0f172a",
-                        border: "1px solid rgba(148, 163, 184, 0.2)",
-                        borderRadius: 12,
-                        color: "#e2e8f0",
-                        fontSize: 12,
-                      }}
-                      labelStyle={{ color: "#cbd5f5", fontWeight: 600 }}
-                      labelFormatter={(value) => {
-                        const dt = new Date(value as string);
-                        return Number.isNaN(dt.getTime())
-                          ? value
-                          : dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-                      }}
-                      formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="orders"
-                      stroke="url(#funpay-line)"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: "#22c55e", stroke: "#0f172a", strokeWidth: 2 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+          <div className="mt-6 h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="orders-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="dateKey"
+                  tickFormatter={(value) => {
+                    const dt = new Date(value);
+                    if (Number.isNaN(dt.getTime())) return value;
+                    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                  }}
+                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                  domain={[0, "dataMax + 2"]}
+                />
+                <Tooltip
+                  formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
+                  labelFormatter={(value) => {
+                    const dt = new Date(value as string);
+                    return Number.isNaN(dt.getTime())
+                      ? value
+                      : dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="orders"
+                  stroke="#22c55e"
+                  fill="url(#orders-fill)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -631,6 +608,18 @@ const FunpayStatsPage: React.FC = () => {
               <span>{tr("Peak hour rentals", "Аренд в пик")}</span>
               <span className="font-semibold text-neutral-900">{peakHour.value}</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span>{tr("Revenue per order", "Выручка на заказ")}</span>
+              <span className="font-semibold text-neutral-900">
+                {revenuePerOrder ? formatCurrency(revenuePerOrder) : "-"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{tr("Repeat buyers", "Повторные покупатели")}</span>
+              <span className="font-semibold text-neutral-900">
+                {repeatBuyersRate ? `${repeatBuyersRate.toFixed(0)}%` : "-"}
+              </span>
+            </div>
           </div>
           <div className="mt-5 rounded-xl bg-neutral-50 p-4">
             <p className="text-xs uppercase tracking-wide text-neutral-400">
@@ -641,6 +630,19 @@ const FunpayStatsPage: React.FC = () => {
               {topBuyerOrders
                 ? tr("{count} orders in period", "{count} заказов за период", { count: topBuyerOrders })
                 : tr("No orders for the selected range.", "Нет заказов за выбранный период.")}
+            </p>
+          </div>
+          <div className="mt-4 rounded-xl bg-neutral-50 p-4">
+            <p className="text-xs uppercase tracking-wide text-neutral-400">
+              {tr("Top account", "Топ аккаунт")}
+            </p>
+            <p className="mt-2 text-lg font-semibold text-neutral-900">
+              {topAccount?.name ?? tr("No data", "Нет данных")}
+            </p>
+            <p className="text-xs text-neutral-500">
+              {topAccount
+                ? tr("{count} orders in period", "{count} заказов за период", { count: topAccount.orders })
+                : tr("No account data for the selected range.", "Нет данных по аккаунтам за выбранный период.")}
             </p>
           </div>
         </div>
@@ -822,22 +824,17 @@ const FunpayStatsPage: React.FC = () => {
             {tr("{count} accounts", "{count} аккаунтов", { count: accountPopularity.length })}
           </span>
         </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[3fr,2fr] items-stretch">
-          <div className="h-[320px] w-full">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[2fr,1fr] items-stretch">
+          <div className="h-[360px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountPopularity} layout="vertical">
+              <BarChart data={accountPopularity}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis type="number" tick={{ fill: "#6b7280", fontSize: 11 }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={140}
-                  tick={{ fill: "#6b7280", fontSize: 11 }}
-                />
+                <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
                 <Tooltip
                   formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
                 />
-                <Bar dataKey="orders" fill="#0ea5e9" radius={[0, 8, 8, 0]} />
+                <Bar dataKey="orders" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
