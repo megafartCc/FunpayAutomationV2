@@ -825,9 +825,9 @@ const FunpayStatsPage: React.FC = () => {
           </span>
         </div>
         <div className="mt-6 grid gap-6 lg:grid-cols-[2fr,1fr] items-stretch">
-          <div className="h-[360px] w-full">
+          <div className="h-[420px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountPopularity}>
+              <BarChart data={accountPopularity} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="name" tick={{ fill: "#6b7280", fontSize: 11 }} />
                 <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
