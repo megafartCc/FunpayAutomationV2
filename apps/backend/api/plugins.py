@@ -27,11 +27,12 @@ class PriceDumpResponse(BaseModel):
     prices: list[float]
     currency: str | None = None
     price_texts: list[str]
+    labels: list[str]
 
-
-def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list[str]]:
+def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list[str], list[str]]:
     prices: list[float] = []
     price_texts: list[str] = []
+    labels: list[str] = []
     currencies: set[str] = set()
     for raw in texts:
         if not raw:
@@ -47,6 +48,7 @@ def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list
             continue
         prices.append(value)
         price_texts.append(cleaned)
+        labels.append(cleaned.split("·")[0].strip() or cleaned)
         if "₽" in cleaned:
             currencies.add("₽")
         elif "$" in cleaned:
@@ -54,7 +56,7 @@ def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list
         elif "€" in cleaned:
             currencies.add("€")
     currency = currencies.pop() if len(currencies) == 1 else None
-    return prices, currency, price_texts
+    return prices, currency, price_texts, labels
 
 
 def _extract_description(soup: BeautifulSoup) -> str | None:
@@ -107,7 +109,7 @@ def scrape_price_dumper(
         ".price, .tc-price, .lot-price, .payment-price, .lot-view-price, .tc-lot__price"
     )
     price_texts = [node.get_text(" ", strip=True) for node in price_nodes]
-    prices, currency, extracted_texts = _extract_prices(price_texts)
+    prices, currency, extracted_texts, labels = _extract_prices(price_texts)
 
     return PriceDumpResponse(
         url=str(payload.url),
@@ -116,4 +118,5 @@ def scrape_price_dumper(
         prices=prices,
         currency=currency,
         price_texts=extracted_texts,
+        labels=labels,
     )

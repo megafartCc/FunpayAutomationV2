@@ -374,7 +374,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                           {scrapeResult.prices.length ? (
                             scrapeResult.prices.map((price, idx) => (
                               <div key={`${price}-${idx}`} className="flex items-center justify-between">
-                                <span>Вариант {idx + 1}</span>
+                                <span>{scrapeResult.labels?.[idx] || `Позиция ${idx + 1}`}</span>
                                 <span className="font-semibold">
                                   {price.toLocaleString("ru-RU")} {scrapeResult.currency || "₽"}
                                 </span>

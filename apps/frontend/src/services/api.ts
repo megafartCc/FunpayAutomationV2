@@ -305,6 +305,7 @@ export type PriceDumperResponse = {
   prices: number[];
   currency?: string | null;
   price_texts: string[];
+  labels: string[];
 };
 
 export type TelegramStatus = {
