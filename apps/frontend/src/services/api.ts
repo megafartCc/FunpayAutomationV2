@@ -298,6 +298,24 @@ export type ChatMessageItem = {
   workspace_id?: number | null;
 };
 
+export type PriceDumperResponse = {
+  url: string;
+  title?: string | null;
+  description?: string | null;
+  prices: number[];
+  currency?: string | null;
+  price_texts: string[];
+  labels: string[];
+  items: {
+    title: string;
+    price: number;
+    currency?: string | null;
+    url?: string | null;
+    raw_price?: string | null;
+    rent?: boolean;
+  }[];
+};
+
 export type TelegramStatus = {
   connected: boolean;
   chat_id?: number | null;
@@ -616,4 +634,9 @@ export const api = {
   getTelegramStatus: () => request<TelegramStatus>("/telegram/status", { method: "GET" }),
   createTelegramToken: () => request<TelegramStatus>("/telegram/token", { method: "POST" }),
   disconnectTelegram: () => request<TelegramStatus>("/telegram/connection", { method: "DELETE" }),
+  scrapePriceDumper: (url: string) =>
+    request<PriceDumperResponse>("/plugins/price-dumper/scrape", {
+      method: "POST",
+      body: { url, rent_only: true },
+    }),
 };

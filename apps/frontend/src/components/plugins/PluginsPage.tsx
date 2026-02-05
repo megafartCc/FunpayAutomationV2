@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, AutoRaiseLogItem, AutoRaiseSettings, RaiseCategoryItem } from "../../services/api";
+import { api, AutoRaiseLogItem, AutoRaiseSettings, PriceDumperResponse, RaiseCategoryItem } from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -51,6 +51,12 @@ const Switch: React.FC<{
 const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const { workspaces } = useWorkspace();
   const { t } = useI18n();
+
+  const [selectedPlugin, setSelectedPlugin] = useState<"auto_raise" | "price_dumper">("auto_raise");
+  const [scrapeUrl, setScrapeUrl] = useState("https://funpay.com/lots/81/");
+  const [scrapeBusy, setScrapeBusy] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<PriceDumperResponse | null>(null);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -242,8 +248,181 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     setSettingsError(null);
   };
 
+  const handleScrape = async () => {
+    if (!scrapeUrl.trim()) {
+      onToast?.("Введите ссылку на лот FunPay.", true);
+      return;
+    }
+    setScrapeBusy(true);
+    setScrapeError(null);
+    try {
+      const result = await api.scrapePriceDumper(scrapeUrl.trim());
+      setScrapeResult(result);
+      onToast?.("Цены и описание загружены.");
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось собрать данные.";
+      setScrapeError(message);
+      onToast?.(message, true);
+    } finally {
+      setScrapeBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">AI Analytics Plugins</h3>
+            <p className="text-sm text-neutral-500">
+              Выберите плагин и запускайте аналитику по рынку FunPay.
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {selectedPlugin === "price_dumper" ? "Price Dumper AI Analytics" : t("plugins.autoRaise.title")}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr,1.9fr]">
+          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+            <div className="text-sm font-semibold text-neutral-900">Плагины</div>
+            <div className="mt-3 space-y-2">
+              {[
+                {
+                  id: "auto_raise",
+                  label: t("plugins.autoRaise.title"),
+                  desc: t("plugins.autoRaise.desc"),
+                },
+                {
+                  id: "price_dumper",
+                  label: "Price Dumper AI Analytics",
+                  desc: "Сбор цен и описаний лотов для оценки рынка.",
+                },
+              ].map((plugin) => {
+                const isActive = selectedPlugin === plugin.id;
+                return (
+                  <button
+                    key={plugin.id}
+                    type="button"
+                    onClick={() => setSelectedPlugin(plugin.id as "auto_raise" | "price_dumper")}
+                    className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                      isActive
+                        ? "border-neutral-900 bg-white shadow-sm"
+                        : "border-neutral-200 bg-white hover:border-neutral-300"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold text-neutral-900">{plugin.label}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{plugin.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+            {selectedPlugin === "price_dumper" ? (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-sm font-semibold text-neutral-900">Price Dumper AI Analytics</div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Укажите ссылку на лот FunPay и запустите сбор цен/описаний.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[1fr,auto]">
+                  <input
+                    value={scrapeUrl}
+                    onChange={(event) => setScrapeUrl(event.target.value)}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
+                    placeholder="https://funpay.com/lots/81/"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleScrape}
+                    disabled={scrapeBusy}
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400"
+                  >
+                    {scrapeBusy ? "Сбор..." : "Собрать цены"}
+                  </button>
+                </div>
+                {scrapeError ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-600">
+                    {scrapeError}
+                  </div>
+                ) : null}
+                {scrapeResult ? (
+                  <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-neutral-900">
+                          {scrapeResult.title || "Лот FunPay"}
+                        </div>
+                        <div className="text-xs text-neutral-400">{scrapeResult.url}</div>
+                      </div>
+                      <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+                        {scrapeResult.prices.length} цен
+                      </span>
+                    </div>
+                    {scrapeResult.description ? (
+                      <p className="mt-3 text-xs text-neutral-600">{scrapeResult.description}</p>
+                    ) : (
+                      <p className="mt-3 text-xs text-neutral-400">Описание не найдено.</p>
+                    )}
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                        <div className="text-xs font-semibold text-neutral-500">Лоты аренды</div>
+                        <div className="mt-2 space-y-1 text-sm text-neutral-900">
+                          {scrapeResult.items?.length ? (
+                            scrapeResult.items.map((item, idx) => (
+                              <div key={`${item.title}-${idx}`} className="flex items-center justify-between gap-3">
+                                <span className="min-w-0 truncate">
+                                  {item.title || scrapeResult.labels?.[idx] || `Лот ${idx + 1}`}
+                                </span>
+                                <span className="whitespace-nowrap font-semibold">
+                                  {item.price.toLocaleString("ru-RU")} {item.currency || scrapeResult.currency || "₽"}
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-neutral-400">Лоты аренды не найдены.</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                        <div className="text-xs font-semibold text-neutral-500">Сырые значения</div>
+                        <div className="mt-2 space-y-1 text-xs text-neutral-600">
+                          {scrapeResult.price_texts.length ? (
+                            scrapeResult.price_texts.map((text, idx) => (
+                              <div key={`${text}-${idx}`} className="truncate">
+                                {text}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-neutral-400">Нет данных.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-3 py-3 text-xs text-neutral-500">
+                    Нажмите “Собрать цены”, чтобы увидеть результат.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm text-neutral-600">
+                <div className="font-semibold text-neutral-900">{t("plugins.autoRaise.title")}</div>
+                <div>{t("plugins.autoRaise.desc")}</div>
+                <div className="text-xs text-neutral-500">
+                  Настройки автоподъёма доступны ниже на странице.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -338,7 +517,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
         </div>
         {settingsError ? <div className="mt-2 text-xs text-rose-500">{settingsError}</div> : null}
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -408,7 +589,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         )}
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -491,7 +674,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -555,6 +740,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           )}
         </div>
       </div>
+      ) : null}
     </div>
   );
 };
