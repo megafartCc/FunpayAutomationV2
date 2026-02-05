@@ -431,29 +431,18 @@ def _analyze_prices_with_groq(
     sorted_prices = sorted(filtered_prices)
     list_limit = int(os.getenv("GROQ_PRICE_LIST_LIMIT", "500"))
     prompt = (
-    "You analyze FunPay market prices. Provide 2-4 short bullets and a brief summary.
-"
-    "Do not suggest any price lower than recommended_price.
-"
-    "Do not suggest ranges; output a single recommended price.
-"
-    "Data:
-"
-    f"- Total prices: {len(prices)}
-"
-    f"- Prices in 0-50: {len(filtered_prices)}
-"
-    f"- Price list (0-50, max {list_limit}): {_format_prices(sorted_prices, list_limit)}
-"
-    f"- Currency: {currency or 'unknown'}
-"
-    f"- Lowest price: {lowest_price}
-"
-    f"- Second price: {second_price}
-"
-    f"- Recommended price: {recommended_price}
-"
-)
+        "You analyze FunPay market prices. Provide 2-4 short bullets and a brief summary.\n"
+        "Do not suggest any price lower than recommended_price.\n"
+        "Do not suggest ranges; output a single recommended price.\n"
+        "Data:\n"
+        f"- Total prices: {len(prices)}\n"
+        f"- Prices in 0-50: {len(filtered_prices)}\n"
+        f"- Price list (0-50, max {list_limit}): {_format_prices(sorted_prices, list_limit)}\n"
+        f"- Currency: {currency or 'unknown'}\n"
+        f"- Lowest price: {lowest_price}\n"
+        f"- Second price: {second_price}\n"
+        f"- Recommended price: {recommended_price}\n"
+    )
     payload = {
         "model": model,
         "temperature": 0.2,
