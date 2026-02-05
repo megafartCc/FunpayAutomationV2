@@ -17,6 +17,7 @@ from api.bot_customization import router as bot_customization_router
 from api.telegram import router as telegram_router
 from api.bonus import router as bonus_router
 from api.workspaces import router as workspaces_router
+from api.plugins import router as plugins_router
 from db.mysql import ensure_schema
 from settings.config import settings
 
@@ -62,3 +63,4 @@ app.include_router(bonus_router, prefix="/api", tags=["bonus"])
 app.include_router(telegram_router, prefix="/api", tags=["telegram"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
 app.include_router(bot_customization_router, prefix="/api", tags=["bot-customization"])
+app.include_router(plugins_router, prefix="/api", tags=["plugins"])
