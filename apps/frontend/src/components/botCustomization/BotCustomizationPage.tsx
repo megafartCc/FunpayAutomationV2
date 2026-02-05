@@ -1,158 +1,575 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-type TemplateField = {
-  id: string;
-  label: string;
-  helper: string;
-  value: string;
-  rows?: number;
+import { useWorkspace } from "../../context/WorkspaceContext";
+import { useI18n } from "../../i18n/useI18n";
+import { api, BotCustomizationResponse, BotCustomizationSettings } from "../../services/api";
+
+type BotCustomizationPageProps = {
+  onToast?: (message: string, isError?: boolean) => void;
 };
 
-const BotCustomizationPage: React.FC = () => {
-  const [greetingEnabled, setGreetingEnabled] = useState(true);
-  const [autoTipsEnabled, setAutoTipsEnabled] = useState(true);
-  const [rateLimitEnabled, setRateLimitEnabled] = useState(true);
-  const [replacementNoticeEnabled, setReplacementNoticeEnabled] = useState(true);
-  const [adminHelpEnabled, setAdminHelpEnabled] = useState(true);
+type CommandDef = { key: keyof BotCustomizationSettings["commands"]; label: string; desc: string };
+type ResponseDef = { key: keyof BotCustomizationSettings["responses"]; label: string; desc: string; rows?: number };
 
-  const [templates, setTemplates] = useState<TemplateField[]>([
-    {
-      id: "greeting",
-      label: "Greeting message",
-      helper: "Sent when a buyer opens chat for the first time.",
-      value: "Привет! Я бот поддержки. Напишите !акк для данных аккаунта или !код для Steam Guard.",
-      rows: 3,
-    },
-    {
-      id: "replacement-rate",
-      label: "Replacement rate limit notice",
-      helper: "Reply when the buyer exceeds replacement limits.",
-      value: "Лимит: 1 замена в час. Если нужна дополнительная замена — напишите !админ.",
-      rows: 2,
-    },
-    {
-      id: "blacklist",
-      label: "Blacklist warning",
-      helper: "Shown when a buyer is blocked.",
-      value: "Вы в черном списке. Для разблокировки обратитесь к администратору.",
-      rows: 2,
-    },
-    {
-      id: "permanent-blacklist",
-      label: "Permanent blacklist warning",
-      helper: "Shown when the buyer is permanently blocked.",
-      value: "Вы в постоянном черном списке. Доступ заблокирован без компенсации.",
-      rows: 2,
-    },
-    {
-      id: "replacement-success",
-      label: "Replacement success header",
-      helper: "Header shown before new account details.",
-      value: "✅ Замена выполнена. Новый аккаунт:",
-      rows: 2,
-    },
-  ]);
+const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) => {
+  const { t, tr } = useI18n();
+  const { selectedId, workspaces } = useWorkspace();
+  const workspaceId = selectedId === "all" ? null : (selectedId as number);
 
-  const updateTemplate = (id: string, value: string) => {
-    setTemplates((prev) => prev.map((item) => (item.id === id ? { ...item, value } : item)));
+  const [settings, setSettings] = useState<BotCustomizationSettings | null>(null);
+  const [globalSettings, setGlobalSettings] = useState<BotCustomizationSettings | null>(null);
+  const [source, setSource] = useState<BotCustomizationResponse["source"]>("default");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [useGlobalDefaults, setUseGlobalDefaults] = useState(false);
+
+  const workspaceName = useMemo(() => {
+    if (!workspaceId) return t("common.allWorkspaces");
+    const found = workspaces.find((ws) => ws.id === workspaceId);
+    return found?.name || `${t("common.workspace")} ${workspaceId}`;
+  }, [workspaceId, workspaces, t]);
+
+  const commandDefs: CommandDef[] = useMemo(
+    () => [
+      { key: "stock", label: tr("Stock list", "Свободные лоты"), desc: tr("Show available accounts", "Показать свободные аккаунты") },
+      { key: "account", label: tr("Account data", "Данные аккаунта"), desc: tr("Send login + password", "Отправить логин и пароль") },
+      { key: "code", label: tr("Steam Guard", "Steam Guard"), desc: tr("Send Steam Guard codes", "Отправить коды Steam Guard") },
+      { key: "extend", label: tr("Extend rental", "Продлить аренду"), desc: tr("Add extra hours to rental", "Добавить часы к аренде") },
+      { key: "pause", label: tr("Pause rental", "Пауза аренды"), desc: tr("Freeze rental for 1 hour", "Заморозить аренду на 1 час") },
+      { key: "resume", label: tr("Resume rental", "Снять паузу"), desc: tr("Resume rental early", "Снять паузу раньше") },
+      { key: "admin", label: tr("Call admin", "Вызвать продавца"), desc: tr("Notify seller/admin", "Позвать продавца") },
+      { key: "replace", label: tr("Replace account", "Замена аккаунта"), desc: tr("Low priority replacement", "Замена LP аккаунта") },
+      { key: "cancel", label: tr("Cancel rental", "Отмена аренды"), desc: tr("Cancel rental request", "Отменить аренду") },
+      { key: "bonus", label: tr("Bonus hours", "Бонусные часы"), desc: tr("Apply bonus hours", "Применить бонусные часы") },
+    ],
+    [tr],
+  );
+
+  const responseDefs: ResponseDef[] = useMemo(
+    () => [
+      {
+        key: "greeting",
+        label: tr("Greeting", "Приветствие"),
+        desc: tr("Used for hello / start of chat", "Ответ на приветствие"),
+      },
+      {
+        key: "small_talk",
+        label: tr("Small talk", "Небольшой разговор"),
+        desc: tr("Reply to questions like “how are you?”", "Ответ на “как дела?”"),
+      },
+      {
+        key: "refund",
+        label: tr("Refund response", "Ответ про возвраты"),
+        desc: tr("Shown when user asks for refund", "Используется при запросе возврата"),
+        rows: 3,
+      },
+      {
+        key: "unknown",
+        label: tr("Clarify", "Уточнение"),
+        desc: tr("If the request is unclear", "Если запрос неясен"),
+      },
+      {
+        key: "commands_help",
+        label: tr("Commands list", "Список команд"),
+        desc: tr("Use {commands} placeholder", "Можно использовать {commands}"),
+        rows: 3,
+      },
+      {
+        key: "rent_flow",
+        label: tr("How to rent", "Как арендовать"),
+        desc: tr("Explain the rental flow", "Инструкция аренды"),
+        rows: 4,
+      },
+      {
+        key: "pre_rent",
+        label: tr("Multiple accounts", "Несколько аккаунтов"),
+        desc: tr("When user wants many accounts", "Когда хотят несколько аккаунтов"),
+        rows: 4,
+      },
+    ],
+    [tr],
+  );
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const globalRes = await api.getBotCustomization(null);
+      setGlobalSettings(globalRes.settings);
+      if (workspaceId) {
+        const wsRes = await api.getBotCustomization(workspaceId);
+        const shouldUseGlobal = wsRes.source !== "workspace";
+        setSource(wsRes.source);
+        setUseGlobalDefaults(shouldUseGlobal);
+        setSettings(shouldUseGlobal ? globalRes.settings : wsRes.settings);
+      } else {
+        setSource(globalRes.source);
+        setUseGlobalDefaults(false);
+        setSettings(globalRes.settings);
+      }
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load customization.", "Не удалось загрузить настройки.");
+      onToast?.(message, true);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, tr, onToast]);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  const updateSettings = (updater: (current: BotCustomizationSettings) => BotCustomizationSettings) => {
+    setSettings((prev) => (prev ? updater(prev) : prev));
   };
+
+  const handleSave = async () => {
+    if (!settings) return;
+    setSaving(true);
+    try {
+      if (workspaceId && useGlobalDefaults) {
+        await api.deleteBotCustomization(workspaceId);
+        onToast?.(tr("Workspace override removed.", "Переопределение удалено."));
+      } else {
+        await api.saveBotCustomization(settings, workspaceId);
+        onToast?.(tr("Customization saved.", "Настройки сохранены."));
+      }
+      await loadSettings();
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to save customization.", "Не удалось сохранить настройки.");
+      onToast?.(message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetGlobal = async () => {
+    if (!workspaceId) return;
+    setSaving(true);
+    try {
+      await api.deleteBotCustomization(workspaceId);
+      setUseGlobalDefaults(true);
+      onToast?.(tr("Reset to global defaults.", "Сброшено к глобальным настройкам."));
+      await loadSettings();
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to reset.", "Не удалось сбросить настройки.");
+      onToast?.(message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    if (workspaceId) return;
+    setSaving(true);
+    try {
+      await api.deleteBotCustomization(null);
+      onToast?.(tr("Defaults restored.", "Настройки по умолчанию восстановлены."));
+      await loadSettings();
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to reset.", "Не удалось сбросить настройки.");
+      onToast?.(message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isLocked = Boolean(workspaceId && useGlobalDefaults);
 
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Bot Customization</h3>
+            <h3 className="text-lg font-semibold text-neutral-900">
+              {tr("Bot customization", "Кастомизация бота")}
+            </h3>
             <p className="text-sm text-neutral-500">
-              Настройте ответы бота, лимиты и уведомления. Можно подготовить текст и включать/выключать блоки.
+              {tr(
+                "Tune commands, AI tone, review bonuses, and blacklist rules.",
+                "Настройте команды, тон ИИ, бонусы за отзывы и правила чёрного списка.",
+              )}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-700">
-              Preview
-            </button>
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white">
-              Save changes
-            </button>
-          </div>
+          <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {workspaceName}
+          </span>
         </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { label: "Greeting", value: greetingEnabled, onChange: setGreetingEnabled },
-            { label: "Auto tips", value: autoTipsEnabled, onChange: setAutoTipsEnabled },
-            { label: "Rate limits", value: rateLimitEnabled, onChange: setRateLimitEnabled },
-            { label: "Replacement notices", value: replacementNoticeEnabled, onChange: setReplacementNoticeEnabled },
-            { label: "Admin help prompts", value: adminHelpEnabled, onChange: setAdminHelpEnabled },
-          ].map((item) => (
-            <label
-              key={item.label}
-              className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700"
-            >
-              <span className="font-semibold">{item.label}</span>
+        {workspaceId ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
+            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={item.value}
-                onChange={(event) => item.onChange(event.target.checked)}
-                className="h-4 w-4 rounded border-neutral-300 text-neutral-900"
+                checked={useGlobalDefaults}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setUseGlobalDefaults(next);
+                  if (!next && globalSettings) {
+                    setSettings(globalSettings);
+                  }
+                }}
               />
+              {tr("Use global defaults for this workspace", "Использовать глобальные настройки")}
             </label>
-          ))}
-        </div>
+            <span className="text-neutral-400">
+              {source === "workspace"
+                ? tr("Workspace override active", "Активно переопределение")
+                : tr("No workspace override", "Переопределения нет")}
+            </span>
+          </div>
+        ) : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-          <div className="mb-4">
-            <h4 className="text-base font-semibold text-neutral-900">Response templates</h4>
-            <p className="text-xs text-neutral-500">Тексты можно адаптировать под ваш стиль общения.</p>
-          </div>
-          <div className="space-y-4">
-            {templates.map((item) => (
-              <div key={item.id} className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold text-neutral-800">{item.label}</div>
-                  <span className="text-[10px] uppercase tracking-wide text-neutral-400">Template</span>
-                </div>
-                <p className="mt-1 text-xs text-neutral-500">{item.helper}</p>
-                <textarea
-                  value={item.value}
-                  onChange={(event) => updateTemplate(item.id, event.target.value)}
-                  rows={item.rows ?? 3}
-                  className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none"
-                />
+      {loading || !settings ? (
+        <div className="rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 px-6 py-8 text-center text-sm text-neutral-500">
+          {tr("Loading customization...", "Загружаем настройки...")}
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-neutral-900">
+                  {tr("AI behavior", "Поведение ИИ")}
+                </h4>
+                <p className="text-xs text-neutral-500">
+                  {tr("Define tone and smart reply settings.", "Задайте тон и параметры умных ответов.")}
+                </p>
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="space-y-4">
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
+                  <span>{tr("Enable AI replies", "Включить ответы ИИ")}</span>
+                  <input
+                    type="checkbox"
+                    checked={settings.ai_enabled}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({ ...current, ai_enabled: event.target.checked }))
+                    }
+                  />
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Tone", "Тон")}
+                    </label>
+                    <select
+                      value={settings.tone}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({ ...current, tone: event.target.value }))
+                      }
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    >
+                      <option value="friendly">{tr("Friendly", "Дружелюбный")}</option>
+                      <option value="professional">{tr("Professional", "Профессиональный")}</option>
+                      <option value="playful">{tr("Playful", "Легкий")}</option>
+                      <option value="concise">{tr("Concise", "Краткий")}</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("AI model (optional)", "Модель ИИ (необязательно)")}
+                    </label>
+                    <input
+                      value={settings.ai?.model || ""}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({
+                          ...current,
+                          ai: { ...current.ai, model: event.target.value },
+                        }))
+                      }
+                      placeholder="llama-3.1-70b-versatile"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Temperature", "Температура")}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={settings.ai?.temperature ?? 0.7}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({
+                          ...current,
+                          ai: { ...current.ai, temperature: Number(event.target.value) },
+                        }))
+                      }
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Max tokens", "Макс. токенов")}
+                    </label>
+                    <input
+                      type="number"
+                      min={120}
+                      max={1200}
+                      step={10}
+                      value={settings.ai?.max_tokens ?? 450}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({
+                          ...current,
+                          ai: { ...current.ai, max_tokens: Number(event.target.value) },
+                        }))
+                      }
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    {tr("Persona / brand voice", "Персона / стиль")}
+                  </label>
+                  <textarea
+                    value={settings.persona || ""}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({ ...current, persona: event.target.value }))
+                    }
+                    rows={3}
+                    placeholder={tr("e.g. Calm, confident, helpful.", "Например: спокойный, уверенный, заботливый.")}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                </div>
+              </div>
+            </div>
 
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-            <h4 className="text-base font-semibold text-neutral-900">Quick tips</h4>
-            <ul className="mt-3 space-y-2 text-sm text-neutral-600">
-              <li>• Добавьте в тексты команды, которые вы реально используете (!код, !акк, !админ).</li>
-              <li>• Уточняйте лимиты: например, 1 замена в час на одного покупателя.</li>
-              <li>• Используйте emoji в важных уведомлениях, чтобы выделить их в чате.</li>
-              <li>• Для постоянного бана опишите причину и что делать дальше.</li>
-            </ul>
+            <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-neutral-900">
+                  {tr("Reviews & blacklist", "Отзывы и чёрный список")}
+                </h4>
+                <p className="text-xs text-neutral-500">
+                  {tr("Control review bonuses and compensation rules.", "Настройте бонусы и компенсации.")}
+                </p>
+              </div>
+              <div className="grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Review bonus (hours)", "Бонус за отзыв (часы)")}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={settings.review_bonus_hours}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({
+                          ...current,
+                          review_bonus_hours: Math.max(0, Number(event.target.value)),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                      {tr("Compensation threshold (hours)", "Порог компенсации (часы)")}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={settings.blacklist.compensation_hours}
+                      disabled={isLocked}
+                      onChange={(event) =>
+                        updateSettings((current) => ({
+                          ...current,
+                          blacklist: {
+                            ...current.blacklist,
+                            compensation_hours: Math.max(1, Number(event.target.value)),
+                          },
+                        }))
+                      }
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    {tr("Minutes per unit", "Минут за единицу")}
+                  </label>
+                  <input
+                    type="number"
+                    min={30}
+                    step={10}
+                    value={settings.blacklist.unit_minutes}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        blacklist: {
+                          ...current.blacklist,
+                          unit_minutes: Math.max(10, Number(event.target.value)),
+                        },
+                      }))
+                    }
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                  <p className="text-[11px] text-neutral-500">
+                    {tr(
+                      "Used to convert paid quantity into minutes.",
+                      "Используется для пересчёта количества в минуты.",
+                    )}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    {tr("Permanent blacklist message", "Сообщение для перманентного бана")}
+                  </label>
+                  <textarea
+                    value={settings.blacklist.permanent_message}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        blacklist: { ...current.blacklist, permanent_message: event.target.value },
+                      }))
+                    }
+                    rows={3}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    {tr("Compensation message", "Сообщение о компенсации")}
+                  </label>
+                  <textarea
+                    value={settings.blacklist.blocked_message}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        blacklist: { ...current.blacklist, blocked_message: event.target.value },
+                      }))
+                    }
+                    rows={4}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                  <p className="text-[11px] text-neutral-500">
+                    {tr(
+                      "Placeholders: {penalty}, {paid}, {remaining}, {lot}",
+                      "Плейсхолдеры: {penalty}, {paid}, {remaining}, {lot}",
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-            <h4 className="text-base font-semibold text-neutral-900">Admin escalation</h4>
-            <p className="mt-2 text-xs text-neutral-500">
-              Что писать, если нужна ручная помощь администратора.
-            </p>
-            <textarea
-              value="Если требуется ручная проверка или вторая замена — напишите !админ, мы подключимся."
-              readOnly
-              rows={4}
-              className="mt-3 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600"
-            />
-            <button className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700">
-              Copy text
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-neutral-900">
+                {tr("Command triggers", "Команды и триггеры")}
+              </h4>
+              <p className="text-xs text-neutral-500">
+                {tr("Separate multiple aliases with commas.", "Несколько алиасов разделяйте запятыми.")}
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {commandDefs.map((command) => (
+                <div key={command.key} className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                  <div className="text-sm font-semibold text-neutral-900">{command.label}</div>
+                  <p className="text-xs text-neutral-500">{command.desc}</p>
+                  <input
+                    value={settings.commands[command.key]}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        commands: { ...current.commands, [command.key]: event.target.value },
+                      }))
+                    }
+                    placeholder="!command, !alias"
+                    className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-neutral-900">
+                {tr("Response templates", "Шаблоны ответов")}
+              </h4>
+              <p className="text-xs text-neutral-500">
+                {tr("The AI can reuse these templates when helpful.", "ИИ сможет опираться на эти ответы.")}
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {responseDefs.map((item) => (
+                <div key={item.key} className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                  <div className="text-sm font-semibold text-neutral-900">{item.label}</div>
+                  <p className="text-xs text-neutral-500">{item.desc}</p>
+                  <textarea
+                    value={settings.responses[item.key] || ""}
+                    disabled={isLocked}
+                    onChange={(event) =>
+                      updateSettings((current) => ({
+                        ...current,
+                        responses: { ...current.responses, [item.key]: event.target.value },
+                      }))
+                    }
+                    rows={item.rows ?? 2}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {saving ? t("common.saving") : tr("Save customization", "Сохранить настройки")}
             </button>
+            {workspaceId ? (
+              <button
+                type="button"
+                onClick={handleResetGlobal}
+                disabled={saving}
+                className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 disabled:opacity-60"
+              >
+                {tr("Reset to global", "Сбросить к глобальным")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResetDefaults}
+                disabled={saving}
+                className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 disabled:opacity-60"
+              >
+                {tr("Reset defaults", "Сбросить по умолчанию")}
+              </button>
+            )}
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 };

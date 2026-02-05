@@ -116,6 +116,32 @@ export type AutoRaiseSettings = {
   workspaces: Record<number, boolean>;
 };
 
+export type BotCustomizationSettings = {
+  ai_enabled: boolean;
+  tone: string;
+  persona?: string;
+  commands: Record<string, string>;
+  responses: Record<string, string>;
+  review_bonus_hours: number;
+  blacklist: {
+    compensation_hours: number;
+    unit_minutes: number;
+    permanent_message: string;
+    blocked_message: string;
+  };
+  ai: {
+    model?: string;
+    temperature?: number;
+    max_tokens?: number;
+  };
+};
+
+export type BotCustomizationResponse = {
+  workspace_id?: number | null;
+  source: "workspace" | "global" | "default";
+  settings: BotCustomizationSettings;
+};
+
 export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
@@ -428,6 +454,17 @@ export const api = {
     request<{ created: number }>("/auto-raise/manual", {
       method: "POST",
       body: workspaceId ? { workspace_id: workspaceId } : {},
+    }),
+  getBotCustomization: (workspaceId?: number | null) =>
+    request<BotCustomizationResponse>(withWorkspace("/bot-customization", workspaceId), { method: "GET" }),
+  saveBotCustomization: (payload: BotCustomizationSettings, workspaceId?: number | null) =>
+    request<BotCustomizationResponse>(withWorkspace("/bot-customization", workspaceId), {
+      method: "PUT",
+      body: payload,
+    }),
+  deleteBotCustomization: (workspaceId?: number | null) =>
+    request<{ ok: boolean; removed?: number }>(withWorkspace("/bot-customization", workspaceId), {
+      method: "DELETE",
     }),
   listBonusBalances: (query?: string, workspaceId?: number | null, limit: number = 200) => {
     const params = new URLSearchParams();

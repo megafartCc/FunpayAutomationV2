@@ -15,6 +15,7 @@ from .blacklist_utils import (
     log_blacklist_event,
     remove_blacklist_entry,
 )
+from .bot_customization_utils import build_command_label_map, get_blacklist_policy, render_template
 from .chat_utils import send_chat_message
 from .constants import (
     ORDER_ACCOUNT_NO_REPLACEMENT,
@@ -667,6 +668,7 @@ def handle_order_purchased(
     site_user_id: int | None,
     workspace_id: int | None,
     msg: object,
+    bot_settings: dict | None = None,
 ) -> None:
     if getattr(msg, "type", None) is not MessageTypes.ORDER_PURCHASED:
         return
@@ -747,6 +749,21 @@ def handle_order_purchased(
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
         blacklist_status = get_blacklist_status(mysql_cfg, buyer, int(user_id), workspace_id)
+        command_labels = build_command_label_map(bot_settings or {})
+        blacklist_policy = get_blacklist_policy(bot_settings or {})
+        comp_threshold_minutes = int(blacklist_policy.get("compensation_minutes") or 0)
+        unit_minutes_default = int(blacklist_policy.get("unit_minutes") or 60)
+        env_comp_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
+        env_comp_hours = env_int("BLACKLIST_COMP_HOURS", 0)
+        if env_comp_minutes or env_comp_hours:
+            comp_threshold_minutes = max(comp_threshold_minutes, env_comp_minutes, env_comp_hours * 60)
+        if comp_threshold_minutes <= 0:
+            comp_threshold_minutes = 5 * 60
+        env_unit_minutes = env_int("BLACKLIST_COMP_UNIT_MINUTES", 0)
+        if env_unit_minutes > 0:
+            unit_minutes_default = env_unit_minutes
+        permanent_template = str(blacklist_policy.get("permanent_message") or "")
+        blocked_template = str(blacklist_policy.get("blocked_message") or "")
         if blacklist_status == "permanent":
             log_blacklist_event(
                 mysql_cfg,
@@ -756,18 +773,15 @@ def handle_order_purchased(
                 user_id=int(user_id),
                 workspace_id=workspace_id,
             )
+            permanent_message = render_template(permanent_template, command_labels=command_labels)
             send_chat_message(
                 logger,
                 account,
                 chat_id,
-                "Вы в постоянном черном списке. Доступ заблокирован без компенсации.",
+                permanent_message,
             )
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
-        comp_threshold_minutes = env_int("BLACKLIST_COMP_MINUTES", 0)
-        comp_hours = env_int("BLACKLIST_COMP_HOURS", 5)
-        comp_threshold_minutes = max(comp_threshold_minutes, comp_hours * 60, 5 * 60)
-        unit_minutes_default = env_int("BLACKLIST_COMP_UNIT_MINUTES", 60)
         unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
         paid_minutes = max(0, int(unit_minutes) * int(amount))
         log_order_history(
@@ -814,21 +828,26 @@ def handle_order_purchased(
                 )
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
-
         remaining = max(comp_threshold_minutes - total_paid, 0)
         lot_url = lot_mapping.get("lot_url") if lot_mapping else None
         lot_label = f"лот №{lot_number}"
         if lot_url:
             lot_label = f"лот {lot_url}"
+        blocked_message = render_template(
+            blocked_template,
+            values={
+                "penalty": format_penalty_label(comp_threshold_minutes),
+                "paid": format_duration_minutes(total_paid),
+                "remaining": format_duration_minutes(remaining),
+                "lot": lot_label,
+            },
+            command_labels=command_labels,
+        )
         send_chat_message(
             logger,
             account,
             chat_id,
-            "Вы в черном списке.\n"
-            f"Оплатите штраф {format_penalty_label(comp_threshold_minutes)}, чтобы разблокировать доступ.\n"
-            f"Оплачено: {format_duration_minutes(total_paid)}. "
-            f"Осталось: {format_duration_minutes(remaining)}.\n"
-            f"Если хотите продлить — пожалуйста оплатите этот {lot_label}.",
+            blocked_message,
         )
         log_blacklist_event(
             mysql_cfg,
@@ -840,7 +859,6 @@ def handle_order_purchased(
         )
         mark_order_processed(site_username, site_user_id, workspace_id, order_id)
         return
-
     mapping = lot_mapping
     if mapping:
         try:

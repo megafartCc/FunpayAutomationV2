@@ -37,6 +37,21 @@ from bs4 import BeautifulSoup
 from .chat_time_utils import _extract_datetime_from_html
 
 from .ai_utils import classify_intent, generate_ai_reply
+from .bot_customization_utils import (
+    build_ai_context_additions,
+    build_allowed_command_list,
+    build_command_alias_map,
+    build_command_label_map,
+    build_commands_text,
+    build_style_prompt,
+    get_ai_overrides,
+    get_review_bonus_minutes,
+    load_bot_settings,
+    normalize_settings,
+    render_template,
+    replace_command_tokens,
+    resolve_response,
+)
 
 from .chat_utils import (
 
@@ -69,8 +84,6 @@ from .constants import (
     BUSY_TITLE,
 
     COMMAND_PREFIXES,
-
-    COMMANDS_RU,
 
     RENT_CONFIRM_MESSAGE,
 
@@ -144,7 +157,7 @@ from .lot_utils import (
 
 from .user_utils import get_user_id_by_username
 
-from .text_utils import extract_order_id, parse_command
+from .text_utils import extract_order_id
 
 
 
@@ -153,8 +166,6 @@ WELCOME_MESSAGE = os.getenv(
     "FUNPAY_WELCOME_MESSAGE",
 
     "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435! \u0427\u0442\u043e\u0431\u044b \u0443\u0437\u043d\u0430\u0442\u044c \u043e \u043d\u0430\u043b\u0438\u0447\u0438\u0438 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432, \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u0443 !\u0441\u0442\u043e\u043a. \u042d\u0442\u043e \u043f\u043e\u043a\u0430\u0436\u0435\u0442 \u0442\u0435\u043a\u0443\u0449\u0438\u0439 \u0441\u0442\u0430\u0442\u0443\u0441 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u043e\u0432. \u0415\u0441\u043b\u0438 \u043d\u0443\u0436\u043d\u0430 \u043f\u043e\u043c\u043e\u0449\u044c \u2014 \u043f\u0440\u043e\u0441\u0442\u043e \u043d\u0430\u043f\u0438\u0448\u0438\u0442\u0435.\n\n"
-
-    + COMMANDS_RU,
 
 )
 
@@ -230,7 +241,7 @@ def _extract_lot_url(text: str) -> str | None:
 
 
 
-def _suggest_command(text: str) -> str | None:
+def _suggest_command(text: str, command_labels: dict[str, str] | None = None) -> str | None:
 
     if not text:
 
@@ -248,7 +259,10 @@ def _suggest_command(text: str) -> str | None:
 
         return None
 
-    return COMMAND_SUGGESTIONS.get(token)
+    suggested = COMMAND_SUGGESTIONS.get(token)
+    if suggested and command_labels:
+        return command_labels.get(suggested, suggested)
+    return suggested
 
 
 
@@ -1142,6 +1156,153 @@ def _build_rental_summary(accounts: list[dict], limit: int) -> list[str]:
 
 
 
+_SUPPORT_CONTEXT_KEYWORDS = (
+
+    "аренд",
+
+    "аренда",
+
+    "акк",
+
+    "аккаунт",
+
+    "код",
+
+    "сток",
+
+    "налич",
+
+    "продл",
+
+    "пауза",
+
+    "замен",
+
+    "возврат",
+
+    "refund",
+
+    "free",
+
+    "available",
+
+    "busy",
+
+    "help",
+
+    "поддерж",
+
+    "помощ",
+
+    "команд",
+
+    "логин",
+
+    "пароль",
+
+    "steam",
+
+    "цен",
+
+    "стоим",
+
+    "price",
+
+    "payment",
+
+    "оплат",
+
+    "купить",
+
+    "rent",
+
+)
+
+_SMALL_TALK_PHRASES = (
+
+    "как дела",
+
+    "как у тебя дела",
+
+    "как у вас дела",
+
+    "как ты",
+
+    "что нового",
+
+    "че как",
+
+    "чё как",
+
+    "как жизнь",
+
+    "как сам",
+
+    "как настроение",
+
+    "как поживаешь",
+
+    "что делаешь",
+
+)
+
+_GREETINGS = (
+
+    "привет",
+
+    "здрав",
+
+    "добрый",
+
+    "hello",
+
+    "hi",
+
+    "hey",
+
+    "yo",
+
+    "хай",
+
+    "хелло",
+
+)
+
+
+def _needs_support_context(text: str) -> bool:
+
+    lowered = (text or "").strip().lower()
+
+    if not lowered:
+
+        return False
+
+    return any(keyword in lowered for keyword in _SUPPORT_CONTEXT_KEYWORDS)
+
+
+def _is_small_talk_message(text: str) -> bool:
+
+    lowered = (text or "").strip().lower()
+
+    if not lowered:
+
+        return False
+
+    if _needs_support_context(lowered):
+
+        return False
+
+    if any(phrase in lowered for phrase in _SMALL_TALK_PHRASES):
+
+        return True
+
+    if any(lowered.startswith(greeting) or f" {greeting}" in lowered for greeting in _GREETINGS):
+
+        return len(lowered) <= 30
+
+    return False
+
+
 def _build_ai_context(
 
     user_text: str,
@@ -1158,9 +1319,13 @@ def _build_ai_context(
 
 ) -> str | None:
 
-    history_limit = env_int("AI_CONTEXT_MESSAGES", 8)
+    is_small_talk = _is_small_talk_message(user_text)
 
-    summary_limit = env_int("AI_RENTAL_SUMMARY_LIMIT", 5)
+    include_support_context = _needs_support_context(user_text) or is_small_talk
+
+    history_limit = env_int("AI_CONTEXT_MESSAGES", 6)
+
+    summary_limit = env_int("AI_RENTAL_SUMMARY_LIMIT", 3)
 
     history_lines: list[str] = []
 
@@ -1170,97 +1335,117 @@ def _build_ai_context(
 
     memory_text = ""
 
-    try:
+    if include_support_context:
 
-        history_lines = build_recent_chat_context(
+        try:
 
-            mysql_cfg,
+            history_lines = build_recent_chat_context(
 
-            int(user_id),
+                mysql_cfg,
 
-            int(workspace_id) if workspace_id is not None else None,
+                int(user_id),
 
-            int(chat_id),
+                int(workspace_id) if workspace_id is not None else None,
 
-            limit=history_limit,
+                int(chat_id),
 
-            include_bot=False,
+                limit=history_limit,
 
-        )
+                include_bot=False,
 
-    except Exception:
+            )
 
-        history_lines = []
+        except Exception:
 
-    try:
+            history_lines = []
 
-        accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
+    if include_support_context and not is_small_talk:
 
-        rental_lines = _build_rental_summary(accounts, summary_limit)
+        try:
 
-    except Exception:
+            accounts = fetch_owner_accounts(mysql_cfg, int(user_id), sender_username, workspace_id)
 
-        rental_lines = []
+            rental_lines = _build_rental_summary(accounts, summary_limit)
 
-    try:
+        except Exception:
 
-        memory_text = fetch_memory_context(
+            rental_lines = []
 
-            mysql_cfg,
+    if include_support_context:
 
-            user_id=int(user_id),
+        try:
 
-            workspace_id=workspace_id,
+            memory_text = fetch_memory_context(
 
-            chat_id=int(chat_id),
+                mysql_cfg,
 
-            query=user_text,
+                user_id=int(user_id),
 
-        ) or ""
+                workspace_id=workspace_id,
 
-    except Exception:
+                chat_id=int(chat_id),
 
-        memory_text = ""
+                query=user_text,
 
-    try:
+            ) or ""
 
-        knowledge_text = build_knowledge_context(
+        except Exception:
 
-            user_text,
+            memory_text = ""
 
-            max_chars=env_int("AI_KNOWLEDGE_MAX_CHARS", 1400),
+    if include_support_context and not is_small_talk:
 
-            max_items=env_int("AI_KNOWLEDGE_MAX_ITEMS", 3),
+        try:
 
-        ) or ""
+            knowledge_text = build_knowledge_context(
 
-    except Exception:
+                user_text,
 
-        knowledge_text = ""
+                max_chars=env_int("AI_KNOWLEDGE_MAX_CHARS", 1000),
+
+                max_items=env_int("AI_KNOWLEDGE_MAX_ITEMS", 2),
+
+            ) or ""
+
+        except Exception:
+
+            knowledge_text = ""
 
     sections: list[str] = []
 
     if memory_text:
 
-        sections.append("Long-term memory:")
+        memory_label = "Long-term memory (reference only; do not mention explicitly):"
+
+        if is_small_talk:
+
+            memory_label = "Long-term memory (use only for gentle follow-up if helpful):"
+
+        sections.append(memory_label)
 
         sections.append(memory_text)
 
     if knowledge_text:
 
-        sections.append("Knowledge base:")
+        sections.append("Knowledge base (reference only; do not mention explicitly):")
 
         sections.append(knowledge_text)
 
     if history_lines:
 
-        sections.append("Recent buyer messages:")
+        history_label = "Recent buyer messages (reference only; do not mention explicitly):"
+
+        if is_small_talk:
+
+            history_label = "Recent buyer messages (can be used for gentle follow-up if helpful):"
+
+        sections.append(history_label)
 
         sections.extend(history_lines)
 
     if rental_lines:
 
-        sections.append("Current rentals summary:")
+        sections.append("Current rentals summary (reference only; do not mention explicitly):")
 
         sections.extend(rental_lines)
 
@@ -1334,13 +1519,13 @@ def _extract_command_tokens(text: str) -> list[str]:
 
 
 
-def _contains_unknown_commands(text: str) -> bool:
+def _contains_unknown_commands(text: str, allowed_commands: list[str] | None = None) -> bool:
 
     if not text:
 
         return False
 
-    allowed = set(COMMAND_PREFIXES)
+    allowed = set(allowed_commands or COMMAND_PREFIXES)
 
     for token in _extract_command_tokens(text):
 
@@ -1351,7 +1536,33 @@ def _contains_unknown_commands(text: str) -> bool:
     return False
 
 
+def _resolve_command(text: str | None, alias_map: dict[str, str] | None) -> tuple[str | None, str]:
 
+    if not text:
+
+        return None, ""
+
+    cleaned = text.strip()
+
+    if not cleaned.startswith("!"):
+
+        return None, ""
+
+    parts = cleaned.split(maxsplit=1)
+
+    command = parts[0].lower()
+
+    args = parts[1].strip() if len(parts) > 1 else ""
+
+    if alias_map and command in alias_map:
+
+        return alias_map[command], args
+
+    if command in COMMAND_PREFIXES:
+
+        return command, args
+
+    return None, args
 
 
 def _format_review_reply_text(text_: str) -> str:
@@ -1420,6 +1631,8 @@ def _handle_review_bonus(
 
     workspace_id: int | None,
 
+    bot_settings: dict | None,
+
     msg: object,
 
     chat_name: str,
@@ -1478,7 +1691,9 @@ def _handle_review_bonus(
 
         return
 
-    bonus_minutes = env_int("REVIEW_BONUS_MINUTES", 60)
+    bonus_minutes = get_review_bonus_minutes(bot_settings or {})
+    if bonus_minutes <= 0:
+        bonus_minutes = env_int("REVIEW_BONUS_MINUTES", 60)
 
     bonus_label = f"+{bonus_minutes} минут"
 
@@ -1916,8 +2131,6 @@ def log_message(
 
     lower_text = normalized_text.lower()
 
-    command, command_args = parse_command(message_text)
-
     if not sender_username or sender_username == "-":
 
         return None
@@ -1962,6 +2175,82 @@ def log_message(
 
 
 
+    user_id = site_user_id
+
+    try:
+
+        mysql_cfg = get_mysql_config()
+
+    except RuntimeError:
+
+        mysql_cfg = None
+
+
+
+    if mysql_cfg and user_id is None and site_username:
+
+        try:
+
+            user_id = get_user_id_by_username(mysql_cfg, site_username)
+
+        except mysql.connector.Error:
+
+            user_id = None
+
+
+
+    bot_settings = normalize_settings(None)
+
+    if mysql_cfg and user_id is not None:
+
+        try:
+
+            bot_settings = load_bot_settings(mysql_cfg, int(user_id), workspace_id)
+
+        except Exception as exc:
+
+            logger.warning("Failed to load bot customization: %s", exc)
+
+
+
+    ai_enabled = bool(bot_settings.get("ai_enabled", True))
+
+
+
+    command_alias_map, command_display_map = build_command_alias_map(bot_settings)
+
+    command_labels = build_command_label_map(bot_settings)
+
+    commands_text = build_commands_text(bot_settings, command_display_map)
+
+    commands_help_template = resolve_response(
+
+        bot_settings,
+
+        "commands_help",
+
+        "\u041a\u043e\u043c\u0430\u043d\u0434\u044b:\n{commands}",
+
+    )
+
+    commands_help_text = render_template(
+
+        commands_help_template,
+
+        commands_text=commands_text,
+
+        command_labels=command_labels,
+
+    )
+
+    allowed_commands = build_allowed_command_list(command_alias_map)
+
+
+
+    command, command_args = _resolve_command(normalized_text, command_alias_map)
+
+
+
     if (
 
         not is_system
@@ -1970,7 +2259,7 @@ def log_message(
 
         and not getattr(msg, "by_bot", False)
 
-        and message_text.strip().startswith("!")
+        and normalized_text.strip().startswith("!")
 
         and not command
 
@@ -1984,7 +2273,7 @@ def log_message(
 
             return None
 
-        suggested = _suggest_command(message_text)
+        suggested = _suggest_command(message_text, command_labels)
 
         if suggested:
 
@@ -1994,37 +2283,17 @@ def log_message(
 
                 f"\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u0432\u044b \u0438\u043c\u0435\u043b\u0438 \u0432 \u0432\u0438\u0434\u0443 {suggested}.\n\n"
 
-                + COMMANDS_RU
+                + commands_help_text
 
             )
 
         else:
 
-            reply = (
-
-                "\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u043d\u0430. "
-
-                "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
-
-                + COMMANDS_RU
-
-            )
+            reply = commands_help_text
 
         send_chat_message(logger, account, int(chat_id), reply)
 
         return None
-
-    user_id = site_user_id
-
-    try:
-
-        mysql_cfg = get_mysql_config()
-
-    except RuntimeError:
-
-        mysql_cfg = None
-
-
 
     first_time = False
 
@@ -2180,7 +2449,19 @@ def log_message(
 
         if _is_greeting(lower_text):
 
-            send_chat_message(logger, account, int(chat_id), WELCOME_MESSAGE)
+            greeting_template = resolve_response(bot_settings, "greeting", WELCOME_MESSAGE)
+
+            greeting_text = render_template(
+
+                greeting_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), greeting_text)
 
             return None
 
@@ -2194,41 +2475,81 @@ def log_message(
 
             return None
 
-        suggested = _suggest_command(message_text)
+        suggested = _suggest_command(message_text, command_labels)
 
         if suggested:
 
-            if suggested == "!команды":
+            reply = (
 
-                send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+                "\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u043d\u0430. "
 
-            else:
+                f"\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u0432\u044b \u0438\u043c\u0435\u043b\u0438 \u0432 \u0432\u0438\u0434\u0443 {suggested}.\n\n"
 
-                send_chat_message(
+                + commands_help_text
 
-                    logger,
+            )
 
-                    account,
-
-                    int(chat_id),
-
-                    f"Команда не распознана. Возможно, вы имели в виду {suggested}.",
-
-                )
+            send_chat_message(logger, account, int(chat_id), reply)
 
             return None
 
         if _wants_command_list(lower_text):
 
-            send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            send_chat_message(logger, account, int(chat_id), commands_help_text)
 
             return None
+
+        if not ai_enabled:
+
+            if _is_greeting(lower_text):
+
+                greeting_template = resolve_response(bot_settings, "greeting", WELCOME_MESSAGE)
+
+                greeting_text = render_template(
+
+                    greeting_template,
+
+                    commands_text=commands_text,
+
+                    command_labels=command_labels,
+
+                )
+
+                send_chat_message(logger, account, int(chat_id), greeting_text)
+
+                return None
+
+            if _is_small_talk_message(lower_text):
+
+                small_talk_template = resolve_response(
+
+                    bot_settings,
+
+                    "small_talk",
+
+                    "\u0412\u0441\u0451 \u0445\u043e\u0440\u043e\u0448\u043e, \u0441\u043f\u0430\u0441\u0438\u0431\u043e! \u0427\u0435\u043c \u043c\u043e\u0433\u0443 \u043f\u043e\u043c\u043e\u0449\u044c?",
+
+                )
+
+                small_talk_text = render_template(
+
+                    small_talk_template,
+
+                    commands_text=commands_text,
+
+                    command_labels=command_labels,
+
+                )
+
+                send_chat_message(logger, account, int(chat_id), small_talk_text)
+
+                return None
 
 
 
         intent_label = None
 
-        if env_bool("AI_INTENT_ROUTER", True) and not message_text.strip().startswith("!"):
+        if ai_enabled and env_bool("AI_INTENT_ROUTER", True) and not message_text.strip().startswith("!"):
 
             intent_context = None
 
@@ -2278,35 +2599,69 @@ def log_message(
 
         if intent_label == "commands":
 
-            send_chat_message(logger, account, int(chat_id), COMMANDS_RU)
+            send_chat_message(logger, account, int(chat_id), commands_help_text)
 
             return None
 
         if intent_label == "rent_flow":
 
-            send_chat_message(logger, account, int(chat_id), RENT_FLOW_MESSAGE)
+            rent_flow_template = resolve_response(bot_settings, "rent_flow", RENT_FLOW_MESSAGE)
+
+            rent_flow_text = render_template(
+
+                rent_flow_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), rent_flow_text)
 
             return None
 
         if intent_label == "pre_rent":
 
-            send_chat_message(logger, account, int(chat_id), RENT_PRE_REQUEST_MESSAGE)
+            pre_rent_template = resolve_response(bot_settings, "pre_rent", RENT_PRE_REQUEST_MESSAGE)
+
+            pre_rent_text = render_template(
+
+                pre_rent_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), pre_rent_text)
 
             return None
 
         if intent_label == "refund":
 
-            send_chat_message(
+            refund_template = resolve_response(
 
-                logger,
+                bot_settings,
 
-                account,
+                "refund",
 
-                int(chat_id),
-
-                "\u041f\u043e \u0432\u043e\u043f\u0440\u043e\u0441\u0430\u043c \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0430 \u043d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d \u2014 \u044f \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0443 \u043f\u0440\u043e\u0434\u0430\u0432\u0446\u0430, \u043e\u043d \u0440\u0430\u0437\u0431\u0435\u0440\u0451\u0442\u0441\u044f."
+                "\u041f\u043e \u0432\u043e\u043f\u0440\u043e\u0441\u0430\u043c \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0430 \u043d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d \u2014 \u044f \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0443 \u043f\u0440\u043e\u0434\u0430\u0432\u0446\u0430, \u043e\u043d \u0440\u0430\u0437\u0431\u0435\u0440\u0451\u0442\u0441\u044f.",
 
             )
+
+            refund_text = render_template(
+
+                refund_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), refund_text)
 
             return None
 
@@ -2338,7 +2693,7 @@ def log_message(
 
                 if _wants_rent_flow(lower_text) or _wants_pre_rent_request(lower_text):
 
-                    send_chat_message(logger, account, int(chat_id), RENT_STOCK_NOTE)
+                    send_chat_message(logger, account, int(chat_id), replace_command_tokens(RENT_STOCK_NOTE, command_labels))
 
                 return None
 
@@ -2362,7 +2717,7 @@ def log_message(
 
                 if _wants_rent_flow(lower_text) or _wants_pre_rent_request(lower_text):
 
-                    send_chat_message(logger, account, int(chat_id), RENT_STOCK_NOTE)
+                    send_chat_message(logger, account, int(chat_id), replace_command_tokens(RENT_STOCK_NOTE, command_labels))
 
                 return None
 
@@ -2370,7 +2725,19 @@ def log_message(
 
         if _wants_pre_rent_request(lower_text):
 
-            send_chat_message(logger, account, int(chat_id), RENT_PRE_REQUEST_MESSAGE)
+            pre_rent_template = resolve_response(bot_settings, "pre_rent", RENT_PRE_REQUEST_MESSAGE)
+
+            pre_rent_text = render_template(
+
+                pre_rent_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), pre_rent_text)
 
             return None
 
@@ -2378,7 +2745,19 @@ def log_message(
 
         if _wants_rent_flow(lower_text):
 
-            send_chat_message(logger, account, int(chat_id), RENT_FLOW_MESSAGE)
+            rent_flow_template = resolve_response(bot_settings, "rent_flow", RENT_FLOW_MESSAGE)
+
+            rent_flow_text = render_template(
+
+                rent_flow_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), rent_flow_text)
 
             return None
 
@@ -2386,7 +2765,9 @@ def log_message(
 
         if _wants_rent_confirmation(lower_text):
 
-            send_chat_message(logger, account, int(chat_id), RENT_CONFIRM_MESSAGE)
+            rent_confirm_text = replace_command_tokens(RENT_CONFIRM_MESSAGE, command_labels)
+
+            send_chat_message(logger, account, int(chat_id), rent_confirm_text)
 
             return None
 
@@ -2556,17 +2937,27 @@ def log_message(
 
         if _wants_refund(lower_text):
 
-            send_chat_message(
+            refund_template = resolve_response(
 
-                logger,
+                bot_settings,
 
-                account,
+                "refund",
 
-                int(chat_id),
-
-                "По вопросам возврата напишите !админ — я подключу продавца, он разберётся.",
+                "\u041f\u043e \u0432\u043e\u043f\u0440\u043e\u0441\u0430\u043c \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0430 \u043d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 !\u0430\u0434\u043c\u0438\u043d \u2014 \u044f \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0443 \u043f\u0440\u043e\u0434\u0430\u0432\u0446\u0430, \u043e\u043d \u0440\u0430\u0437\u0431\u0435\u0440\u0451\u0442\u0441\u044f.",
 
             )
+
+            refund_text = render_template(
+
+                refund_template,
+
+                commands_text=commands_text,
+
+                command_labels=command_labels,
+
+            )
+
+            send_chat_message(logger, account, int(chat_id), refund_text)
 
             return None
 
@@ -2577,6 +2968,10 @@ def log_message(
             return None
 
         if account.username and sender_username and sender_username.lower() == account.username.lower():
+
+            return None
+
+        if not ai_enabled:
 
             return None
 
@@ -2600,6 +2995,16 @@ def log_message(
 
             )
 
+        ai_context_additions = build_ai_context_additions(bot_settings, commands_text)
+
+        if ai_context_additions:
+
+            ai_context = f"{ai_context}\n\n{ai_context_additions}" if ai_context else ai_context_additions
+
+        style_prompt = build_style_prompt(bot_settings)
+
+        ai_overrides = get_ai_overrides(bot_settings)
+
         ai_text = generate_ai_reply(
 
             message_text,
@@ -2610,11 +3015,21 @@ def log_message(
 
             context=ai_context,
 
+            system_prompt_extra=style_prompt,
+
+            model_override=ai_overrides.get("model"),
+
+            temperature_override=ai_overrides.get("temperature"),
+
+            max_tokens_override=ai_overrides.get("max_tokens"),
+
         )
 
         if ai_text:
 
-            if _contains_unknown_commands(ai_text):
+            ai_text = replace_command_tokens(ai_text, command_labels)
+
+            if _contains_unknown_commands(ai_text, allowed_commands):
 
                 send_chat_message(
 
@@ -2624,7 +3039,8 @@ def log_message(
 
                     int(chat_id),
 
-                    "Я не выполняю действия напрямую. Используйте команды:\n" + COMMANDS_RU,
+                    "\u042f \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u044e \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e. \u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
+                    + commands_help_text,
 
                 )
 
@@ -2690,6 +3106,8 @@ def log_message(
 
                 workspace_id,
 
+                bot_settings,
+
                 msg,
 
                 chat_name,
@@ -2731,6 +3149,8 @@ def log_message(
                 workspace_id,
 
                 msg,
+
+                bot_settings,
 
             )
 

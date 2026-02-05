@@ -13,6 +13,7 @@ from api.rentals import router as rentals_router
 from api.notifications import router as notifications_router
 from api.raise_categories import router as raise_categories_router
 from api.auto_raise import router as auto_raise_router
+from api.bot_customization import router as bot_customization_router
 from api.telegram import router as telegram_router
 from api.bonus import router as bonus_router
 from api.workspaces import router as workspaces_router
@@ -60,3 +61,4 @@ app.include_router(auto_raise_router, prefix="/api", tags=["auto-raise"])
 app.include_router(bonus_router, prefix="/api", tags=["bonus"])
 app.include_router(telegram_router, prefix="/api", tags=["telegram"])
 app.include_router(workspaces_router, prefix="/api", tags=["workspaces"])
+app.include_router(bot_customization_router, prefix="/api", tags=["bot-customization"])

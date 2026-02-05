@@ -217,6 +217,21 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const BotCustomizationIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4 7H14M4 17H20M4 12H20"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="16.5" cy="7" r="2.5" stroke="currentColor" strokeWidth="2" />
+    <circle cx="7.5" cy="12" r="2.5" stroke="currentColor" strokeWidth="2" />
+    <circle cx="13.5" cy="17" r="2.5" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);
+
 const DocumentationIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
@@ -254,10 +269,11 @@ const NAV_ITEMS: NavItem[] = [
   { id: "add", labelKey: "nav.addAccount", Icon: AddIcon },
   { id: "documentation", labelKey: "nav.documentation", Icon: DocumentationIcon },
   { id: "plugins", labelKey: "nav.plugins", Icon: PluginsIcon },
+  { id: "bot-customization", labelKey: "nav.botCustomization", Icon: BotCustomizationIcon },
   { id: "settings", labelKey: "nav.settings", Icon: SettingsIcon },
 ];
 
-const BOTTOM_NAV_IDS = new Set(["documentation", "plugins", "settings"]);
+const BOTTOM_NAV_IDS = new Set(["documentation", "plugins", "bot-customization", "settings"]);
 
 const navIdToPath: Record<string, string> = {
   "funpay-stats": "/funpay-stats",
@@ -275,6 +291,7 @@ const navIdToPath: Record<string, string> = {
   add: "/add-account",
   documentation: "/documentation",
   plugins: "/plugins",
+  "bot-customization": "/bot-customization",
   settings: "/settings",
 };
 

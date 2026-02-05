@@ -9,29 +9,28 @@ from typing import Any
 import requests
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL_ENV = "GROQ_MODEL"
+INTENT_MODEL_ENV = "AI_INTENT_MODEL"
+DEFAULT_MODEL = "llama-3.1-70b-versatile"
+DEFAULT_INTENT_MODEL = "llama-3.1-8b-instant"
 LOCAL_API_URL_ENV = "AI_API_URL"
 LOCAL_MODEL_ENV = "AI_MODEL"
 LOCAL_API_KEY_ENV = "AI_API_KEY"
 DEFAULT_PROMPT = (
-    "Вы — дружелюбный ИИ помощник поддержки FunPay. "
-    "Отвечайте кратко, вежливо и по делу. "
-    "Никогда не называйте себя FunPay. "
-    "На привет отвечайте дружелюбно и предложите помощь (например: 'Привет! Я ИИ помощник. Чем могу помочь?'). "
+    "Вы — дружелюбный и внимательный помощник поддержки FunPay. "
+    "Пишите естественно и по-человечески, без шаблонных фраз. "
+    "Не называйте себя ИИ/ботом и не говорите, что вы — FunPay. "
+    "На привет отвечайте тепло и коротко, затем мягко предложите помощь. "
+    "На небольшие личные вопросы (например, «как дела?») отвечайте кратко и дружелюбно, "
+    "а затем спросите, чем можете помочь. "
+    "Отвечайте по делу: 1-3 предложения, если не требуется инструкция. "
+    "Не упоминайте команды, если пользователь не просит действие или помощь с командами. "
+    "Если нужно действие — объясните одну подходящую команду без длинного списка. "
     "Не выдавайте логины, пароли или коды Steam Guard. "
-    "Не оформляйте аренды и возвраты — направляйте пользователя к командам. "
-    "Сначала отвечайте на сообщение пользователя, а команды упоминайте только если это действительно помогает. "
-    "Не перечисляйте все команды без запроса. Если запрос неясен — задайте короткий уточняющий вопрос.\n\n"
-    "Команды (упоминать по необходимости):\n"
-    "!акк — данные аккаунта\n"
-    "!код — код Steam Guard\n"
-    "!сток — наличие аккаунтов\n"
-    "!продлить <часы> <ID_аккаунта> — продлить аренду\n"
-    "!пауза <ID> — пауза аренды на 1 час\n"
-    "!продолжить <ID> — снять паузу раньше срока\n"
-    "!админ — вызвать продавца\n"
-    "!лпзамена <ID> — замена аккаунта (10 минут после !код)\n"
-    "!отмена <ID> — отменить аренду"
+    "Не оформляйте аренды и возвраты — направляйте пользователя к командам или !админ. "
+    "Если запрос неясен — задайте короткий уточняющий вопрос. "
+    "Контекст (если дан) — только для справки; не пересказывайте и не упоминайте прошлые темы, "
+    "если пользователь сам не поднял их, кроме краткого мягкого фоллоу-апа после смолтока."
 )
 INTENT_LABELS = (
     "stock_list",
@@ -142,11 +141,15 @@ def _build_payload(
     model: str,
     temperature: float,
     max_tokens: int,
+    system_prompt: str | None = None,
 ) -> dict[str, Any]:
-    system_prompt = os.getenv("GROQ_SYSTEM_PROMPT", DEFAULT_PROMPT)
+    system_prompt = system_prompt or os.getenv("GROQ_SYSTEM_PROMPT", DEFAULT_PROMPT)
     user_prefix = f"Покупатель: {sender or '-'}\nЧат: {chat_name or '-'}\nСообщение: "
     if context:
-        user_text = f"Context:\n{context}\n\nUser message:\n{user_text}"
+        user_text = (
+            "Контекст (только для справки, не упоминайте без запроса):\n"
+            f"{context}\n\nСообщение пользователя:\n{user_text}"
+        )
     return {
         "model": model,
         "messages": [
@@ -164,6 +167,10 @@ def generate_ai_reply(
     sender: str | None,
     chat_name: str | None,
     context: str | None = None,
+    system_prompt_extra: str | None = None,
+    model_override: str | None = None,
+    temperature_override: float | None = None,
+    max_tokens_override: int | None = None,
 ) -> str | None:
     logger = logging.getLogger("funpay.ai")
     if not user_text:
@@ -171,9 +178,18 @@ def generate_ai_reply(
     local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
     api_url = local_url or GROQ_API_URL
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
-    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL).strip() if local_url else DEFAULT_MODEL
-    temperature = float(os.getenv("GROQ_TEMPERATURE", "0.4"))
-    max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "300"))
+    if local_url:
+        model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL).strip()
+    else:
+        model = os.getenv(GROQ_MODEL_ENV, DEFAULT_MODEL).strip()
+    temperature = float(os.getenv("GROQ_TEMPERATURE", "0.7"))
+    max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "450"))
+    if model_override:
+        model = model_override
+    if temperature_override is not None:
+        temperature = float(temperature_override)
+    if max_tokens_override is not None:
+        max_tokens = int(max_tokens_override)
     if not api_key and not local_url:
         logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
         return None
@@ -183,6 +199,9 @@ def generate_ai_reply(
         return RUDE_RESPONSE
     if _is_gibberish(user_text):
         return None
+    system_prompt = os.getenv("GROQ_SYSTEM_PROMPT", DEFAULT_PROMPT)
+    if system_prompt_extra:
+        system_prompt = f"{system_prompt}\n\n{system_prompt_extra.strip()}"
     payload = _build_payload(
         user_text,
         sender=sender,
@@ -191,6 +210,7 @@ def generate_ai_reply(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
+        system_prompt=system_prompt,
     )
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -250,7 +270,10 @@ def classify_intent(
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
     if not api_key and not local_url:
         return None
-    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL).strip() if local_url else DEFAULT_MODEL
+    if local_url:
+        model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_INTENT_MODEL).strip()
+    else:
+        model = os.getenv(INTENT_MODEL_ENV, DEFAULT_INTENT_MODEL).strip()
     payload = {
         "model": model,
         "messages": [

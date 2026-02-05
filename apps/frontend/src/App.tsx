@@ -19,6 +19,7 @@ import ChatsPage from "./components/chats/ChatsPage";
 import LowPriorityAccountsPage from "./components/lowPriority/LowPriorityAccountsPage";
 import NotificationsPage from "./components/notifications/NotificationsPage";
 import PluginsPage from "./components/plugins/PluginsPage";
+import BotCustomizationPage from "./components/botCustomization/BotCustomizationPage";
 import { PreferencesProvider } from "./context/PreferencesContext";
 import { useI18n } from "./i18n/useI18n";
 
@@ -185,6 +186,7 @@ const AppRoutes: React.FC = () => {
           />
           <Route path="notifications" element={<NotificationsPage onToast={showToast} />} />
           <Route path="plugins" element={<PluginsPage onToast={showToast} />} />
+          <Route path="bot-customization" element={<BotCustomizationPage onToast={showToast} />} />
           <Route path="settings" element={<SettingsPage onToast={showToast} />} />
         </Route>
       </Routes>

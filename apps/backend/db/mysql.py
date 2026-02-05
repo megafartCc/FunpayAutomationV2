@@ -520,6 +520,19 @@ def ensure_schema() -> None:
             )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS bot_customization (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                settings_json LONGTEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_bot_customization (user_id, workspace_id),
+                INDEX idx_bot_customization_user_ws (user_id, workspace_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS auto_raise_state (
                 user_id BIGINT PRIMARY KEY,
                 next_run_at TIMESTAMP NULL,
