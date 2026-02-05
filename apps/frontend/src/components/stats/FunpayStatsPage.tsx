@@ -818,9 +818,12 @@ const FunpayStatsPage: React.FC = () => {
               {tr("Top rented accounts by orders.", "Топ аккаунтов по количеству аренд.")}
             </p>
           </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {tr("{count} accounts", "{count} аккаунтов", { count: accountPopularity.length })}
+          </span>
         </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[2fr,1fr]">
-          <div className="h-[260px] w-full">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[3fr,2fr] items-stretch">
+          <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={accountPopularity} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -838,14 +841,27 @@ const FunpayStatsPage: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="space-y-3">
+          <div className="grid h-full content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
             {accountPopularity.map((account) => (
               <div key={account.name} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
                 <p className="text-sm font-semibold text-neutral-900">{account.name}</p>
-                <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
-                  <span>{tr("Orders", "Заказы")}: {account.orders}</span>
-                  <span>{tr("Hours", "Часы")}: {account.hours ? formatHoursLabel(account.hours) : "-"}</span>
-                  <span>{tr("Revenue", "Выручка")}: {account.revenue ? formatCurrency(account.revenue) : "-"}</span>
+                <div className="mt-2 grid gap-1 text-xs text-neutral-500">
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Orders", "Заказы")}</span>
+                    <span className="font-semibold text-neutral-700">{account.orders}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Hours", "Часы")}</span>
+                    <span className="font-semibold text-neutral-700">
+                      {account.hours ? formatHoursLabel(account.hours) : "-"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Revenue", "Выручка")}</span>
+                    <span className="font-semibold text-neutral-700">
+                      {account.revenue ? formatCurrency(account.revenue) : "-"}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
