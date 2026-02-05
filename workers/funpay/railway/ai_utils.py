@@ -171,11 +171,54 @@ def generate_ai_reply(
     local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
     api_url = local_url or GROQ_API_URL
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
-    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL) if local_url else DEFAULT_MODEL
+    model = os.getenv(LOCAL_MODEL_ENV, DEFAULT_MODEL).strip() if local_url else DEFAULT_MODEL
     temperature = float(os.getenv("GROQ_TEMPERATURE", "0.4"))
     max_tokens = int(os.getenv("GROQ_MAX_TOKENS", "300"))
     if not api_key and not local_url:
         logger.warning("GROQ_API_KEY is missing; skipping AI reply.")
+        return None
+    if _is_code_like(user_text):
+        return CLARIFY_RESPONSE
+    if _is_rude(user_text):
+        return RUDE_RESPONSE
+    if _is_gibberish(user_text):
+        return None
+    payload = _build_payload(
+        user_text,
+        sender=sender,
+        chat_name=chat_name,
+        context=context,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=20,
+        )
+        if response.status_code >= 400:
+            logger.warning("Groq API error %s: %s", response.status_code, response.text[:200])
+            return None
+        data = response.json()
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        if not content:
+            logger.warning("Groq API returned empty content.")
+        if content and _contains_sensitive(content):
+            return SENSITIVE_RESPONSE
+        return content or None
+    except Exception as exc:
+        logger.warning("Groq API request failed: %s", exc)
         return None
 
 
@@ -255,49 +298,6 @@ def classify_intent(
         return {"intent": intent, "confidence": confidence, "reason": reason}
     except Exception as exc:
         logger.warning("Intent classification failed: %s", exc)
-        return None
-    if _is_code_like(user_text):
-        return CLARIFY_RESPONSE
-    if _is_rude(user_text):
-        return RUDE_RESPONSE
-    if _is_gibberish(user_text):
-        return None
-    payload = _build_payload(
-        user_text,
-        sender=sender,
-        chat_name=chat_name,
-        context=context,
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    try:
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json=payload,
-            timeout=20,
-        )
-        if response.status_code >= 400:
-            logger.warning("Groq API error %s: %s", response.status_code, response.text[:200])
-            return None
-        data = response.json()
-        content = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-            .strip()
-        )
-        if not content:
-            logger.warning("Groq API returned empty content.")
-        if content and _contains_sensitive(content):
-            return SENSITIVE_RESPONSE
-        return content or None
-    except Exception as exc:
-        logger.warning("Groq API request failed: %s", exc)
         return None
 
 
