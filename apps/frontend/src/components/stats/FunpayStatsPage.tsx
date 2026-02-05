@@ -1,19 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Line,
-  LineChart,
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
-import { api, ActiveRentalItem, OrderHistoryItem } from "../../services/api";
+import { api, ActiveRentalItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 type DeltaTone = "up" | "down";
@@ -123,6 +111,11 @@ const FunpayStatsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [marketHistory, setMarketHistory] = useState<PriceDumperHistoryItem[]>([]);
+  const [marketHistoryLoading, setMarketHistoryLoading] = useState(false);
+  const [marketHistoryError, setMarketHistoryError] = useState<string | null>(null);
+  const [marketHistoryUrl, setMarketHistoryUrl] = useState<string | null>(null);
+  const [marketHistoryRefreshed, setMarketHistoryRefreshed] = useState(false);
 
   const workspaceId = selectedId === "all" ? undefined : selectedId;
 
@@ -156,6 +149,43 @@ const FunpayStatsPage: React.FC = () => {
     }, 30000);
     return () => window.clearInterval(interval);
   }, [loadStats]);
+
+  const marketHistoryDays = useMemo(() => {
+    if (range === "7d") return 7;
+    if (range === "90d") return 90;
+    if (range === "all") return 365;
+    return 30;
+  }, [range]);
+
+  const loadMarketHistory = useCallback(async () => {
+    setMarketHistoryLoading(true);
+    setMarketHistoryError(null);
+    try {
+      const res = await api.priceDumperHistory(null, marketHistoryDays);
+      setMarketHistory(Array.isArray(res.items) ? res.items : []);
+      setMarketHistoryUrl(res.url || null);
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load market history.", "Не удалось загрузить историю рынка.");
+      setMarketHistoryError(message);
+    } finally {
+      setMarketHistoryLoading(false);
+    }
+  }, [marketHistoryDays, tr]);
+
+  useEffect(() => {
+    void loadMarketHistory();
+  }, [loadMarketHistory]);
+
+  useEffect(() => {
+    if (marketHistoryRefreshed) return;
+    setMarketHistoryRefreshed(true);
+    api
+      .refreshPriceDumper()
+      .then(() => loadMarketHistory())
+      .catch(() => loadMarketHistory());
+  }, [marketHistoryRefreshed, loadMarketHistory]);
 
   const rangeLabel = useMemo(() => {
     switch (range) {
@@ -455,6 +485,35 @@ const FunpayStatsPage: React.FC = () => {
     },
   ];
 
+  const marketCurrency = useMemo(() => {
+    const item = marketHistory.find((entry) => entry.currency);
+    return item?.currency || "₽";
+  }, [marketHistory]);
+
+  const marketHistoryChart = useMemo(() => {
+    const items = [...marketHistory];
+    items.sort((a, b) => {
+      const ta = Date.parse(String(a.created_at || ""));
+      const tb = Date.parse(String(b.created_at || ""));
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return ta - tb;
+    });
+    return items.map((item, index) => {
+      const ts = Date.parse(String(item.created_at || ""));
+      const label = Number.isNaN(ts)
+        ? String(item.created_at || index + 1)
+        : new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      return {
+        label,
+        avg: typeof item.avg_price === "number" ? item.avg_price : null,
+        median: typeof item.median_price === "number" ? item.median_price : null,
+        recommended: typeof item.recommended_price === "number" ? item.recommended_price : null,
+      };
+    });
+  }, [marketHistory]);
+
   const chartData = useMemo(
     () =>
       dailyOverview.map((item) => ({
@@ -646,6 +705,86 @@ const FunpayStatsPage: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Market price history", "История рыночных цен")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr(
+                "Average, median, and recommended price snapshots (auto-updated every 24h).",
+                "Средняя, медианная и рекомендованная цена (обновление каждые 24 часа).",
+              )}
+            </p>
+            {marketHistoryUrl ? <p className="mt-1 text-xs text-neutral-400">{marketHistoryUrl}</p> : null}
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {rangeLabel}
+          </span>
+        </div>
+        {marketHistoryError ? (
+          <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            {marketHistoryError}
+          </div>
+        ) : null}
+        {marketHistoryLoading ? (
+          <div className="mt-6 text-sm text-neutral-500">{tr("Loading...", "Загрузка...")}</div>
+        ) : marketHistoryChart.length ? (
+          <div className="mt-6 h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={marketHistoryChart}>
+                <defs>
+                  <linearGradient id="market-price-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="label" tick={{ fill: "#6b7280", fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis
+                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                  tickFormatter={(value) => Number(value).toLocaleString("ru-RU")}
+                />
+                <Tooltip
+                  formatter={(value: number) => [`${value.toLocaleString("ru-RU")} ${marketCurrency}`, tr("Price", "Цена")]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="avg"
+                  stroke="#22c55e"
+                  fill="url(#market-price-fill)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="median"
+                  stroke="#0f172a"
+                  fill="none"
+                  fillOpacity={0}
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="recommended"
+                  stroke="#f97316"
+                  fill="none"
+                  fillOpacity={0}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-500">
+            {tr("No market history yet.", "История рынка пока пуста.")}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
