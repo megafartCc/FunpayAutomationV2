@@ -166,15 +166,90 @@ def _suggest_price(prices: list[float]) -> tuple[float | None, float | None, flo
     sorted_prices = sorted(prices)
     lowest = sorted_prices[0]
     second = sorted_prices[1] if len(sorted_prices) > 1 else None
-    if second is not None and second > lowest:
-        gap = second - lowest
-        delta = max(gap * 0.15, 0.01)
-        suggested = min(lowest + delta, second - 0.01)
-        if suggested <= lowest:
-            suggested = lowest + 0.01
+    tiers = sorted(set(sorted_prices))
+    try:
+        target_tier = int(os.getenv("PRICE_DUMPER_TARGET_TIER", "3"))
+    except Exception:
+        target_tier = 3
+    target_tier = max(1, min(target_tier, len(tiers)))
+
+    try:
+        blend = float(os.getenv("PRICE_DUMPER_MEDIAN_BLEND", "0.35"))
+    except Exception:
+        blend = 0.35
+    blend = max(0.0, min(blend, 1.0))
+
+    try:
+        step = float(os.getenv("PRICE_DUMPER_STEP", "0.01"))
+    except Exception:
+        step = 0.01
+    if step <= 0:
+        step = 0.01
+
+    base = tiers[target_tier - 1]
+    anchor = base + step
+
+    mid = len(sorted_prices) // 2
+    if len(sorted_prices) % 2 == 0:
+        median = (sorted_prices[mid - 1] + sorted_prices[mid]) / 2
     else:
-        suggested = lowest * 0.99
-    return suggested, lowest, second
+        median = sorted_prices[mid]
+
+    if median and median > anchor and blend > 0:
+        suggested = anchor + (median - anchor) * blend
+    else:
+        suggested = anchor
+
+    if suggested < anchor:
+        suggested = anchor
+
+    return round(suggested + 1e-9, 2), lowest, second
+
+
+def _format_price(value: float | None, currency: str | None) -> str:
+    if value is None:
+        return "-"
+    unit = currency or "RUB"
+    return f"{value:.2f} {unit}"
+
+
+def _build_analysis_text(
+    prices: list[float],
+    *,
+    currency: str | None,
+    suggested: float | None,
+    lowest: float | None,
+    second: float | None,
+) -> str:
+    if not prices:
+        return "No prices to analyze."
+    sorted_prices = sorted(prices)
+    total = len(sorted_prices)
+    avg = sum(sorted_prices) / total if total else 0.0
+    mid = total // 2
+    if total % 2 == 0:
+        median = (sorted_prices[mid - 1] + sorted_prices[mid]) / 2
+    else:
+        median = sorted_prices[mid]
+    tiers = len(set(sorted_prices))
+    unit = currency or "RUB"
+    return "\n".join(
+        [
+            "Competitor price analysis:",
+            "",
+            f"- Prices in 0-50: {total}",
+            f"- Average price: {avg:.2f} {unit}",
+            f"- Median price: {median:.2f} {unit}",
+            f"- Lowest price: {lowest:.2f} {unit}" if lowest is not None else "- Lowest price: -",
+            f"- Second price: {second:.2f} {unit}" if second is not None else "- Second price: -",
+            f"- Price tiers: {tiers}",
+            "",
+            "Price recommendation:",
+            "",
+            f"- Suggested price: { _format_price(suggested, currency) } (after cheapest tiers, no lowballing).",
+            "Summary: Slightly above the cheapest cluster and closer to the market median.",
+        ]
+    )
 
 
 def _format_prices(prices: list[float], limit: int = 500) -> str:
@@ -309,13 +384,24 @@ def analyze_price_dumper(
     if not filtered_prices:
         raise HTTPException(status_code=400, detail="No prices in the 0-50 range for analysis.")
     recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
-    analysis, model = _analyze_prices_with_groq(
-        prices=sorted(filtered_prices),
-        currency=payload.currency,
-        recommended_price=recommended_price,
-        lowest_price=lowest_price,
-        second_price=second_price,
-    )
+    use_groq = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower() in {"1", "true", "yes", "on"}
+    if use_groq:
+        analysis, model = _analyze_prices_with_groq(
+            prices=sorted(filtered_prices),
+            currency=payload.currency,
+            recommended_price=recommended_price,
+            lowest_price=lowest_price,
+            second_price=second_price,
+        )
+    else:
+        analysis = _build_analysis_text(
+            sorted(filtered_prices),
+            currency=payload.currency,
+            suggested=recommended_price,
+            lowest=lowest_price,
+            second=second_price,
+        )
+        model = None
     return PriceDumpAnalysisResponse(
         recommended_price=recommended_price,
         currency=payload.currency,
