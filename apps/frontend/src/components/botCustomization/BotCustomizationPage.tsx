@@ -218,46 +218,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                     />
                   </div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                      {tr("Temperature", "Температура")}
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={settings.ai?.temperature ?? 0.7}
-                      onChange={(event) =>
-                        updateSettings((current) => ({
-                          ...current,
-                          ai: { ...current.ai, temperature: Number(event.target.value) },
-                        }))
-                      }
-                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                      {tr("Max tokens", "Макс. токенов")}
-                    </label>
-                    <input
-                      type="number"
-                      min={120}
-                      max={1200}
-                      step={10}
-                      value={settings.ai?.max_tokens ?? 450}
-                      onChange={(event) =>
-                        updateSettings((current) => ({
-                          ...current,
-                          ai: { ...current.ai, max_tokens: Number(event.target.value) },
-                        }))
-                      }
-                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
-                    />
-                  </div>
-                </div>
                 <div className="space-y-2">
                   <label className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                     {tr("Persona / brand voice", "Персона / стиль")}
