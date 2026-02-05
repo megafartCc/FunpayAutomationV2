@@ -177,11 +177,12 @@ def _suggest_price(prices: list[float]) -> tuple[float | None, float | None, flo
     return suggested, lowest, second
 
 
-def _format_prices(prices: list[float]) -> str:
-    return ", ".join(f"{price:.2f}" for price in prices)
+def _format_prices(prices: list[float], limit: int = 500) -> str:
+    limited = prices[:limit]
+    return ", ".join(f"{price:.2f}" for price in limited)
 
 
-def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float = 150.0) -> list[float]:
+def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float = 50.0) -> list[float]:
     return [price for price in prices if min_price <= price <= max_price]
 
 
@@ -197,14 +198,16 @@ def _analyze_prices_with_groq(
         raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured.")
     model = os.getenv("GROQ_MODEL", _DEFAULT_GROQ_MODEL)
     filtered_prices = _filter_prices(prices)
+    sorted_prices = sorted(filtered_prices)
+    list_limit = int(os.getenv("GROQ_PRICE_LIST_LIMIT", "500"))
     prompt = (
         "Ты аналитик рынка FunPay. На основе цен конкурентов дай краткий анализ и рекомендацию цены,\n"
         "чтобы быть почти первым в списке (рядом с самым дешевым предложением).\n"
         "Сформулируй ответ кратко на русском: 2-4 пункта и короткая итоговая строка.\n"
         "Данные:\n"
         f"- Всего цен: {len(prices)}\n"
-        f"- Цены в диапазоне 0-150: {len(filtered_prices)}\n"
-        f"- Список цен (0-150): { _format_prices(filtered_prices) }\n"
+        f"- Цены в диапазоне 0-50: {len(filtered_prices)}\n"
+        f"- Список цен (0-50, максимум {list_limit} значений): { _format_prices(sorted_prices, list_limit) }\n"
         f"- Валюта: {currency or 'не указана'}\n"
         f"- Минимальная цена: {lowest_price}\n"
         f"- Вторая цена: {second_price}\n"
@@ -213,7 +216,7 @@ def _analyze_prices_with_groq(
     payload = {
         "model": model,
         "temperature": 0.2,
-        "max_tokens": 350,
+        "max_tokens": 250,
         "top_p": 0.9,
         "messages": [
             {"role": "system", "content": "Ты помогаешь продавцу подобрать конкурентную цену."},
@@ -304,7 +307,7 @@ def analyze_price_dumper(
         raise HTTPException(status_code=400, detail="No prices provided for analysis.")
     filtered_prices = _filter_prices(prices)
     if not filtered_prices:
-        raise HTTPException(status_code=400, detail="No prices in the 0-150 range for analysis.")
+        raise HTTPException(status_code=400, detail="No prices in the 0-50 range for analysis.")
     recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
     analysis, model = _analyze_prices_with_groq(
         prices=sorted(filtered_prices),
