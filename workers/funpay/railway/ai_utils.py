@@ -90,6 +90,26 @@ _SENSITIVE_KEYWORDS = (
     "password",
     "login",
 )
+_PRICE_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:₽|руб\.?|рублей|rub)\b", re.IGNORECASE)
+_PRICE_ANALYTICS_KEYWORDS = (
+    "ai аналитика",
+    "аналитика цены",
+    "аналитика цен",
+    "анализ цен",
+    "анализ цены",
+    "price analysis",
+    "price analytics",
+    "pricing analysis",
+)
+_PRICE_SKIP_HINTS = (
+    "рекоменд",
+    "миним",
+    "вторая",
+    "всего",
+    "средн",
+    "анализ",
+    "итог",
+)
 
 
 def _is_code_like(text: str) -> bool:
@@ -130,6 +150,74 @@ def _contains_sensitive(text: str) -> bool:
     if "login:" in lowered or "password:" in lowered:
         return True
     return False
+
+
+def _is_price_analytics_request(text: str) -> bool:
+    lowered = (text or "").lower()
+    if not lowered:
+        return False
+    if any(keyword in lowered for keyword in _PRICE_ANALYTICS_KEYWORDS):
+        return True
+    return False
+
+
+def _format_rub_price(value: float) -> str:
+    rounded = round(float(value) + 1e-9, 2)
+    text = f"{rounded:.2f}".replace(".", ",")
+    text = text.rstrip("0").rstrip(",")
+    return f"{text} ₽"
+
+
+def _extract_prices(text: str) -> list[float]:
+    prices: list[float] = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        lowered = line.lower()
+        if any(hint in lowered for hint in _PRICE_SKIP_HINTS):
+            continue
+        for match in _PRICE_RE.finditer(line):
+            raw = match.group(1)
+            try:
+                value = float(raw.replace(",", "."))
+            except Exception:
+                continue
+            prices.append(value)
+    return prices
+
+
+def _recommend_price(prices: list[float]) -> float | None:
+    if not prices:
+        return None
+    sorted_prices = sorted(prices)
+    avg = sum(sorted_prices) / len(sorted_prices)
+    if len(sorted_prices) == 1:
+        return round(sorted_prices[0] + 1e-9, 2)
+    second = sorted_prices[1]
+    step = 0.01
+    target = min(avg, second - step)
+    if target < sorted_prices[0]:
+        target = sorted_prices[0]
+    if target < 0:
+        target = sorted_prices[0]
+    return round(target + 1e-9, 2)
+
+
+def _build_price_analytics_reply(text: str) -> str | None:
+    if not _is_price_analytics_request(text):
+        return None
+    prices = _extract_prices(text)
+    if not prices:
+        return None
+    filtered = [price for price in prices if 0 <= price <= 50]
+    if not filtered:
+        return None
+    lines = [_format_rub_price(price) for price in filtered]
+    recommended = _recommend_price(filtered)
+    if recommended is None:
+        return "\n".join(lines)
+    lines.extend(["", _format_rub_price(recommended)])
+    return "\n".join(lines)
 
 
 def _build_payload(
@@ -175,6 +263,9 @@ def generate_ai_reply(
     logger = logging.getLogger("funpay.ai")
     if not user_text:
         return None
+    analytics_reply = _build_price_analytics_reply(user_text)
+    if analytics_reply:
+        return analytics_reply
     local_url = os.getenv(LOCAL_API_URL_ENV, "").strip()
     api_url = local_url or GROQ_API_URL
     api_key = os.getenv(LOCAL_API_KEY_ENV if local_url else "GROQ_API_KEY", "").strip()
