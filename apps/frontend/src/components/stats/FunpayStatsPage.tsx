@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Line,
   LineChart,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -91,6 +95,20 @@ type BuyerStat = {
   name: string;
   orders: number;
   avgHours: number;
+};
+
+type RevenuePoint = {
+  key: string;
+  label: string;
+  revenue: number;
+  orders: number;
+};
+
+type AccountStat = {
+  name: string;
+  orders: number;
+  revenue: number;
+  hours: number;
 };
 
 const formatHoursLabel = (hours: number) => `${hours.toFixed(1)}h`;
@@ -283,6 +301,83 @@ const FunpayStatsPage: React.FC = () => {
     }
     return results;
   }, [ordersInRange, rangeCutoff]);
+
+  const dailyRevenue = useMemo<RevenuePoint[]>(() => {
+    const map = new Map<string, { revenue: number; orders: number }>();
+    ordersInRange.forEach((order) => {
+      if (!order.created_at) return;
+      const dt = new Date(order.created_at);
+      if (Number.isNaN(dt.getTime())) return;
+      const key = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).toISOString().slice(0, 10);
+      const entry = map.get(key) ?? { revenue: 0, orders: 0 };
+      const value = typeof order.price === "number" ? order.price : order.amount ?? 0;
+      entry.revenue += value;
+      entry.orders += 1;
+      map.set(key, entry);
+    });
+    return dailyOverview.map((item) => {
+      const stats = map.get(item.key);
+      return {
+        key: item.key,
+        label: item.label,
+        revenue: stats?.revenue ?? 0,
+        orders: stats?.orders ?? 0,
+      };
+    });
+  }, [dailyOverview, ordersInRange]);
+
+  const weeklyRevenue = useMemo<RevenuePoint[]>(() => {
+    const map = new Map<string, { revenue: number; orders: number; label: string }>();
+    ordersInRange.forEach((order) => {
+      if (!order.created_at) return;
+      const dt = new Date(order.created_at);
+      if (Number.isNaN(dt.getTime())) return;
+      const day = dt.getDay() === 0 ? 6 : dt.getDay() - 1;
+      const monday = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - day);
+      const key = monday.toISOString().slice(0, 10);
+      const entry = map.get(key) ?? {
+        revenue: 0,
+        orders: 0,
+        label: monday.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      };
+      const value = typeof order.price === "number" ? order.price : order.amount ?? 0;
+      entry.revenue += value;
+      entry.orders += 1;
+      map.set(key, entry);
+    });
+    return Array.from(map.entries())
+      .map(([key, stats]) => ({
+        key,
+        label: stats.label,
+        revenue: stats.revenue,
+        orders: stats.orders,
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }, [ordersInRange]);
+
+  const accountPopularity = useMemo<AccountStat[]>(() => {
+    const map = new Map<string, { orders: number; revenue: number; minutes: number }>();
+    ordersInRange.forEach((order) => {
+      const name =
+        order.account_name ||
+        order.account_login ||
+        (order.account_id ? `ID ${order.account_id}` : tr("Unknown", "Неизвестно"));
+      const entry = map.get(name) ?? { orders: 0, revenue: 0, minutes: 0 };
+      entry.orders += 1;
+      entry.revenue += typeof order.price === "number" ? order.price : order.amount ?? 0;
+      entry.minutes += order.rental_minutes ?? 0;
+      map.set(name, entry);
+    });
+    return Array.from(map.entries())
+      .map(([name, stats]) => ({
+        name,
+        orders: stats.orders,
+        revenue: stats.revenue,
+        hours: stats.minutes / 60,
+      }))
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 6);
+  }, [ordersInRange, tr]);
 
   const totalRevenue = useMemo(() => {
     return ordersInRange.reduce((sum, order) => {
@@ -640,6 +735,141 @@ const FunpayStatsPage: React.FC = () => {
                   : tr("No active rentals right now.", "Сейчас нет активных аренд.")}
               </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">
+                {tr("Revenue flow", "Динамика выручки")}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                {tr("Daily earnings and order volume.", "Ежедневная выручка и объем заказов.")}
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              {totalRevenue ? formatCurrency(totalRevenue) : tr("No revenue", "Нет выручки")}
+            </span>
+          </div>
+          <div className="mt-6 h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyRevenue}>
+                <defs>
+                  <linearGradient id="revenue-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="key" tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <Tooltip
+                  formatter={(value: number) => [formatCurrency(value), tr("Revenue", "Выручка")]}
+                  labelFormatter={(value) => value}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#10b981"
+                  fill="url(#revenue-fill)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">
+                {tr("Weekly revenue", "Выручка по неделям")}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                {tr("Aggregated weekly totals.", "Суммарно по неделям.")}
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyRevenue}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="label" tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <Tooltip
+                  formatter={(value: number) => [formatCurrency(value), tr("Revenue", "Выручка")]}
+                />
+                <Bar dataKey="revenue" fill="#6366f1" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Account popularity", "Популярные аккаунты")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr("Top rented accounts by orders.", "Топ аккаунтов по количеству аренд.")}
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {tr("{count} accounts", "{count} аккаунтов", { count: accountPopularity.length })}
+          </span>
+        </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-[3fr,2fr] items-stretch">
+          <div className="h-[320px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={accountPopularity} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis type="number" tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={140}
+                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                />
+                <Tooltip
+                  formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
+                />
+                <Bar dataKey="orders" fill="#0ea5e9" radius={[0, 8, 8, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid h-full content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {accountPopularity.map((account) => (
+              <div key={account.name} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+                <p className="text-sm font-semibold text-neutral-900">{account.name}</p>
+                <div className="mt-2 grid gap-1 text-xs text-neutral-500">
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Orders", "Заказы")}</span>
+                    <span className="font-semibold text-neutral-700">{account.orders}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Hours", "Часы")}</span>
+                    <span className="font-semibold text-neutral-700">
+                      {account.hours ? formatHoursLabel(account.hours) : "-"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{tr("Revenue", "Выручка")}</span>
+                    <span className="font-semibold text-neutral-700">
+                      {account.revenue ? formatCurrency(account.revenue) : "-"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!accountPopularity.length && (
+              <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-4 text-sm text-neutral-500">
+                {tr("No account data for the selected range.", "Нет данных по аккаунтам за выбранный период.")}
+              </div>
+            )}
           </div>
         </div>
       </div>
