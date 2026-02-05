@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 
 import { api, ActiveRentalItem, AccountItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+import BuyerChatPanel from "../chats/BuyerChatPanel";
 
 type RentalRow = {
   id: number;
@@ -204,6 +205,7 @@ const resolveWorkspaceName = (
 
 const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const { selectedId: selectedWorkspaceId, workspaces } = useWorkspace();
+  const workspaceId = selectedWorkspaceId === "all" ? null : (selectedWorkspaceId as number | null);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -218,6 +220,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [rentalExtendMinutes, setRentalExtendMinutes] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
+  const [chatBuyer, setChatBuyer] = useState<string | null>(null);
 
   const accountByKey = useMemo(
     () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
@@ -681,7 +684,20 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>{presenceLabel}</span>
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-neutral-600">
-                    <span>Покупатель: {selectedRental.buyer || "-"}</span>
+                    <span>
+                      Покупатель:{" "}
+                      {selectedRental.buyer ? (
+                        <button
+                          type="button"
+                          className="font-semibold text-neutral-800 hover:text-neutral-900"
+                          onClick={() => setChatBuyer(selectedRental.buyer)}
+                        >
+                          {selectedRental.buyer}
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </span>
                   <span>
                     Осталось:{" "}
                     {selectedRental
@@ -843,7 +859,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                         {workspaceBadge}
                       </span>
                     </div>
-                    <span className="min-w-0 truncate text-neutral-700">{row.buyer}</span>
+                    <button
+                      type="button"
+                      className="min-w-0 truncate text-left text-neutral-700 hover:text-neutral-900"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (row.buyer) {
+                          setChatBuyer(row.buyer);
+                        }
+                      }}
+                    >
+                      {row.buyer || "-"}
+                    </button>
                     <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                     <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
                       {getCountdownLabel(account, row.timeLeft, now)}
@@ -880,6 +907,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
         {renderAccountActionsPanel("Действия аккаунта")}
         {renderRentalActionsPanel()}
       </div>
+      <BuyerChatPanel open={!!chatBuyer} buyer={chatBuyer} workspaceId={workspaceId} onClose={() => setChatBuyer(null)} />
     </div>
   );
 };
