@@ -369,19 +369,21 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                     )}
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                        <div className="text-xs font-semibold text-neutral-500">Цены</div>
+                        <div className="text-xs font-semibold text-neutral-500">Лоты аренды</div>
                         <div className="mt-2 space-y-1 text-sm text-neutral-900">
-                          {scrapeResult.prices.length ? (
-                            scrapeResult.prices.map((price, idx) => (
-                              <div key={`${price}-${idx}`} className="flex items-center justify-between">
-                                <span>{scrapeResult.labels?.[idx] || `Позиция ${idx + 1}`}</span>
-                                <span className="font-semibold">
-                                  {price.toLocaleString("ru-RU")} {scrapeResult.currency || "₽"}
+                          {scrapeResult.items?.length ? (
+                            scrapeResult.items.map((item, idx) => (
+                              <div key={`${item.title}-${idx}`} className="flex items-center justify-between gap-3">
+                                <span className="min-w-0 truncate">
+                                  {item.title || scrapeResult.labels?.[idx] || `Лот ${idx + 1}`}
+                                </span>
+                                <span className="whitespace-nowrap font-semibold">
+                                  {item.price.toLocaleString("ru-RU")} {item.currency || scrapeResult.currency || "₽"}
                                 </span>
                               </div>
                             ))
                           ) : (
-                            <div className="text-xs text-neutral-400">Цены не найдены.</div>
+                            <div className="text-xs text-neutral-400">Лоты аренды не найдены.</div>
                           )}
                         </div>
                       </div>

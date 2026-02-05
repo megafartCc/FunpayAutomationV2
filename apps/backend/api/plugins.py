@@ -18,6 +18,16 @@ _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 
 class PriceDumpRequest(BaseModel):
     url: HttpUrl = Field(..., description="FunPay lot URL")
+    rent_only: bool = Field(True, description="Only include rent offers")
+
+
+class PriceDumpItem(BaseModel):
+    title: str
+    price: float
+    currency: str | None = None
+    url: str | None = None
+    raw_price: str | None = None
+    rent: bool = False
 
 
 class PriceDumpResponse(BaseModel):
@@ -28,6 +38,7 @@ class PriceDumpResponse(BaseModel):
     currency: str | None = None
     price_texts: list[str]
     labels: list[str]
+    items: list[PriceDumpItem]
 
 def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list[str], list[str]]:
     prices: list[float] = []
@@ -80,6 +91,55 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
     return None
 
 
+def _is_rent_offer(text: str) -> bool:
+    return "аренда" in text.lower()
+
+
+def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
+    selectors = [
+        ".tc-item",
+        ".lot-item",
+        ".offer-list .offer",
+        ".lot-card",
+        ".tc-lot",
+        ".lot",
+        ".tc",
+        ".tc-item-list .tc-item",
+        ".offer-item",
+    ]
+    items: list[PriceDumpItem] = []
+    for selector in selectors:
+        for node in soup.select(selector):
+            text = node.get_text(" ", strip=True)
+            if rent_only and not _is_rent_offer(text):
+                continue
+            title_node = node.select_one(
+                ".tc-item-title, .lot-title, .offer-title, .tc-lot__title, .lot-name, .tc-title, a"
+            )
+            title = title_node.get_text(" ", strip=True) if title_node else text[:120]
+            if rent_only and not _is_rent_offer(title):
+                continue
+            price_node = node.select_one(".price, .tc-price, .lot-price, .payment-price, .lot-view-price, .tc-lot__price")
+            price_text = price_node.get_text(" ", strip=True) if price_node else ""
+            prices, currency, _, _ = _extract_prices([price_text])
+            if not prices:
+                continue
+            url = None
+            if title_node and title_node.name == "a":
+                url = title_node.get("href")
+            items.append(
+                PriceDumpItem(
+                    title=title,
+                    price=prices[0],
+                    currency=currency,
+                    url=url,
+                    raw_price=price_text or None,
+                    rent=_is_rent_offer(text),
+                )
+            )
+    return items
+
+
 @router.post("/plugins/price-dumper/scrape", response_model=PriceDumpResponse)
 def scrape_price_dumper(
     payload: PriceDumpRequest,
@@ -110,6 +170,7 @@ def scrape_price_dumper(
     )
     price_texts = [node.get_text(" ", strip=True) for node in price_nodes]
     prices, currency, extracted_texts, labels = _extract_prices(price_texts)
+    items = _extract_items(soup, payload.rent_only)
 
     return PriceDumpResponse(
         url=str(payload.url),
@@ -119,4 +180,5 @@ def scrape_price_dumper(
         currency=currency,
         price_texts=extracted_texts,
         labels=labels,
+        items=items,
     )

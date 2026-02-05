@@ -306,6 +306,14 @@ export type PriceDumperResponse = {
   currency?: string | null;
   price_texts: string[];
   labels: string[];
+  items: {
+    title: string;
+    price: number;
+    currency?: string | null;
+    url?: string | null;
+    raw_price?: string | null;
+    rent?: boolean;
+  }[];
 };
 
 export type TelegramStatus = {
@@ -629,6 +637,6 @@ export const api = {
   scrapePriceDumper: (url: string) =>
     request<PriceDumperResponse>("/plugins/price-dumper/scrape", {
       method: "POST",
-      body: { url },
+      body: { url, rent_only: true },
     }),
 };
