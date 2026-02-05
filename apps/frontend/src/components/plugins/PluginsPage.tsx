@@ -367,39 +367,23 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                     ) : (
                       <p className="mt-3 text-xs text-neutral-400">Описание не найдено.</p>
                     )}
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                        <div className="text-xs font-semibold text-neutral-500">Лоты аренды</div>
-                        <div className="mt-2 space-y-1 text-sm text-neutral-900">
-                          {scrapeResult.items?.length ? (
-                            scrapeResult.items.map((item, idx) => (
-                              <div key={`${item.title}-${idx}`} className="flex items-center justify-between gap-3">
-                                <span className="min-w-0 truncate">
-                                  {item.title || scrapeResult.labels?.[idx] || `Лот ${idx + 1}`}
-                                </span>
-                                <span className="whitespace-nowrap font-semibold">
-                                  {item.price.toLocaleString("ru-RU")} {item.currency || scrapeResult.currency || "₽"}
-                                </span>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-xs text-neutral-400">Лоты аренды не найдены.</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                        <div className="text-xs font-semibold text-neutral-500">Сырые значения</div>
-                        <div className="mt-2 space-y-1 text-xs text-neutral-600">
-                          {scrapeResult.price_texts.length ? (
-                            scrapeResult.price_texts.map((text, idx) => (
-                              <div key={`${text}-${idx}`} className="truncate">
-                                {text}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-xs text-neutral-400">Нет данных.</div>
-                          )}
-                        </div>
+                    <div className="mt-4 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+                      <div className="text-xs font-semibold text-neutral-500">Лоты аренды</div>
+                      <div className="mt-2 space-y-1 text-sm text-neutral-900">
+                        {scrapeResult.items?.length ? (
+                          scrapeResult.items.map((item, idx) => (
+                            <div key={`${item.title}-${idx}`} className="flex items-center justify-between gap-3">
+                              <span className="min-w-0 truncate">
+                                {item.title || scrapeResult.labels?.[idx] || `Лот ${idx + 1}`}
+                              </span>
+                              <span className="whitespace-nowrap font-semibold">
+                                {item.price.toLocaleString("ru-RU")} {item.currency || scrapeResult.currency || "₽"}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-neutral-400">Лоты аренды не найдены.</div>
+                        )}
                       </div>
                     </div>
                   </div>
