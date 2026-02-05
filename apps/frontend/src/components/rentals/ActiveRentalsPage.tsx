@@ -220,7 +220,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [rentalExtendMinutes, setRentalExtendMinutes] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
-  const [chatBuyer, setChatBuyer] = useState<string | null>(null);
+  const [chatTarget, setChatTarget] = useState<{ buyer: string; workspaceId?: number | null } | null>(null);
 
   const accountByKey = useMemo(
     () => new Map(accounts.map((acc) => [acc.accountKey, acc])),
@@ -690,7 +690,16 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                         <button
                           type="button"
                           className="font-semibold text-neutral-800 hover:text-neutral-900"
-                          onClick={() => setChatBuyer(selectedRental.buyer)}
+                          onClick={() =>
+                            setChatTarget({
+                              buyer: selectedRental.buyer,
+                              workspaceId:
+                                selectedRental.workspaceId ??
+                                selectedAccount?.workspaceId ??
+                                accountByKey.get(selectedRental.accountKey)?.workspaceId ??
+                                null,
+                            })
+                          }
                         >
                           {selectedRental.buyer}
                         </button>
@@ -865,7 +874,10 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                       onClick={(event) => {
                         event.stopPropagation();
                         if (row.buyer) {
-                          setChatBuyer(row.buyer);
+                          setChatTarget({
+                            buyer: row.buyer,
+                            workspaceId: row.workspaceId ?? account?.workspaceId ?? null,
+                          });
                         }
                       }}
                     >
@@ -907,7 +919,12 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
         {renderAccountActionsPanel("Действия аккаунта")}
         {renderRentalActionsPanel()}
       </div>
-      <BuyerChatPanel open={!!chatBuyer} buyer={chatBuyer} workspaceId={workspaceId} onClose={() => setChatBuyer(null)} />
+      <BuyerChatPanel
+        open={!!chatTarget}
+        buyer={chatTarget?.buyer}
+        workspaceId={chatTarget?.workspaceId ?? workspaceId}
+        onClose={() => setChatTarget(null)}
+      />
     </div>
   );
 };

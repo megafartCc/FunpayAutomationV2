@@ -43,6 +43,12 @@ const BuyerChatPanel: React.FC<BuyerChatPanelProps> = ({ open, buyer, workspaceI
       setError(null);
       return;
     }
+    if (!workspaceId) {
+      setChat(null);
+      setMessages([]);
+      setError("Выберите рабочее пространство, чтобы открыть чат.");
+      return;
+    }
     let cancelled = false;
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;

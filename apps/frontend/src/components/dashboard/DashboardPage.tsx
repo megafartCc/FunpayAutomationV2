@@ -319,7 +319,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [rentalExtendMinutes, setRentalExtendMinutes] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
-  const [chatBuyer, setChatBuyer] = useState<string | null>(null);
+  const [chatTarget, setChatTarget] = useState<{ buyer: string; workspaceId?: number | null } | null>(null);
 
   const filteredAccounts = useMemo(() => {
     if (accountWorkspaceId === "all") {
@@ -979,7 +979,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         <button
                           type="button"
                           className="font-semibold text-neutral-800 hover:text-neutral-900"
-                          onClick={() => setChatBuyer(selectedRental.buyer)}
+                          onClick={() =>
+                            setChatTarget({
+                              buyer: selectedRental.buyer,
+                              workspaceId: selectedRental.workspaceId ?? selectedAccount?.workspaceId ?? null,
+                            })
+                          }
                         >
                           {selectedRental.buyer}
                         </button>
@@ -1294,7 +1299,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                         onClick={(event) => {
                           event.stopPropagation();
                           if (row.buyer) {
-                            setChatBuyer(row.buyer);
+                            setChatTarget({
+                              buyer: row.buyer,
+                              workspaceId: row.workspaceId ?? account?.workspaceId ?? null,
+                            });
                           }
                         }}
                       >
@@ -1332,7 +1340,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         {renderAccountActionsPanel()}
         {renderRentalActionsPanel()}
       </div>
-      <BuyerChatPanel open={!!chatBuyer} buyer={chatBuyer} workspaceId={workspaceId} onClose={() => setChatBuyer(null)} />
+      <BuyerChatPanel
+        open={!!chatTarget}
+        buyer={chatTarget?.buyer}
+        workspaceId={chatTarget?.workspaceId ?? workspaceId}
+        onClose={() => setChatTarget(null)}
+      />
     </div>
   );
 };
