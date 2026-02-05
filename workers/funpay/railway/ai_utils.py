@@ -97,6 +97,12 @@ _PRICE_ANALYTICS_KEYWORDS = (
     "аналитика цен",
     "анализ цен",
     "анализ цены",
+    "рекомендация цены",
+    "рекомендуемая цена",
+    "рассчитать цену",
+    "почти первым",
+    "почти первая",
+    "в списке",
     "price analysis",
     "price analytics",
     "pricing analysis",
@@ -152,11 +158,17 @@ def _contains_sensitive(text: str) -> bool:
     return False
 
 
-def _is_price_analytics_request(text: str) -> bool:
+def _is_price_analytics_request(text: str, price_count: int) -> bool:
     lowered = (text or "").lower()
     if not lowered:
         return False
+    if "запустить ai" in lowered:
+        return True
     if any(keyword in lowered for keyword in _PRICE_ANALYTICS_KEYWORDS):
+        return True
+    if price_count >= 3 and any(
+        hint in lowered for hint in ("цена", "цен", "price", "список", "list", "лот", "lots")
+    ):
         return True
     return False
 
@@ -193,9 +205,36 @@ def _recommend_price(prices: list[float]) -> float | None:
     avg = sum(sorted_prices) / len(sorted_prices)
     if len(sorted_prices) == 1:
         return round(sorted_prices[0] + 1e-9, 2)
-    second = sorted_prices[1]
-    step = 0.01
-    target = min(avg, second - step)
+
+    mid = len(sorted_prices) // 2
+    if len(sorted_prices) % 2 == 0:
+        median = (sorted_prices[mid - 1] + sorted_prices[mid]) / 2
+    else:
+        median = sorted_prices[mid]
+
+    try:
+        front_rank = int(os.getenv("AI_PRICE_FRONT_RANK", "3"))
+    except Exception:
+        front_rank = 3
+    front_rank = max(1, min(front_rank, len(sorted_prices) - 1))
+
+    try:
+        max_discount = float(os.getenv("AI_PRICE_MAX_DISCOUNT", "0.2"))
+    except Exception:
+        max_discount = 0.2
+    max_discount = min(max(max_discount, 0.0), 0.9)
+
+    try:
+        step = float(os.getenv("AI_PRICE_STEP", "0.01"))
+    except Exception:
+        step = 0.01
+    if step <= 0:
+        step = 0.01
+
+    anchor = sorted_prices[front_rank - 1]
+    reference = median if median > 0 else avg
+    min_allowed = reference * (1.0 - max_discount)
+    target = max(anchor + step, min_allowed)
     if target < sorted_prices[0]:
         target = sorted_prices[0]
     if target < 0:
@@ -204,10 +243,10 @@ def _recommend_price(prices: list[float]) -> float | None:
 
 
 def _build_price_analytics_reply(text: str) -> str | None:
-    if not _is_price_analytics_request(text):
-        return None
     prices = _extract_prices(text)
     if not prices:
+        return None
+    if not _is_price_analytics_request(text, len(prices)):
         return None
     filtered = [price for price in prices if 0 <= price <= 50]
     if not filtered:
