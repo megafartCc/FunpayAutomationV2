@@ -326,6 +326,22 @@ export type PriceDumperAnalysisResponse = {
   model?: string | null;
 };
 
+export type PriceDumperHistoryItem = {
+  created_at: string;
+  avg_price?: number | null;
+  median_price?: number | null;
+  recommended_price?: number | null;
+  lowest_price?: number | null;
+  second_price?: number | null;
+  price_count: number;
+  currency?: string | null;
+};
+
+export type PriceDumperHistoryResponse = {
+  url?: string | null;
+  items: PriceDumperHistoryItem[];
+};
+
 export type TelegramStatus = {
   connected: boolean;
   chat_id?: number | null;
@@ -649,9 +665,19 @@ export const api = {
       method: "POST",
       body: { url, rent_only: true },
     }),
-  analyzePriceDumper: (items: PriceDumperResponse["items"], currency?: string | null) =>
+  analyzePriceDumper: (items: PriceDumperResponse["items"], currency?: string | null, url?: string | null) =>
     request<PriceDumperAnalysisResponse>("/plugins/price-dumper/analyze", {
       method: "POST",
-      body: { items, currency },
+      body: { items, currency, url },
     }),
+  priceDumperHistory: (url?: string | null, days: number = 30) => {
+    const params = new URLSearchParams();
+    if (url) params.set("url", url);
+    if (days) params.set("days", String(days));
+    const suffix = params.toString();
+    return request<PriceDumperHistoryResponse>(
+      `/plugins/price-dumper/history${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
 };

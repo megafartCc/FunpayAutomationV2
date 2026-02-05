@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
+import threading
+import time
+from datetime import datetime, timedelta
 from typing import Iterable
 
 import requests
@@ -10,9 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 
 from api.deps import get_current_user
+from db.mysql import get_base_connection
 
 
 router = APIRouter()
+logger = logging.getLogger("backend.price_dumper")
 
 _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 
@@ -44,6 +50,7 @@ class PriceDumpResponse(BaseModel):
 class PriceDumpAnalysisRequest(BaseModel):
     items: list[PriceDumpItem]
     currency: str | None = None
+    url: str | None = None
 
 
 class PriceDumpAnalysisResponse(BaseModel):
@@ -54,6 +61,22 @@ class PriceDumpAnalysisResponse(BaseModel):
     price_count: int = 0
     analysis: str
     model: str | None = None
+
+
+class PriceDumpHistoryItem(BaseModel):
+    created_at: str
+    avg_price: float | None = None
+    median_price: float | None = None
+    recommended_price: float | None = None
+    lowest_price: float | None = None
+    second_price: float | None = None
+    price_count: int = 0
+    currency: str | None = None
+
+
+class PriceDumpHistoryResponse(BaseModel):
+    url: str | None = None
+    items: list[PriceDumpHistoryItem]
 
 
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -261,6 +284,138 @@ def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float
     return [price for price in prices if min_price <= price <= max_price]
 
 
+def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:
+    if not prices:
+        return None, None
+    sorted_prices = sorted(prices)
+    avg = sum(sorted_prices) / len(sorted_prices)
+    mid = len(sorted_prices) // 2
+    if len(sorted_prices) % 2 == 0:
+        median = (sorted_prices[mid - 1] + sorted_prices[mid]) / 2
+    else:
+        median = sorted_prices[mid]
+    return avg, median
+
+
+def _upsert_price_dumper_setting(user_id: int, url: str, interval_hours: int = 24) -> None:
+    if not url:
+        return
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        next_run = datetime.utcnow() + timedelta(hours=int(interval_hours))
+        cursor.execute(
+            """
+            INSERT INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+            VALUES (%s, %s, 1, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                enabled = VALUES(enabled),
+                interval_hours = VALUES(interval_hours)
+            """,
+            (int(user_id), url[:512], int(interval_hours), next_run),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insert_price_dumper_history(
+    *,
+    user_id: int,
+    url: str,
+    currency: str | None,
+    avg_price: float | None,
+    median_price: float | None,
+    recommended_price: float | None,
+    lowest_price: float | None,
+    second_price: float | None,
+    price_count: int,
+) -> None:
+    if not url:
+        return
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO price_dumper_history (
+                user_id, url, avg_price, median_price, recommended_price,
+                lowest_price, second_price, price_count, currency
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                int(user_id),
+                url[:512],
+                avg_price,
+                median_price,
+                recommended_price,
+                lowest_price,
+                second_price,
+                int(price_count),
+                currency,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _load_latest_price_dumper_url(user_id: int) -> str | None:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT url
+            FROM price_dumper_settings
+            WHERE user_id = %s
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (int(user_id),),
+        )
+        row = cursor.fetchone()
+        return str(row["url"]) if row and row.get("url") else None
+    finally:
+        conn.close()
+
+
+def _fetch_price_dumper_history(user_id: int, url: str, days: int = 30) -> list[PriceDumpHistoryItem]:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT avg_price, median_price, recommended_price, lowest_price, second_price,
+                   price_count, currency, created_at
+            FROM price_dumper_history
+            WHERE user_id = %s AND url = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            ORDER BY created_at ASC
+            """,
+            (int(user_id), url[:512], int(max(1, min(days, 365)))),
+        )
+        rows = cursor.fetchall() or []
+        items: list[PriceDumpHistoryItem] = []
+        for row in rows:
+            created_at = row.get("created_at")
+            items.append(
+                PriceDumpHistoryItem(
+                    created_at=str(created_at) if created_at is not None else "",
+                    avg_price=float(row["avg_price"]) if row.get("avg_price") is not None else None,
+                    median_price=float(row["median_price"]) if row.get("median_price") is not None else None,
+                    recommended_price=float(row["recommended_price"]) if row.get("recommended_price") is not None else None,
+                    lowest_price=float(row["lowest_price"]) if row.get("lowest_price") is not None else None,
+                    second_price=float(row["second_price"]) if row.get("second_price") is not None else None,
+                    price_count=int(row.get("price_count") or 0),
+                    currency=row.get("currency"),
+                )
+            )
+        return items
+    finally:
+        conn.close()
+
+
 def _analyze_prices_with_groq(
     prices: list[float],
     currency: str | None,
@@ -276,25 +431,36 @@ def _analyze_prices_with_groq(
     sorted_prices = sorted(filtered_prices)
     list_limit = int(os.getenv("GROQ_PRICE_LIST_LIMIT", "500"))
     prompt = (
-        "Ты аналитик рынка FunPay. На основе цен конкурентов дай краткий анализ и рекомендацию цены,\n"
-        "чтобы быть почти первым в списке (рядом с самым дешевым предложением).\n"
-        "Сформулируй ответ кратко на русском: 2-4 пункта и короткая итоговая строка.\n"
-        "Данные:\n"
-        f"- Всего цен: {len(prices)}\n"
-        f"- Цены в диапазоне 0-50: {len(filtered_prices)}\n"
-        f"- Список цен (0-50, максимум {list_limit} значений): { _format_prices(sorted_prices, list_limit) }\n"
-        f"- Валюта: {currency or 'не указана'}\n"
-        f"- Минимальная цена: {lowest_price}\n"
-        f"- Вторая цена: {second_price}\n"
-        f"- Рекомендованная цена: {recommended_price}\n"
-    )
+    "You analyze FunPay market prices. Provide 2-4 short bullets and a brief summary.
+"
+    "Do not suggest any price lower than recommended_price.
+"
+    "Do not suggest ranges; output a single recommended price.
+"
+    "Data:
+"
+    f"- Total prices: {len(prices)}
+"
+    f"- Prices in 0-50: {len(filtered_prices)}
+"
+    f"- Price list (0-50, max {list_limit}): {_format_prices(sorted_prices, list_limit)}
+"
+    f"- Currency: {currency or 'unknown'}
+"
+    f"- Lowest price: {lowest_price}
+"
+    f"- Second price: {second_price}
+"
+    f"- Recommended price: {recommended_price}
+"
+)
     payload = {
         "model": model,
         "temperature": 0.2,
         "max_tokens": 250,
         "top_p": 0.9,
         "messages": [
-            {"role": "system", "content": "Ты помогаешь продавцу подобрать конкурентную цену."},
+            {"role": "system", "content": "You help a seller choose a competitive price without lowballing."},
             {"role": "user", "content": prompt},
         ],
     }
@@ -327,14 +493,10 @@ def _analyze_prices_with_groq(
     return content, model
 
 
-@router.post("/plugins/price-dumper/scrape", response_model=PriceDumpResponse)
-def scrape_price_dumper(
-    payload: PriceDumpRequest,
-    _user=Depends(get_current_user),
-) -> PriceDumpResponse:
+def _scrape_price_dumper_url(url: str, rent_only: bool) -> PriceDumpResponse:
     try:
         response = requests.get(
-            str(payload.url),
+            str(url),
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=15,
         )
@@ -358,10 +520,10 @@ def scrape_price_dumper(
     price_texts = [node.get_text(" ", strip=True) for node in price_nodes]
     prices, currency, extracted_texts, labels = _extract_prices(price_texts)
     prices_sorted = sorted(prices)
-    items = _extract_items(soup, payload.rent_only)
+    items = _extract_items(soup, rent_only)
 
     return PriceDumpResponse(
-        url=str(payload.url),
+        url=str(url),
         title=title,
         description=description,
         prices=prices_sorted,
@@ -370,6 +532,19 @@ def scrape_price_dumper(
         labels=labels,
         items=items,
     )
+
+
+@router.post("/plugins/price-dumper/scrape", response_model=PriceDumpResponse)
+def scrape_price_dumper(
+    payload: PriceDumpRequest,
+    _user=Depends(get_current_user),
+) -> PriceDumpResponse:
+    result = _scrape_price_dumper_url(str(payload.url), payload.rent_only)
+    try:
+        _upsert_price_dumper_setting(int(_user.id), result.url)
+    except Exception:
+        logger.debug("Price dumper setting upsert failed.", exc_info=True)
+    return result
 
 
 @router.post("/plugins/price-dumper/analyze", response_model=PriceDumpAnalysisResponse)
@@ -384,7 +559,14 @@ def analyze_price_dumper(
     if not filtered_prices:
         raise HTTPException(status_code=400, detail="No prices in the 0-50 range for analysis.")
     recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
-    use_groq = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower() in {"1", "true", "yes", "on"}
+    avg_price, median_price = _compute_stats(filtered_prices)
+    use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
+    if use_groq_flag in {"0", "false", "no", "off"}:
+        use_groq = False
+    elif use_groq_flag in {"1", "true", "yes", "on"}:
+        use_groq = True
+    else:
+        use_groq = bool(os.getenv("GROQ_API_KEY"))
     if use_groq:
         analysis, model = _analyze_prices_with_groq(
             prices=sorted(filtered_prices),
@@ -402,6 +584,22 @@ def analyze_price_dumper(
             second=second_price,
         )
         model = None
+    if payload.url:
+        try:
+            _upsert_price_dumper_setting(int(_user.id), payload.url)
+            _insert_price_dumper_history(
+                user_id=int(_user.id),
+                url=payload.url,
+                currency=payload.currency,
+                avg_price=avg_price,
+                median_price=median_price,
+                recommended_price=recommended_price,
+                lowest_price=lowest_price,
+                second_price=second_price,
+                price_count=len(filtered_prices),
+            )
+        except Exception:
+            logger.debug("Price dumper history insert failed.", exc_info=True)
     return PriceDumpAnalysisResponse(
         recommended_price=recommended_price,
         currency=payload.currency,
@@ -411,3 +609,148 @@ def analyze_price_dumper(
         analysis=analysis,
         model=model,
     )
+
+
+@router.get("/plugins/price-dumper/history", response_model=PriceDumpHistoryResponse)
+def price_dumper_history(
+    url: str | None = None,
+    days: int = 30,
+    _user=Depends(get_current_user),
+) -> PriceDumpHistoryResponse:
+    if not url:
+        url = _load_latest_price_dumper_url(int(_user.id))
+    if not url:
+        return PriceDumpHistoryResponse(url=None, items=[])
+    items = _fetch_price_dumper_history(int(_user.id), url, days=days)
+    return PriceDumpHistoryResponse(url=url, items=items)
+
+
+_PRICE_DUMPER_THREAD: threading.Thread | None = None
+_PRICE_DUMPER_LOCK = threading.Lock()
+
+
+def _price_dumper_should_run() -> bool:
+    flag = os.getenv("PRICE_DUMPER_SCHEDULER", "1").strip().lower()
+    return flag not in {"0", "false", "no", "off"}
+
+
+def start_price_dumper_scheduler() -> None:
+    global _PRICE_DUMPER_THREAD
+    if not _price_dumper_should_run():
+        return
+    with _PRICE_DUMPER_LOCK:
+        if _PRICE_DUMPER_THREAD and _PRICE_DUMPER_THREAD.is_alive():
+            return
+        thread = threading.Thread(target=_price_dumper_scheduler_loop, daemon=True)
+        _PRICE_DUMPER_THREAD = thread
+        thread.start()
+
+
+def _price_dumper_scheduler_loop() -> None:
+    poll_seconds = int(os.getenv("PRICE_DUMPER_POLL_SECONDS", "300"))
+    while True:
+        try:
+            _run_due_price_dumper_jobs()
+        except Exception:
+            logger.exception("Price dumper scheduler failed.")
+        time.sleep(max(30, poll_seconds))
+
+
+def _run_due_price_dumper_jobs(limit: int = 10) -> None:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT id, user_id, url, interval_hours
+            FROM price_dumper_settings
+            WHERE enabled = 1 AND (next_run_at IS NULL OR next_run_at <= NOW())
+            ORDER BY next_run_at ASC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        rows = cursor.fetchall() or []
+    finally:
+        conn.close()
+
+    for row in rows:
+        setting_id = int(row.get("id") or 0)
+        user_id = int(row.get("user_id") or 0)
+        url = str(row.get("url") or "")
+        interval_hours = int(row.get("interval_hours") or 24)
+        if setting_id <= 0 or user_id <= 0 or not url:
+            continue
+        if not _claim_price_dumper_job(setting_id, interval_hours):
+            continue
+        _execute_price_dumper_job(user_id, url)
+
+
+def _claim_price_dumper_job(setting_id: int, interval_hours: int) -> bool:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        next_run = datetime.utcnow() + timedelta(hours=int(interval_hours))
+        cursor.execute(
+            """
+            UPDATE price_dumper_settings
+            SET last_run_at = NOW(), next_run_at = %s
+            WHERE id = %s AND enabled = 1 AND (next_run_at IS NULL OR next_run_at <= NOW())
+            """,
+            (next_run, int(setting_id)),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def _execute_price_dumper_job(user_id: int, url: str) -> None:
+    try:
+        result = _scrape_price_dumper_url(url, True)
+    except Exception as exc:
+        logger.warning("Price dumper scrape failed for %s: %s", url, exc)
+        return
+
+    prices = [item.price for item in result.items if item.price is not None]
+    filtered = _filter_prices(prices)
+    if not filtered:
+        logger.info("Price dumper skipped (no prices) for %s", url)
+        return
+
+    recommended_price, lowest_price, second_price = _suggest_price(filtered)
+    avg_price, median_price = _compute_stats(filtered)
+
+    use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
+    if use_groq_flag in {"0", "false", "no", "off"}:
+        use_groq = False
+    elif use_groq_flag in {"1", "true", "yes", "on"}:
+        use_groq = True
+    else:
+        use_groq = bool(os.getenv("GROQ_API_KEY"))
+    if use_groq:
+        try:
+            _analyze_prices_with_groq(
+                prices=sorted(filtered),
+                currency=result.currency,
+                recommended_price=recommended_price,
+                lowest_price=lowest_price,
+                second_price=second_price,
+            )
+        except Exception:
+            logger.debug("Price dumper AI analysis failed for %s.", url, exc_info=True)
+
+    try:
+        _insert_price_dumper_history(
+            user_id=int(user_id),
+            url=url,
+            currency=result.currency,
+            avg_price=avg_price,
+            median_price=median_price,
+            recommended_price=recommended_price,
+            lowest_price=lowest_price,
+            second_price=second_price,
+            price_count=len(filtered),
+        )
+    except Exception:
+        logger.debug("Price dumper history insert failed for %s.", url, exc_info=True)

@@ -555,6 +555,47 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS price_dumper_settings (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                url VARCHAR(512) NOT NULL,
+                enabled TINYINT(1) NOT NULL DEFAULT 1,
+                interval_hours INT NOT NULL DEFAULT 24,
+                last_run_at TIMESTAMP NULL,
+                next_run_at TIMESTAMP NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_price_dumper_user_url (user_id, url),
+                INDEX idx_price_dumper_next (next_run_at),
+                INDEX idx_price_dumper_user (user_id),
+                CONSTRAINT fk_price_dumper_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_dumper_history (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                url VARCHAR(512) NOT NULL,
+                avg_price DECIMAL(10,2) NULL,
+                median_price DECIMAL(10,2) NULL,
+                recommended_price DECIMAL(10,2) NULL,
+                lowest_price DECIMAL(10,2) NULL,
+                second_price DECIMAL(10,2) NULL,
+                price_count INT NOT NULL DEFAULT 0,
+                currency VARCHAR(8) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_price_dumper_hist_user (user_id),
+                INDEX idx_price_dumper_hist_url (user_id, url),
+                INDEX idx_price_dumper_hist_created (created_at),
+                CONSTRAINT fk_price_dumper_hist_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'auto_raise_state' AND column_name = 'next_run_at'
             LIMIT 1

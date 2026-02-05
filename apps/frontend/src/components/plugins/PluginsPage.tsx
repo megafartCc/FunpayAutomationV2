@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, AutoRaiseLogItem, AutoRaiseSettings, PriceDumperResponse, RaiseCategoryItem } from "../../services/api";
+import {
+  api,
+  AutoRaiseLogItem,
+  AutoRaiseSettings,
+  PriceDumperHistoryItem,
+  PriceDumperResponse,
+  RaiseCategoryItem,
+} from "../../services/api";
 
 type PluginsPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -68,6 +76,10 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     model?: string | null;
   } | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [historyItems, setHistoryItems] = useState<PriceDumperHistoryItem[]>([]);
+  const [historyUrl, setHistoryUrl] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -268,9 +280,11 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     setScrapeError(null);
     setAnalysisError(null);
     setAnalysisResult(null);
+    setHistoryError(null);
     try {
       const result = await api.scrapePriceDumper(scrapeUrl.trim());
       setScrapeResult(result);
+      void loadHistory(result.url);
       onToast?.("Цены и описание загружены.");
     } catch (err) {
       const message = (err as { message?: string })?.message || "Не удалось собрать данные.";
@@ -289,8 +303,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     setAnalysisBusy(true);
     setAnalysisError(null);
     try {
-      const result = await api.analyzePriceDumper(scrapeResult.items, scrapeResult.currency);
+      const result = await api.analyzePriceDumper(scrapeResult.items, scrapeResult.currency, scrapeResult.url);
       setAnalysisResult(result);
+      void loadHistory(scrapeResult.url);
       onToast?.("AI аналитика готова.");
     } catch (err) {
       const message = (err as { message?: string })?.message || "Не удалось получить AI аналитику.";
@@ -300,6 +315,55 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       setAnalysisBusy(false);
     }
   };
+
+  const loadHistory = useCallback(
+    async (url?: string | null) => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const res = await api.priceDumperHistory(url || undefined, 30);
+        setHistoryItems(res.items || []);
+        setHistoryUrl(res.url || url || null);
+      } catch (err) {
+        const message = (err as { message?: string })?.message || "Failed to load price history.";
+        setHistoryError(message);
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    if (selectedPlugin !== "price_dumper") return;
+    if (historyLoading) return;
+    if (historyItems.length) return;
+    void loadHistory(null);
+  }, [selectedPlugin, historyLoading, historyItems.length, loadHistory]);
+
+
+  const historyChart = useMemo(() => {
+    const items = [...historyItems];
+    items.sort((a, b) => {
+      const ta = Date.parse(String(a.created_at || ""));
+      const tb = Date.parse(String(b.created_at || ""));
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return ta - tb;
+    });
+    return items.map((item, index) => {
+      const ts = Date.parse(String(item.created_at || ""));
+      const label = Number.isNaN(ts)
+        ? String(item.created_at || index + 1)
+        : new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+      return {
+        label,
+        avg: typeof item.avg_price === "number" ? item.avg_price : null,
+        median: typeof item.median_price === "number" ? item.median_price : null,
+        recommended: typeof item.recommended_price === "number" ? item.recommended_price : null,
+      };
+    });
+  }, [historyItems]);
 
   const sortedItems = useMemo(() => {
     if (!scrapeResult?.items?.length) return [];
@@ -467,6 +531,68 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
                           Нажмите «Запустить AI», чтобы получить рекомендацию цены.
                         </div>
                       )}
+                      <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-neutral-900">Market price history</div>
+                            <div className="mt-1 text-xs text-neutral-500">
+                              Average, median, and recommended price snapshot every 24h.
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                            <span className="flex items-center gap-1">
+                              <span className="inline-block h-2 w-2 rounded-full bg-slate-900" />
+                              Avg
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                              Median
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="inline-block h-2 w-2 rounded-full bg-orange-500" />
+                              Recommended
+                            </span>
+                          </div>
+                        </div>
+                        {historyLoading ? (
+                          <div className="mt-3 text-xs text-neutral-400">Loading price history...</div>
+                        ) : historyError ? (
+                          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                            {historyError}
+                          </div>
+                        ) : historyChart.length ? (
+                          <div className="mt-3 h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={historyChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="4 4" stroke="#e5e7eb" />
+                                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                                <YAxis
+                                  tick={{ fontSize: 11 }}
+                                  tickFormatter={(value) => Number(value).toLocaleString("ru-RU")}
+                                />
+                                <Tooltip
+                                  formatter={(value) =>
+                                    typeof value === "number" ? value.toLocaleString("ru-RU") : value
+                                  }
+                                />
+                                <Line type="monotone" dataKey="avg" stroke="#0f172a" strokeWidth={2} dot={false} />
+                                <Line type="monotone" dataKey="median" stroke="#10b981" strokeWidth={2} dot={false} />
+                                <Line
+                                  type="monotone"
+                                  dataKey="recommended"
+                                  stroke="#f97316"
+                                  strokeWidth={2}
+                                  dot={false}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-xs text-neutral-400">
+                            No history yet. Run scrape + AI to create the first snapshot.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : (
