@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
-import { api, BotCustomizationResponse, BotCustomizationSettings } from "../../services/api";
+import { api, BotCustomizationSettings } from "../../services/api";
 
 type BotCustomizationPageProps = {
   onToast?: (message: string, isError?: boolean) => void;
@@ -13,21 +12,11 @@ type ResponseDef = { key: keyof BotCustomizationSettings["responses"]; label: st
 
 const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) => {
   const { t, tr } = useI18n();
-  const { selectedId, workspaces } = useWorkspace();
-  const workspaceId = selectedId === "all" ? null : (selectedId as number);
 
   const [settings, setSettings] = useState<BotCustomizationSettings | null>(null);
-  const [globalSettings, setGlobalSettings] = useState<BotCustomizationSettings | null>(null);
-  const [source, setSource] = useState<BotCustomizationResponse["source"]>("default");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [useGlobalDefaults, setUseGlobalDefaults] = useState(false);
-
-  const workspaceName = useMemo(() => {
-    if (!workspaceId) return t("common.allWorkspaces");
-    const found = workspaces.find((ws) => ws.id === workspaceId);
-    return found?.name || `${t("common.workspace")} ${workspaceId}`;
-  }, [workspaceId, workspaces, t]);
+  const workspaceName = useMemo(() => t("common.allWorkspaces"), [t]);
 
   const commandDefs: CommandDef[] = useMemo(
     () => [
@@ -93,19 +82,8 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const globalRes = await api.getBotCustomization(null);
-      setGlobalSettings(globalRes.settings);
-      if (workspaceId) {
-        const wsRes = await api.getBotCustomization(workspaceId);
-        const shouldUseGlobal = wsRes.source !== "workspace";
-        setSource(wsRes.source);
-        setUseGlobalDefaults(shouldUseGlobal);
-        setSettings(shouldUseGlobal ? globalRes.settings : wsRes.settings);
-      } else {
-        setSource(globalRes.source);
-        setUseGlobalDefaults(false);
-        setSettings(globalRes.settings);
-      }
+      const res = await api.getBotCustomization(null);
+      setSettings(res.settings);
     } catch (err) {
       const message =
         (err as { message?: string })?.message ||
@@ -114,7 +92,7 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, tr, onToast]);
+  }, [tr, onToast]);
 
   useEffect(() => {
     void loadSettings();
@@ -128,13 +106,8 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
     if (!settings) return;
     setSaving(true);
     try {
-      if (workspaceId && useGlobalDefaults) {
-        await api.deleteBotCustomization(workspaceId);
-        onToast?.(tr("Workspace override removed.", "Переопределение удалено."));
-      } else {
-        await api.saveBotCustomization(settings, workspaceId);
-        onToast?.(tr("Customization saved.", "Настройки сохранены."));
-      }
+      await api.saveBotCustomization(settings, null);
+      onToast?.(tr("Customization saved.", "Настройки сохранены."));
       await loadSettings();
     } catch (err) {
       const message =
@@ -146,26 +119,7 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
     }
   };
 
-  const handleResetGlobal = async () => {
-    if (!workspaceId) return;
-    setSaving(true);
-    try {
-      await api.deleteBotCustomization(workspaceId);
-      setUseGlobalDefaults(true);
-      onToast?.(tr("Reset to global defaults.", "Сброшено к глобальным настройкам."));
-      await loadSettings();
-    } catch (err) {
-      const message =
-        (err as { message?: string })?.message ||
-        tr("Failed to reset.", "Не удалось сбросить настройки.");
-      onToast?.(message, true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleResetDefaults = async () => {
-    if (workspaceId) return;
     setSaving(true);
     try {
       await api.deleteBotCustomization(null);
@@ -180,8 +134,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
       setSaving(false);
     }
   };
-
-  const isLocked = Boolean(workspaceId && useGlobalDefaults);
 
   return (
     <div className="space-y-6">
@@ -202,29 +154,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
             {workspaceName}
           </span>
         </div>
-        {workspaceId ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-600">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={useGlobalDefaults}
-                onChange={(event) => {
-                  const next = event.target.checked;
-                  setUseGlobalDefaults(next);
-                  if (!next && globalSettings) {
-                    setSettings(globalSettings);
-                  }
-                }}
-              />
-              {tr("Use global defaults for this workspace", "Использовать глобальные настройки")}
-            </label>
-            <span className="text-neutral-400">
-              {source === "workspace"
-                ? tr("Workspace override active", "Активно переопределение")
-                : tr("No workspace override", "Переопределения нет")}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       {loading || !settings ? (
@@ -249,7 +178,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   <input
                     type="checkbox"
                     checked={settings.ai_enabled}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({ ...current, ai_enabled: event.target.checked }))
                     }
@@ -262,7 +190,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                     </label>
                     <select
                       value={settings.tone}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({ ...current, tone: event.target.value }))
                       }
@@ -280,7 +207,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                     </label>
                     <input
                       value={settings.ai?.model || ""}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({
                           ...current,
@@ -303,7 +229,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                       max={1}
                       step={0.05}
                       value={settings.ai?.temperature ?? 0.7}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({
                           ...current,
@@ -323,7 +248,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                       max={1200}
                       step={10}
                       value={settings.ai?.max_tokens ?? 450}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({
                           ...current,
@@ -340,7 +264,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   </label>
                   <textarea
                     value={settings.persona || ""}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({ ...current, persona: event.target.value }))
                     }
@@ -372,7 +295,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                       min={0}
                       step={1}
                       value={settings.review_bonus_hours}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({
                           ...current,
@@ -391,7 +313,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                       min={1}
                       step={1}
                       value={settings.blacklist.compensation_hours}
-                      disabled={isLocked}
                       onChange={(event) =>
                         updateSettings((current) => ({
                           ...current,
@@ -414,7 +335,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                     min={30}
                     step={10}
                     value={settings.blacklist.unit_minutes}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({
                         ...current,
@@ -439,7 +359,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   </label>
                   <textarea
                     value={settings.blacklist.permanent_message}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({
                         ...current,
@@ -456,7 +375,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   </label>
                   <textarea
                     value={settings.blacklist.blocked_message}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({
                         ...current,
@@ -493,7 +411,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   <p className="text-xs text-neutral-500">{command.desc}</p>
                   <input
                     value={settings.commands[command.key]}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({
                         ...current,
@@ -524,7 +441,6 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
                   <p className="text-xs text-neutral-500">{item.desc}</p>
                   <textarea
                     value={settings.responses[item.key] || ""}
-                    disabled={isLocked}
                     onChange={(event) =>
                       updateSettings((current) => ({
                         ...current,
@@ -548,25 +464,14 @@ const BotCustomizationPage: React.FC<BotCustomizationPageProps> = ({ onToast }) 
             >
               {saving ? t("common.saving") : tr("Save customization", "Сохранить настройки")}
             </button>
-            {workspaceId ? (
-              <button
-                type="button"
-                onClick={handleResetGlobal}
-                disabled={saving}
-                className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 disabled:opacity-60"
-              >
-                {tr("Reset to global", "Сбросить к глобальным")}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleResetDefaults}
-                disabled={saving}
-                className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 disabled:opacity-60"
-              >
-                {tr("Reset defaults", "Сбросить по умолчанию")}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleResetDefaults}
+              disabled={saving}
+              className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 disabled:opacity-60"
+            >
+              {tr("Reset defaults", "Сбросить по умолчанию")}
+            </button>
           </div>
         </>
       )}

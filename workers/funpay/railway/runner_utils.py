@@ -2205,7 +2205,7 @@ def log_message(
 
         try:
 
-            bot_settings = load_bot_settings(mysql_cfg, int(user_id), workspace_id)
+            bot_settings = load_bot_settings(mysql_cfg, int(user_id), None)
 
         except Exception as exc:
 

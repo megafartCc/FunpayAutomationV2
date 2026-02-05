@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from api.deps import get_current_user
 from db.bot_customization_repo import MySQLBotCustomizationRepo, normalize_bot_settings
-from db.workspace_repo import MySQLWorkspaceRepo
 
 router = APIRouter()
 bot_repo = MySQLBotCustomizationRepo()
-workspace_repo = MySQLWorkspaceRepo()
 
 
 class BotCustomizationResponse(BaseModel):
@@ -24,10 +22,7 @@ class BotCustomizationResponse(BaseModel):
 def get_bot_customization(
     workspace_id: int | None = None, user=Depends(get_current_user)
 ) -> BotCustomizationResponse:
-    if workspace_id is not None:
-        workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
-        if not workspace:
-            raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace_id = None
     settings, source = bot_repo.get_settings(int(user.id), workspace_id)
     return BotCustomizationResponse(workspace_id=workspace_id, source=source, settings=settings)
 
@@ -38,10 +33,7 @@ def save_bot_customization(
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> BotCustomizationResponse:
-    if workspace_id is not None:
-        workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
-        if not workspace:
-            raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace_id = None
     normalized = normalize_bot_settings(payload)
     saved = bot_repo.save_settings(int(user.id), workspace_id, normalized)
     source = "workspace" if workspace_id is not None else "global"
@@ -52,9 +44,6 @@ def save_bot_customization(
 def delete_bot_customization(
     workspace_id: int | None = None, user=Depends(get_current_user)
 ) -> dict[str, Any]:
-    if workspace_id is not None:
-        workspace = workspace_repo.get_by_id(int(workspace_id), int(user.id))
-        if not workspace:
-            raise HTTPException(status_code=404, detail="Workspace not found")
+    workspace_id = None
     removed = bot_repo.delete_settings(int(user.id), workspace_id)
     return {"ok": True, "removed": removed}
