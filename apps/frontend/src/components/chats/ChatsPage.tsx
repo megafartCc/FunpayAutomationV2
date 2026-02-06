@@ -677,6 +677,36 @@ const ChatsPage: React.FC = () => {
     }
   };
 
+  const handleRefundRental = async () => {
+    if (!selectedRental) {
+      setStatus("??????? ???????? ???????? ??????.");
+      return;
+    }
+    if (!selectedRental.buyer) {
+      setStatus("?? ??????? ?????????? ?????????? ??? ????????.");
+      return;
+    }
+    if (!workspaceId) return;
+    if (rentalActionBusy) return;
+    const ok = window.confirm(`??????? ???????? ?? ?????????? ?????? ?????????? ${selectedRental.buyer}?`);
+    if (!ok) return;
+    setRentalActionBusy(true);
+    try {
+      const res = await api.refundOrder({
+        owner: selectedRental.buyer,
+        account_id: selectedRental.id,
+        workspace_id: workspaceId,
+      });
+      setStatus(`??????? ???????? ??? ?????? #${res.order_id}.`);
+      await loadRentals(true);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "?? ??????? ???????? ???????.";
+      setStatus(message);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
   const handleSetFreeze = async (nextFrozen: boolean) => {
     if (!selectedRental) {
       setStatus("Сначала выберите активную аренду.");
@@ -1005,6 +1035,16 @@ const ChatsPage: React.FC = () => {
                   >
                     Release
                   </button>
+                  <button
+                    onClick={handleRefundRental}
+                    disabled={rentalActionBusy}
+                    className="w-full rounded-lg border border-rose-300/60 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Refund
+                  </button>
+                  <div className="text-[11px] text-neutral-400">
+                    Refunds the latest order for this buyer.
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       value={extendHours}

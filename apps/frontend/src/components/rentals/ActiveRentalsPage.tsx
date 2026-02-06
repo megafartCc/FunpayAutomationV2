@@ -813,7 +813,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     Завершить аренду
                   </button>
                 </div>
-                <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+                <div className="rounded-xl border border-rose-300/40 bg-rose-500/5 p-4">
                   <div className="mb-2 text-sm font-semibold text-rose-700">Возврат средств</div>
                   <p className="text-xs text-rose-600">
                     Оформляет возврат по последнему заказу покупателя и фиксирует действие в базе.

@@ -148,20 +148,25 @@ const FunpayStatsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [ordersRes, rentalsRes] = await Promise.all([
+      const [ordersRes, rentalsRes, notificationsRes] = await Promise.all([
         api.listOrdersHistory(workspaceId ?? null, "", 500),
         api.listActiveRentals(workspaceId),
+        api.listNotifications(workspaceId ?? null, 1000),
       ]);
       const ordersItems = Array.isArray(ordersRes.items) ? ordersRes.items : [];
       const rentalItems = Array.isArray(rentalsRes.items) ? rentalsRes.items : [];
+      const notificationItems = Array.isArray(notificationsRes.items) ? notificationsRes.items : [];
       setOrders(ordersItems.filter(Boolean));
       setActiveRentals(rentalItems.filter(Boolean));
+      setNotifications(notificationItems);
+      setNotificationsLoaded(true);
       setLastUpdated(new Date());
     } catch (err) {
       const message =
         (err as { message?: string })?.message ||
-        tr("Failed to load statistics.", "Не удалось загрузить статистику.");
+        tr("Failed to load statistics.", "?? ??????? ????????? ??????????.");
       setError(message);
+      setNotificationsLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -175,19 +180,7 @@ const FunpayStatsPage: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [loadStats]);
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      const res = await api.listNotifications(workspaceId ?? null, 1000);
-      setNotifications(Array.isArray(res.items) ? res.items : []);
-      setNotificationsLoaded(true);
-    } catch {
-      setNotificationsLoaded(true);
-    }
-  }, [workspaceId]);
-
-  useEffect(() => {
-    void loadNotifications();
-  }, [loadNotifications]);
+  
 
   const marketHistoryDays = useMemo(() => {
     if (range === "7d") return 7;
@@ -428,7 +421,8 @@ const FunpayStatsPage: React.FC = () => {
     if (!notificationsLoaded) return [];
     return notifications.filter((item) => {
       if (!item.created_at) return false;
-      if (item.event_type !== "refund_release") return false;
+      const eventType = (item.event_type || "").toLowerCase();
+      if (!eventType.startsWith("refund")) return false;
       if (item.status && item.status !== "ok") return false;
       const dt = new Date(item.created_at);
       if (Number.isNaN(dt.getTime())) return false;
