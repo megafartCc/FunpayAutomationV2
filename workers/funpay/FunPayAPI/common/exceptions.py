@@ -179,8 +179,14 @@ class LotSavingError(RequestFailedError):
             self.log_response = True
 
     def short_str(self):
-        return f"Не удалось сохранить лот {self.lot_id}" \
+        base = f"Не удалось сохранить лот {self.lot_id}" \
                f"{f': {self.error_message}' if self.error_message else '.'}"
+        if not self.errors:
+            return base
+        details = "; ".join(
+            f"{str(k).strip() or '<field>'}: {str(v).strip()}" for k, v in self.errors.items()
+        )
+        return f"{base} Ошибки полей: {details}."
 
 
 class RefundError(RequestFailedError):
