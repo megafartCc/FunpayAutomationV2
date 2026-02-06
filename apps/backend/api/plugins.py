@@ -28,6 +28,8 @@ _MAX_PAGE_LIMIT = 200
 _DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/"
 _PRICE_DUMPER_INTERVAL_HOURS = 1
 _PRICE_DUMPER_CATEGORY_ID = "81"
+_DEFAULT_MAX_ITEMS = 600
+_DEFAULT_MAX_SECONDS = 90
 
 
 def _price_dumper_max_pages() -> int:
@@ -37,6 +39,22 @@ def _price_dumper_max_pages() -> int:
     except (TypeError, ValueError):
         value = _DEFAULT_MAX_PAGES
     return max(1, min(value, _MAX_PAGE_LIMIT))
+
+
+def _price_dumper_limits() -> tuple[int, int]:
+    raw_items = os.getenv("PRICE_DUMPER_MAX_ITEMS", str(_DEFAULT_MAX_ITEMS))
+    raw_seconds = os.getenv("PRICE_DUMPER_MAX_SECONDS", str(_DEFAULT_MAX_SECONDS))
+    try:
+        max_items = int(raw_items)
+    except (TypeError, ValueError):
+        max_items = _DEFAULT_MAX_ITEMS
+    try:
+        max_seconds = int(raw_seconds)
+    except (TypeError, ValueError):
+        max_seconds = _DEFAULT_MAX_SECONDS
+    max_items = max(50, min(max_items, 5000))
+    max_seconds = max(15, min(max_seconds, 600))
+    return max_items, max_seconds
 
 
 def _is_category_url(url: str) -> bool:
@@ -826,6 +844,8 @@ def _scrape_price_dumper_url(url: str, rent_only: bool) -> PriceDumpResponse:
     should_paginate = _is_category_url(normalized_url)
     base_url = normalized_url
     max_pages = _price_dumper_max_pages() if should_paginate else 1
+    max_items, max_seconds = _price_dumper_limits()
+    started_at = time.time()
     session = requests.Session()
 
     items: list[PriceDumpItem] = []
@@ -837,6 +857,10 @@ def _scrape_price_dumper_url(url: str, rent_only: bool) -> PriceDumpResponse:
 
     page = 1
     while page <= max_pages:
+        if len(items) >= max_items:
+            break
+        if time.time() - started_at >= max_seconds:
+            break
         page_url = base_url if page == 1 else _build_page_url(base_url, page)
         try:
             response = session.get(
