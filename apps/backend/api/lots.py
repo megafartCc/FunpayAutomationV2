@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -24,6 +25,7 @@ lots_repo = MySQLLotRepo()
 workspace_repo = MySQLWorkspaceRepo()
 accounts_repo = MySQLAccountRepo()
 logger = logging.getLogger("backend.lots")
+_LOT_ID_RE = re.compile(r"(?:offer\?id=|offer=|offer/)(\d+)|id=(\d+)")
 
 
 class LotCreate(BaseModel):
@@ -97,6 +99,20 @@ def _get_workspace_and_record(user_id: int, workspace_id: int | None, lot_number
         raise HTTPException(status_code=404, detail="Lot not found")
     return workspace, record
 
+
+
+
+def _resolve_offer_id(record: LotRecord) -> int | None:
+    url = (record.lot_url or "").strip()
+    if url:
+        match = _LOT_ID_RE.search(url)
+        if match:
+            value = match.group(1) or match.group(2)
+            if value and value.isdigit():
+                return int(value)
+    if record.lot_number and int(record.lot_number) > 0:
+        return int(record.lot_number)
+    return None
 
 def _to_item(record: LotRecord) -> LotItem:
     return LotItem(
@@ -281,16 +297,19 @@ def get_funpay_lot(
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> FunPayLotDetails:
-    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Cannot resolve FunPay offer id from lot mapping")
     try:
         snapshot = get_funpay_lot_snapshot(
             golden_key=workspace.golden_key,
             proxy_url=workspace.proxy_url,
-            lot_id=int(lot_number),
+            lot_id=offer_id,
             user_agent=os.getenv("FUNPAY_USER_AGENT"),
         )
     except funpay_exceptions.LotParsingError as exc:
-        raise HTTPException(status_code=400, detail=f"Lot #{lot_number} is not accessible for this account: {exc.short_str()}")
+        raise HTTPException(status_code=400, detail=f"Lot #{offer_id} is not accessible for this account: {exc.short_str()}")
     except funpay_exceptions.RequestFailedError as exc:
         raise HTTPException(status_code=400, detail=exc.short_str())
     if not snapshot:
@@ -311,14 +330,17 @@ def patch_funpay_lot(
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> FunPayLotDetails:
-    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Cannot resolve FunPay offer id from lot mapping")
     if payload.title is None and payload.description is None and payload.price is None and payload.active is None:
         raise HTTPException(status_code=400, detail="Nothing to update")
     try:
         snapshot = edit_funpay_lot(
             golden_key=workspace.golden_key,
             proxy_url=workspace.proxy_url,
-            lot_id=int(lot_number),
+            lot_id=offer_id,
             title=payload.title,
             description=payload.description,
             price=payload.price,
@@ -326,7 +348,7 @@ def patch_funpay_lot(
             user_agent=os.getenv("FUNPAY_USER_AGENT"),
         )
     except funpay_exceptions.LotParsingError as exc:
-        raise HTTPException(status_code=400, detail=f"Lot #{lot_number} is not accessible for this account: {exc.short_str()}")
+        raise HTTPException(status_code=400, detail=f"Lot #{offer_id} is not accessible for this account: {exc.short_str()}")
     except funpay_exceptions.RequestFailedError as exc:
         raise HTTPException(status_code=400, detail=exc.short_str())
     if not snapshot:
@@ -346,17 +368,20 @@ def manual_auto_price_lot(
     workspace_id: int | None = None,
     user=Depends(get_current_user),
 ) -> FunPayLotManualPriceResponse:
-    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(payload.lot_number))
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(payload.lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Cannot resolve FunPay offer id from lot mapping")
     try:
         changed, old_price = update_funpay_lot_price(
             golden_key=workspace.golden_key,
             proxy_url=workspace.proxy_url,
-            lot_id=int(payload.lot_number),
+            lot_id=offer_id,
             price=float(payload.price),
             user_agent=os.getenv("FUNPAY_USER_AGENT"),
         )
     except funpay_exceptions.LotParsingError as exc:
-        raise HTTPException(status_code=400, detail=f"Lot #{payload.lot_number} is not accessible for this account: {exc.short_str()}")
+        raise HTTPException(status_code=400, detail=f"Lot #{offer_id} is not accessible for this account: {exc.short_str()}")
     except funpay_exceptions.RequestFailedError as exc:
         raise HTTPException(status_code=400, detail=exc.short_str())
     return FunPayLotManualPriceResponse(ok=True, changed=bool(changed), old_price=old_price)
