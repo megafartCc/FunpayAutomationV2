@@ -81,6 +81,8 @@ export type FunPayLotDetails = {
 export type FunPayLotUpdatePayload = {
   title?: string | null;
   description?: string | null;
+  title_en?: string | null;
+  description_en?: string | null;
   price?: number | null;
   active?: boolean | null;
 };

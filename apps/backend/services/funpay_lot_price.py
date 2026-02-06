@@ -82,6 +82,8 @@ def edit_funpay_lot(
     lot_id: int,
     title: str | None = None,
     description: str | None = None,
+    title_en: str | None = None,
+    description_en: str | None = None,
     price: float | None = None,
     active: bool | None = None,
     user_agent: str | None = None,
@@ -93,10 +95,12 @@ def edit_funpay_lot(
 
     if title is not None:
         lot_fields.title_ru = title
-        lot_fields.title_en = title
     if description is not None:
         lot_fields.description_ru = description
-        lot_fields.description_en = description
+    if title_en is not None:
+        lot_fields.title_en = title_en
+    if description_en is not None:
+        lot_fields.description_en = description_en
     if price is not None:
         lot_fields.price = round(float(price), 2)
     if active is not None:

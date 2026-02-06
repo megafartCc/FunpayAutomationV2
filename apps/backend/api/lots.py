@@ -72,6 +72,8 @@ class FunPayLotDetails(BaseModel):
 class FunPayLotUpdatePayload(BaseModel):
     title: str | None = Field(None, max_length=255)
     description: str | None = None
+    title_en: str | None = Field(None, max_length=255)
+    description_en: str | None = None
     price: float | None = Field(None, ge=0)
     active: bool | None = None
 
@@ -334,7 +336,14 @@ def patch_funpay_lot(
     offer_id = _resolve_offer_id(record)
     if not offer_id:
         raise HTTPException(status_code=400, detail="Cannot resolve FunPay offer id from lot mapping")
-    if payload.title is None and payload.description is None and payload.price is None and payload.active is None:
+    if (
+        payload.title is None
+        and payload.description is None
+        and payload.title_en is None
+        and payload.description_en is None
+        and payload.price is None
+        and payload.active is None
+    ):
         raise HTTPException(status_code=400, detail="Nothing to update")
     try:
         snapshot = edit_funpay_lot(
@@ -343,6 +352,8 @@ def patch_funpay_lot(
             lot_id=offer_id,
             title=payload.title,
             description=payload.description,
+            title_en=payload.title_en,
+            description_en=payload.description_en,
             price=payload.price,
             active=payload.active,
             user_agent=os.getenv("FUNPAY_USER_AGENT"),
