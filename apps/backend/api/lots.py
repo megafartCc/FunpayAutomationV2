@@ -69,6 +69,7 @@ class FunPayLotDetails(BaseModel):
     description_en: str
     price: float | None
     active: bool
+    raw_fields: dict[str, str] | None = None
 
 
 class FunPayLotUpdatePayload(BaseModel):
@@ -78,6 +79,7 @@ class FunPayLotUpdatePayload(BaseModel):
     description_en: str | None = None
     price: float | None = Field(None, ge=0)
     active: bool | None = None
+    raw_fields: dict[str, str] | None = None
 
 
 class FunPayLotManualPricePayload(BaseModel):
@@ -326,6 +328,7 @@ def get_funpay_lot(
         description_en=snapshot.description_en,
         price=snapshot.price,
         active=snapshot.active,
+        raw_fields=snapshot.raw_fields,
     )
 
 
@@ -347,6 +350,7 @@ def patch_funpay_lot(
         and payload.description_en is None
         and payload.price is None
         and payload.active is None
+        and payload.raw_fields is None
     ):
         raise HTTPException(status_code=400, detail="Nothing to update")
     try:
@@ -360,6 +364,7 @@ def patch_funpay_lot(
             description_en=payload.description_en,
             price=payload.price,
             active=payload.active,
+            raw_fields=payload.raw_fields,
             user_agent=os.getenv("FUNPAY_USER_AGENT"),
         )
     except funpay_exceptions.LotParsingError as exc:
@@ -376,6 +381,7 @@ def patch_funpay_lot(
         description_en=snapshot.description_en,
         price=snapshot.price,
         active=snapshot.active,
+        raw_fields=snapshot.raw_fields,
     )
 
 

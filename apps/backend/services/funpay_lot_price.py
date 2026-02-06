@@ -18,11 +18,14 @@ for _parent in _HERE.parents:
 
 try:
     from workers.funpay.FunPayAPI.account import Account
+    from workers.funpay.FunPayAPI import types as fp_types
 except Exception:
     try:
         from FunPayAPI.account import Account
+        from FunPayAPI import types as fp_types
     except Exception:  # pragma: no cover
         Account = None
+        fp_types = None
 
 
 @dataclass
@@ -34,6 +37,7 @@ class FunPayLotSnapshot:
     description_en: str
     price: float | None
     active: bool
+    raw_fields: dict[str, str] | None = None
 
 
 def _build_proxy_config(proxy_url: str | None) -> dict | None:
@@ -78,6 +82,7 @@ def get_funpay_lot_snapshot(
         description_en=description_en,
         price=lot_fields.price,
         active=bool(lot_fields.active),
+        raw_fields=dict(lot_fields.fields),
     )
 
 
@@ -92,12 +97,19 @@ def edit_funpay_lot(
     description_en: str | None = None,
     price: float | None = None,
     active: bool | None = None,
+    raw_fields: dict[str, str] | None = None,
     user_agent: str | None = None,
 ) -> FunPayLotSnapshot | None:
     account = _create_account(golden_key, proxy_url, user_agent)
     if account is None:
         return None
-    lot_fields = account.get_lot_fields(int(lot_id))
+    if raw_fields and fp_types:
+        normalized = {str(k): "" if v is None else str(v) for k, v in raw_fields.items()}
+        normalized.setdefault("offer_id", str(lot_id))
+        normalized["csrf_token"] = account.csrf_token or normalized.get("csrf_token", "")
+        lot_fields = fp_types.LotFields(int(lot_id), normalized)
+    else:
+        lot_fields = account.get_lot_fields(int(lot_id))
 
     if title is not None:
         lot_fields.title_ru = title

@@ -78,6 +78,7 @@ export type FunPayLotDetails = {
   description_en: string;
   price: number | null;
   active: boolean;
+  raw_fields?: Record<string, string> | null;
 };
 
 export type FunPayLotUpdatePayload = {
@@ -87,6 +88,7 @@ export type FunPayLotUpdatePayload = {
   description_en?: string | null;
   price?: number | null;
   active?: boolean | null;
+  raw_fields?: Record<string, string> | null;
 };
 
 export type RaiseCategoryItem = {

@@ -25,6 +25,7 @@ const LotsPage: React.FC = () => {
   const [manualDescriptionEn, setManualDescriptionEn] = useState("");
   const [manualPrice, setManualPrice] = useState("");
   const [manualActive, setManualActive] = useState(true);
+  const [manualRawFields, setManualRawFields] = useState<Record<string, string> | null>(null);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualAutoPricing, setManualAutoPricing] = useState(false);
@@ -142,6 +143,7 @@ const LotsPage: React.FC = () => {
       setManualDescriptionEn(details.description_en || "");
       setManualPrice(details.price !== null && details.price !== undefined ? String(details.price) : "");
       setManualActive(Boolean(details.active));
+      setManualRawFields(details.raw_fields ? { ...details.raw_fields } : null);
     } catch (err) {
       setStatus({ message: (err as { message?: string })?.message || "Не удалось получить данные лота.", isError: true });
     } finally {
@@ -167,10 +169,12 @@ const LotsPage: React.FC = () => {
           description_en: manualDescriptionEn,
           price,
           active: manualActive,
+          raw_fields: manualRawFields,
         },
         selectedWorkspaceId as number,
       );
       setManualLot(updated);
+      setManualRawFields(updated.raw_fields ? { ...updated.raw_fields } : manualRawFields);
       setStatus({ message: `Лот #${manualLotId} обновлён.` });
     } catch (err) {
       setStatus({ message: (err as { message?: string })?.message || "Не удалось обновить лот.", isError: true });
