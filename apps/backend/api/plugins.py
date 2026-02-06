@@ -515,6 +515,7 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
     conn = get_base_connection()
     try:
         cursor = conn.cursor()
+        inserted = 0
         if user_id:
             cursor.execute(
                 """
@@ -528,6 +529,20 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
                 """,
                 (int(user_id), "%funpay.com/%"),
             )
+            inserted += int(cursor.rowcount or 0)
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                SELECT DISTINCT a.user_id, LEFT(a.lot_url, 512), 1, 24, NULL
+                FROM accounts a
+                WHERE a.user_id = %s
+                  AND a.lot_url IS NOT NULL
+                  AND a.lot_url <> ''
+                  AND a.lot_url LIKE %s
+                """,
+                (int(user_id), "%funpay.com/%"),
+            )
+            inserted += int(cursor.rowcount or 0)
         else:
             cursor.execute(
                 """
@@ -540,8 +555,21 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
                 """,
                 ("%funpay.com/%",),
             )
+            inserted += int(cursor.rowcount or 0)
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                SELECT DISTINCT a.user_id, LEFT(a.lot_url, 512), 1, 24, NULL
+                FROM accounts a
+                WHERE a.lot_url IS NOT NULL
+                  AND a.lot_url <> ''
+                  AND a.lot_url LIKE %s
+                """,
+                ("%funpay.com/%",),
+            )
+            inserted += int(cursor.rowcount or 0)
         conn.commit()
-        return int(cursor.rowcount or 0)
+        return int(inserted)
     finally:
         conn.close()
 
@@ -908,7 +936,7 @@ def start_price_dumper_scheduler() -> None:
 
 
 def _price_dumper_scheduler_loop() -> None:
-    poll_seconds = int(os.getenv("PRICE_DUMPER_POLL_SECONDS", "300"))
+    poll_seconds = int(os.getenv("PRICE_DUMPER_POLL_SECONDS", "3600"))
     while True:
         try:
             _run_due_price_dumper_jobs()
