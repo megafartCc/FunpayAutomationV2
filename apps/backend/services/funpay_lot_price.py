@@ -91,6 +91,7 @@ def edit_funpay_lot(
     title_en: str | None = None,
     description_en: str | None = None,
     price: float | None = None,
+    active: bool | None = None,
     user_agent: str | None = None,
 ) -> FunPayLotSnapshot | None:
     account = _create_account(golden_key, proxy_url, user_agent)
@@ -108,6 +109,11 @@ def edit_funpay_lot(
         lot_fields.description_en = description_en
     if price is not None:
         lot_fields.price = round(float(price), 2)
+    if active is not None:
+        if active:
+            lot_fields.edit_fields({"active": "on"})
+        else:
+            lot_fields.fields.pop("active", None)
     account.save_lot(lot_fields)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
