@@ -310,7 +310,9 @@ def _post_lot_fields(account: Account, lot_id: int, fields: dict) -> None:
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
         "x-requested-with": "XMLHttpRequest",
     }
-    fields.setdefault("location", "trade")
+    fields.setdefault("location", "offer")
+    fields["active"] = "on"
+    fields["deactivate_after_sale"] = ""
     logger.info("FunPay lot sync request for %s: %s", lot_id, {k: fields.get(k) for k in sorted(fields.keys())})
     response = account.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
     try:
