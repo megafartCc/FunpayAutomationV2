@@ -7,6 +7,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Iterable
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,6 +22,118 @@ router = APIRouter()
 logger = logging.getLogger("backend.price_dumper")
 
 _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
+_PAGE_PARAM = "page"
+_DEFAULT_MAX_PAGES = 25
+_MAX_PAGE_LIMIT = 200
+
+
+def _price_dumper_max_pages() -> int:
+    raw = os.getenv("PRICE_DUMPER_MAX_PAGES", str(_DEFAULT_MAX_PAGES))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = _DEFAULT_MAX_PAGES
+    return max(1, min(value, _MAX_PAGE_LIMIT))
+
+
+def _is_category_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    path = parsed.path or ""
+    if "offer" in path:
+        return False
+    return re.search(r"^/lots/\d+(?:/|$)", path) is not None
+
+
+def _strip_page_param(url: str) -> str:
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    if _PAGE_PARAM in query:
+        query.pop(_PAGE_PARAM, None)
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True), fragment=""))
+
+
+def _build_page_url(base_url: str, page: int) -> str:
+    parsed = urlparse(base_url)
+    query = parse_qs(parsed.query)
+    query[_PAGE_PARAM] = [str(page)]
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+
+
+def _extract_page_param(value: str) -> int | None:
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return None
+    query = parse_qs(parsed.query)
+    raw = (query.get(_PAGE_PARAM) or [None])[0]
+    if raw is None:
+        return None
+    raw_text = str(raw).strip()
+    if raw_text.isdigit():
+        return int(raw_text)
+    return None
+
+
+def _extract_total_pages(soup: BeautifulSoup) -> int | None:
+    candidates: set[int] = set()
+    selectors = [
+        ".pagination a",
+        ".pagination span",
+        ".pager a",
+        ".pager span",
+        ".pagination__list a",
+        ".pagination__list span",
+        ".pagination__pages a",
+        ".pagination__pages span",
+        ".pagination__link",
+        ".pagination__item",
+    ]
+    for selector in selectors:
+        for node in soup.select(selector):
+            text = node.get_text(strip=True)
+            if text.isdigit():
+                candidates.add(int(text))
+            href = node.get("href")
+            if href:
+                page = _extract_page_param(str(href))
+                if page:
+                    candidates.add(page)
+            data_page = node.get("data-page")
+            if data_page is not None and str(data_page).isdigit():
+                candidates.add(int(data_page))
+    if not candidates:
+        for node in soup.find_all("a", href=True):
+            href = str(node.get("href") or "")
+            if _PAGE_PARAM not in href:
+                continue
+            page = _extract_page_param(href)
+            if page:
+                candidates.add(page)
+    return max(candidates) if candidates else None
+
+
+def _normalize_price_dumper_url(url: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        return value
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return value
+    parsed = parsed._replace(fragment="")
+    value = urlunparse(parsed)
+    if not _is_category_url(value):
+        return value
+    value = _strip_page_param(value)
+    parsed = urlparse(value)
+    path = parsed.path or ""
+    if re.search(r"^/lots/\d+$", path):
+        parsed = parsed._replace(path=f"{path}/")
+        value = urlunparse(parsed)
+    return value
 
 
 class PriceDumpRequest(BaseModel):
@@ -107,12 +220,18 @@ def _extract_prices(texts: Iterable[str]) -> tuple[list[float], str | None, list
             continue
         prices.append(value)
         price_texts.append(cleaned)
-        labels.append(cleaned.split("·")[0].strip() or cleaned)
-        if "₽" in cleaned:
+        label = cleaned
+        for sep in ("·", "•"):
+            if sep in label:
+                label = label.split(sep)[0].strip() or label
+                break
+        labels.append(label)
+        lower = cleaned.lower()
+        if "₽" in cleaned or "руб" in lower or "rub" in lower:
             currencies.add("₽")
-        elif "$" in cleaned:
+        elif "$" in cleaned or "usd" in lower:
             currencies.add("$")
-        elif "€" in cleaned:
+        elif "€" in cleaned or "eur" in lower:
             currencies.add("€")
     currency = currencies.pop() if len(currencies) == 1 else None
     return prices, currency, price_texts, labels
@@ -140,10 +259,11 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
 
 
 def _is_rent_offer(text: str) -> bool:
-    return "аренда" in text.lower()
+    value = text.lower()
+    return "аренд" in value or "rent" in value
 
 
-def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
+def _extract_items(soup: BeautifulSoup, rent_only: bool, base_url: str | None = None) -> list[PriceDumpItem]:
     selectors = [
         ".tc-item",
         ".lot-item",
@@ -159,13 +279,13 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
     for selector in selectors:
         for node in soup.select(selector):
             text = node.get_text(" ", strip=True)
-            if rent_only and not _is_rent_offer(text):
-                continue
+            is_rent = _is_rent_offer(text)
             title_node = node.select_one(
                 ".tc-item-title, .lot-title, .offer-title, .tc-lot__title, .lot-name, .tc-title, a"
             )
             title = title_node.get_text(" ", strip=True) if title_node else text[:120]
-            if rent_only and not _is_rent_offer(title):
+            is_rent = is_rent or _is_rent_offer(title)
+            if rent_only and not is_rent:
                 continue
             price_node = node.select_one(".price, .tc-price, .lot-price, .payment-price, .lot-view-price, .tc-lot__price")
             price_text = price_node.get_text(" ", strip=True) if price_node else ""
@@ -175,6 +295,8 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
             url = None
             if title_node and title_node.name == "a":
                 url = title_node.get("href")
+                if url and base_url:
+                    url = urljoin(base_url, url)
             items.append(
                 PriceDumpItem(
                     title=title,
@@ -182,7 +304,7 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool) -> list[PriceDumpItem]:
                     currency=currency,
                     url=url,
                     raw_price=price_text or None,
-                    rent=_is_rent_offer(text),
+                    rent=is_rent,
                 )
             )
     items.sort(key=lambda item: item.price)
@@ -304,6 +426,7 @@ def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:
 
 
 def _upsert_price_dumper_setting(user_id: int, url: str, interval_hours: int = 24) -> None:
+    url = _normalize_price_dumper_url(url)
     if not url:
         return
     conn = get_base_connection()
@@ -337,6 +460,7 @@ def _insert_price_dumper_history(
     second_price: float | None,
     price_count: int,
 ) -> None:
+    url = _normalize_price_dumper_url(url)
     if not url:
         return
     conn = get_base_connection()
@@ -443,6 +567,9 @@ def _fetch_price_dumper_urls(user_id: int, limit: int = 5) -> list[str]:
 
 
 def _fetch_price_dumper_history(user_id: int, url: str, days: int = 30) -> list[PriceDumpHistoryItem]:
+    url = _normalize_price_dumper_url(url)
+    if not url:
+        return []
     conn = get_base_connection()
     try:
         cursor = conn.cursor(dictionary=True)
@@ -544,41 +671,94 @@ def _analyze_prices_with_groq(
 
 
 def _scrape_price_dumper_url(url: str, rent_only: bool) -> PriceDumpResponse:
-    try:
-        response = requests.get(
-            str(url),
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=15,
+    normalized_url = _normalize_price_dumper_url(str(url))
+    should_paginate = _is_category_url(normalized_url)
+    base_url = normalized_url
+    max_pages = _price_dumper_max_pages() if should_paginate else 1
+    session = requests.Session()
+
+    items: list[PriceDumpItem] = []
+    seen_keys: set[tuple[str, float, str, bool]] = set()
+    currency_candidates: set[str] = set()
+    title: str | None = None
+    description: str | None = None
+    last_page_signature: tuple[tuple[str, float, str, bool], ...] | None = None
+
+    page = 1
+    while page <= max_pages:
+        page_url = base_url if page == 1 else _build_page_url(base_url, page)
+        try:
+            response = session.get(
+                page_url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=15,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch FunPay page: {exc}") from exc
+
+        soup = BeautifulSoup(response.text, "lxml")
+        if page == 1:
+            if soup.title and soup.title.string:
+                title = soup.title.string.strip()
+            heading = soup.find("h1")
+            if heading and heading.get_text(strip=True):
+                title = heading.get_text(strip=True)
+            description = _extract_description(soup)
+            if should_paginate:
+                detected_pages = _extract_total_pages(soup)
+                if detected_pages:
+                    max_pages = min(max_pages, detected_pages)
+
+        page_base = str(response.url or page_url)
+        page_items_all = _extract_items(soup, False, base_url=page_base)
+        page_signature = tuple(
+            (item.title, item.price, item.url or "", bool(item.rent)) for item in page_items_all
         )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch FunPay page: {exc}") from exc
+        if page > 1 and page_signature == last_page_signature:
+            break
+        last_page_signature = page_signature
 
-    soup = BeautifulSoup(response.text, "lxml")
-    title = None
-    if soup.title and soup.title.string:
-        title = soup.title.string.strip()
-    heading = soup.find("h1")
-    if heading and heading.get_text(strip=True):
-        title = heading.get_text(strip=True)
+        page_items = [item for item in page_items_all if (not rent_only or item.rent)]
+        new_items = 0
+        for item in page_items:
+            key = (item.title.strip().lower(), item.price, item.url or "", bool(item.rent))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            items.append(item)
+            if item.currency:
+                currency_candidates.add(item.currency)
+            new_items += 1
 
-    description = _extract_description(soup)
+        if not should_paginate:
+            break
+        if not page_items_all:
+            break
+        if page >= max_pages:
+            break
+        if new_items == 0 and not rent_only:
+            break
+        page += 1
 
-    price_nodes = soup.select(
-        ".price, .tc-price, .lot-price, .payment-price, .lot-view-price, .tc-lot__price"
-    )
-    price_texts = [node.get_text(" ", strip=True) for node in price_nodes]
-    prices, currency, extracted_texts, labels = _extract_prices(price_texts)
-    prices_sorted = sorted(prices)
-    items = _extract_items(soup, rent_only)
+    items.sort(key=lambda item: item.price)
+    prices = [item.price for item in items]
+    price_texts = [
+        item.raw_price
+        if item.raw_price
+        else f"{item.price:.2f} {item.currency}" if item.currency else f"{item.price:.2f}"
+        for item in items
+    ]
+    labels = [item.title for item in items]
+    currency = currency_candidates.pop() if len(currency_candidates) == 1 else None
 
     return PriceDumpResponse(
-        url=str(url),
+        url=base_url,
         title=title,
         description=description,
-        prices=prices_sorted,
+        prices=prices,
         currency=currency,
-        price_texts=extracted_texts,
+        price_texts=price_texts,
         labels=labels,
         items=items,
     )
@@ -673,6 +853,8 @@ def price_dumper_history(
         logger.debug("Price dumper settings seed failed.", exc_info=True)
     if not url:
         url = _load_latest_price_dumper_url(int(_user.id))
+    if url:
+        url = _normalize_price_dumper_url(url)
     if not url:
         return PriceDumpHistoryResponse(url=None, items=[])
     items = _fetch_price_dumper_history(int(_user.id), url, days=days)

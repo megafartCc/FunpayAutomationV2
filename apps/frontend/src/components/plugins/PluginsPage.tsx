@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
@@ -80,6 +80,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(false);
+  const historyRequestedRef = useRef(false);
 
   const [enabled, setEnabled] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState(true);
@@ -318,6 +319,7 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
 
   const loadHistory = useCallback(
     async (url?: string | null) => {
+      historyRequestedRef.current = true;
       setHistoryLoading(true);
       setHistoryError(null);
       try {
@@ -334,10 +336,9 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   );
   useEffect(() => {
     if (selectedPlugin !== "price_dumper") return;
-    if (historyLoading) return;
-    if (historyItems.length) return;
+    if (historyRequestedRef.current) return;
     void loadHistory(null);
-  }, [selectedPlugin, historyLoading, historyItems.length, loadHistory]);
+  }, [selectedPlugin, loadHistory]);
 
   useEffect(() => {
     if (selectedPlugin !== "price_dumper") return;
@@ -348,6 +349,11 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
       .then(() => loadHistory(null))
       .catch(() => null);
   }, [selectedPlugin, historyRefresh, loadHistory]);
+
+  useEffect(() => {
+    if (selectedPlugin === "price_dumper") return;
+    historyRequestedRef.current = false;
+  }, [selectedPlugin]);
 
 
   const historyChart = useMemo(() => {
