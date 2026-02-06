@@ -453,16 +453,18 @@ const FunpayStatsPage: React.FC = () => {
           {
             label: tr("Refunded", "Возвраты"),
             data: [refundStats.refundedOrders],
-            backgroundColor: "rgba(239, 68, 68, 0.85)",
-            borderRadius: 6,
-            barThickness: 12,
+            backgroundColor: "rgba(239, 68, 68, 0.9)",
+            borderRadius: 999,
+            borderSkipped: false,
+            barThickness: 18,
           },
           {
             label: tr("Kept", "Без возврата"),
             data: [kept],
-            backgroundColor: "rgba(16, 185, 129, 0.85)",
-            borderRadius: 6,
-            barThickness: 12,
+            backgroundColor: "rgba(16, 185, 129, 0.9)",
+            borderRadius: 999,
+            borderSkipped: false,
+            barThickness: 18,
           },
         ],
       },
@@ -471,9 +473,10 @@ const FunpayStatsPage: React.FC = () => {
         maintainAspectRatio: false,
         indexAxis: "y" as const,
         scales: {
-          x: { stacked: true, display: false },
+          x: { stacked: true, display: false, max: refundStats.totalOrders || 1 },
           y: { stacked: true, display: false },
         },
+        layout: { padding: { left: 6, right: 6, top: 4, bottom: 4 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1015,22 +1018,32 @@ const FunpayStatsPage: React.FC = () => {
               </span>
             </div>
           </div>
-          <div className="mt-5 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-            <div className="flex items-center justify-between gap-3">
+          <div className="mt-5 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-neutral-400">
-                  {tr("Refund rate", "Доля возвратов")}
+                  {tr("Refund rate", "???? ?????????")}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-neutral-900">
+                <p className="mt-1 text-2xl font-semibold text-neutral-900">
                   {refundStats.refundRate ? `${refundStats.refundRate.toFixed(1)}%` : "0%"}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
+                  {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "???????")}
                 </p>
               </div>
-              <div className="h-10 w-28">
-                <ChartBar data={refundBarChart.data} options={refundBarChart.options} />
+              <div className="min-w-[160px] text-right text-xs text-neutral-500">
+                <div className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                  {tr("Refunded", "????????")}: {refundStats.refundedOrders}
+                </div>
+                <div className="mt-1 inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  {tr("Kept", "??? ????????")}: {Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0)}
+                </div>
               </div>
+            </div>
+            <div className="mt-3 h-14 w-full">
+              <ChartBar data={refundBarChart.data} options={refundBarChart.options} />
             </div>
           </div>
           <div className="mt-5 rounded-xl bg-neutral-50 p-4">
