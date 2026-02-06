@@ -70,6 +70,21 @@ export type LotSyncResult = {
   updated: boolean;
 };
 
+export type FunPayLotDetails = {
+  lot_number: number;
+  title: string;
+  description: string;
+  price: number | null;
+  active: boolean;
+};
+
+export type FunPayLotUpdatePayload = {
+  title?: string | null;
+  description?: string | null;
+  price?: number | null;
+  active?: boolean | null;
+};
+
 export type RaiseCategoryItem = {
   category_id: number;
   category_name: string;
@@ -176,7 +191,7 @@ export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
   account_id: number;
-  lot_url: string;
+  lot_url?: string | null;
 };
 
 export type BlacklistEntry = {
@@ -541,6 +556,21 @@ export const api = {
     request<{ items: LotItem[] }>(
       workspaceId ? `/lots?workspace_id=${workspaceId}` : "/lots",
       { method: "GET" },
+    ),
+  getFunPayLotDetails: (lotNumber: number, workspaceId?: number | null) =>
+    request<FunPayLotDetails>(withWorkspace(`/lots/${lotNumber}/funpay`, workspaceId), { method: "GET" }),
+  updateFunPayLotDetails: (lotNumber: number, payload: FunPayLotUpdatePayload, workspaceId?: number | null) =>
+    request<FunPayLotDetails>(withWorkspace(`/lots/${lotNumber}/funpay`, workspaceId), {
+      method: "PATCH",
+      body: payload,
+    }),
+  manualAutoPriceLot: (payload: { lot_number: number; price: number }, workspaceId?: number | null) =>
+    request<{ ok: boolean; changed: boolean; old_price?: number | null }>(
+      withWorkspace("/lots/manual-auto-price", workspaceId),
+      {
+        method: "POST",
+        body: payload,
+      },
     ),
   listRaiseCategories: (workspaceId?: number | null) => {
     const params = new URLSearchParams();
