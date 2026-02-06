@@ -422,7 +422,7 @@ def start_rental_for_owner(
         cursor.execute(
             f"""
             UPDATE accounts
-            SET rental_start = NOW()
+            SET rental_start = UTC_TIMESTAMP()
             WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}{id_clause}
             """,
             tuple(params),
