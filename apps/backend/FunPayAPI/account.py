@@ -1755,9 +1755,8 @@ class Account:
         # Fallback only if location key is absent (do not override empty string).
         if "location" not in fields:
             fields["location"] = "offer"
-        force_active = os.getenv("FUNPAY_FORCE_ACTIVE", "1").strip().lower() not in {"0", "false", "no", "off"}
-        if force_active:
-            fields["active"] = "on"
+        # Always keep lots active; deactivation disabled.
+        fields["active"] = "on"
         logger.error(
             "FunPay offerSave request for %s: %s",
             lot_fields.lot_id,

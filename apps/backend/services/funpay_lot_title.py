@@ -235,10 +235,8 @@ def update_funpay_lot_title(
         fields["offer_id"] = str(lot_id)
     if not fields.get("csrf_token"):
         fields["csrf_token"] = account.csrf_token
-    if lot_fields.active:
-        fields["active"] = "on"
-    else:
-        fields.pop("active", None)
+    # Always keep lots active; deactivation disabled.
+    fields["active"] = "on"
     _post_lot_fields(account, lot_id, fields)
     return True
 

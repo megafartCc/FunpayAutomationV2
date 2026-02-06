@@ -110,10 +110,7 @@ def edit_funpay_lot(
     if price is not None:
         lot_fields.price = round(float(price), 2)
     if active is not None:
-        if active:
-            lot_fields.edit_fields({"active": "on"})
-        else:
-            lot_fields.fields.pop("active", None)
+        lot_fields.active = bool(active)
     account.save_lot(lot_fields)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
