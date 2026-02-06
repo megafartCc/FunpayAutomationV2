@@ -25,7 +25,7 @@ _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 _PAGE_PARAM = "page"
 _DEFAULT_MAX_PAGES = 25
 _MAX_PAGE_LIMIT = 200
-_DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/?search=%D0%B0%D1%80%D0%B5%D0%BD%D0%B4%D0%B0"
+_DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/"
 _PRICE_DUMPER_INTERVAL_HOURS = 1
 _PRICE_DUMPER_CATEGORY_ID = "81"
 
@@ -140,6 +140,10 @@ def _normalize_price_dumper_url(url: str) -> str:
     if not _is_category_url(value):
         return value
     value = _strip_page_param(value)
+    if _is_target_category(value):
+        parsed = urlparse(value)
+        parsed = parsed._replace(query="")
+        value = urlunparse(parsed)
     parsed = urlparse(value)
     path = parsed.path or ""
     if re.search(r"^/lots/\d+$", path):
@@ -279,7 +283,7 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
 
 def _is_rent_offer(text: str) -> bool:
     value = text.lower()
-    return "аренд" in value or "rent" in value
+    return "\u0430\u0440\u0435\u043d\u0434\u0430" in value or "\u0430\u0440\u0435\u043d\u0434" in value or "rent" in value
 
 
 def _extract_items(soup: BeautifulSoup, rent_only: bool, base_url: str | None = None) -> list[PriceDumpItem]:
