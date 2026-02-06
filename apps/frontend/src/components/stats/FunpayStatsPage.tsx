@@ -151,7 +151,7 @@ const FunpayStatsPage: React.FC = () => {
       const [ordersRes, rentalsRes, notificationsRes] = await Promise.all([
         api.listOrdersHistory(workspaceId ?? null, "", 500),
         api.listActiveRentals(workspaceId),
-        api.listNotifications(workspaceId ?? null, 1000),
+        api.listNotifications(workspaceId ?? null, 500),
       ]);
       const ordersItems = Array.isArray(ordersRes.items) ? ordersRes.items : [];
       const rentalItems = Array.isArray(rentalsRes.items) ? rentalsRes.items : [];

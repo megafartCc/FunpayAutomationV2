@@ -400,8 +400,35 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
     } catch {
       // ignore
     }
+    let message = res.statusText || "Request failed";
+    const detail = (details as { detail?: unknown })?.detail;
+    if (typeof detail === "string" && detail.trim()) {
+      message = detail;
+    } else if (Array.isArray(detail)) {
+      const parts = detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && "msg" in item) {
+            const msg = (item as { msg?: string }).msg;
+            if (msg) return msg;
+          }
+          try {
+            return JSON.stringify(item);
+          } catch {
+            return String(item);
+          }
+        })
+        .filter(Boolean);
+      if (parts.length) message = parts.join(", ");
+    } else if (detail && typeof detail === "object") {
+      try {
+        message = JSON.stringify(detail);
+      } catch {
+        message = String(detail);
+      }
+    }
     const error: ApiError = {
-      message: (details as { detail?: string })?.detail || res.statusText || "Request failed",
+      message,
       status: res.status,
       details,
     };
@@ -609,7 +636,8 @@ export const api = {
   },
   listNotifications: (workspaceId?: number | null, limit?: number) => {
     const params = new URLSearchParams();
-    if (limit) params.set("limit", String(limit));
+    const safeLimit = limit ? Math.min(limit, 500) : undefined;
+    if (safeLimit) params.set("limit", String(safeLimit));
     const suffix = params.toString();
     return request<{ items: NotificationItem[] }>(
       withWorkspace(`/notifications${suffix ? `?${suffix}` : ""}`, workspaceId),
