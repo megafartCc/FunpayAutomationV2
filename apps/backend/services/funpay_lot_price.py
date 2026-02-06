@@ -53,6 +53,5 @@ def update_funpay_lot_price(
     if current_price is not None and abs(float(current_price) - new_price) < 0.01:
         return False, current_price
     lot_fields.price = new_price
-    lot_fields.active = True
     account.save_lot(lot_fields)
     return True, current_price
