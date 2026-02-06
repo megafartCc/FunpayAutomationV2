@@ -9,12 +9,15 @@ from services.funpay_refund import refund_order
 from api.deps import get_current_user
 from db.order_history_repo import MySQLOrderHistoryRepo
 from db.workspace_repo import MySQLWorkspaceRepo
+from db.account_repo import MySQLAccountRepo
+from services.steam_service import deauthorize_sessions, SteamWorkerError
 
 
 router = APIRouter()
 orders_repo = MySQLOrderHistoryRepo()
 workspace_repo = MySQLWorkspaceRepo()
 notifications_repo = MySQLNotificationsRepo()
+accounts_repo = MySQLAccountRepo()
 
 
 class OrderResolveResponse(BaseModel):
@@ -200,6 +203,42 @@ def refund_order_api(
             workspace_id=workspace.id,
         )
         raise HTTPException(status_code=502, detail=f"Refund failed: {exc}") from exc
+
+    if order_record.account_id:
+        account_row = accounts_repo.get_by_id(int(order_record.account_id), user_id, workspace.id)
+        mafile_json = account_row.get("mafile_json") if account_row else None
+        if mafile_json:
+            try:
+                deauthorize_sessions(
+                    steam_login=account_row.get("login") or account_row.get("account_name") or "",
+                    steam_password=account_row.get("password") or "",
+                    mafile_json=mafile_json,
+                )
+                notifications_repo.log_notification(
+                    event_type="deauthorize",
+                    status="ok",
+                    title="Steam deauthorize on refund",
+                    message="Steam sessions deauthorized after refund.",
+                    owner=order_record.owner,
+                    account_name=order_record.account_name,
+                    account_id=order_record.account_id,
+                    order_id=order_record.order_id,
+                    user_id=user_id,
+                    workspace_id=workspace.id,
+                )
+            except SteamWorkerError as exc:
+                notifications_repo.log_notification(
+                    event_type="deauthorize",
+                    status="failed",
+                    title="Steam deauthorize on refund",
+                    message=f"Steam deauthorize after refund failed: {exc}",
+                    owner=order_record.owner,
+                    account_name=order_record.account_name,
+                    account_id=order_record.account_id,
+                    order_id=order_record.order_id,
+                    user_id=user_id,
+                    workspace_id=workspace.id,
+                )
 
     orders_repo.insert_action(
         order_id=order_record.order_id,
