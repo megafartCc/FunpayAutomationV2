@@ -410,7 +410,10 @@ def _format_prices(prices: list[float], limit: int = 500) -> str:
 
 
 def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float = 50.0) -> list[float]:
-    return [price for price in prices if min_price <= price <= max_price]
+    filtered = [price for price in prices if min_price <= price <= max_price]
+    if filtered:
+        return filtered
+    return [price for price in prices if price >= min_price]
 
 
 def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:

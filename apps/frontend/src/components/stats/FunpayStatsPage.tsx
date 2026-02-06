@@ -164,7 +164,7 @@ const FunpayStatsPage: React.FC = () => {
     } catch (err) {
       const message =
         (err as { message?: string })?.message ||
-        tr("Failed to load statistics.", "?? ??????? ????????? ??????????.");
+        tr("Failed to load statistics.", "Не удалось загрузить статистику.");
       setError(message);
       setNotificationsLoaded(true);
     } finally {
@@ -1016,23 +1016,23 @@ const FunpayStatsPage: React.FC = () => {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-neutral-400">
-                  {tr("Refund rate", "???? ?????????")}
+                  {tr("Refund rate", "Доля возвратов")}
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-neutral-900">
                   {refundStats.refundRate ? `${refundStats.refundRate.toFixed(1)}%` : "0%"}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "???????")}
+                  {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
                 </p>
               </div>
               <div className="min-w-[160px] text-right text-xs text-neutral-500">
                 <div className="inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
-                  {tr("Refunded", "????????")}: {refundStats.refundedOrders}
+                  {tr("Refunded", "Возвраты")}: {refundStats.refundedOrders}
                 </div>
                 <div className="mt-1 inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  {tr("Kept", "??? ????????")}: {Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0)}
+                  {tr("Kept", "Без возврата")}: {Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0)}
                 </div>
               </div>
             </div>

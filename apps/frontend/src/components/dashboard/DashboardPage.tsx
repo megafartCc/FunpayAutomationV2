@@ -624,15 +624,15 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
 
   const handleRefundRental = async () => {
     if (!selectedRental) {
-      onToast?.("??????? ???????? ??????.", true);
+      onToast?.("Сначала выберите аренду.", true);
       return;
     }
     if (!selectedRental.buyer) {
-      onToast?.("?? ??????? ?????????? ?????????? ??? ????????.", true);
+      onToast?.("Не удалось определить покупателя для возврата.", true);
       return;
     }
     if (rentalActionBusy) return;
-    const ok = window.confirm(`??????? ???????? ?? ?????????? ?????? ?????????? ${selectedRental.buyer}?`);
+    const ok = window.confirm(`Вернуть средства по последнему заказу покупателя ${selectedRental.buyer}?`);
     if (!ok) return;
     setRentalActionBusy(true);
     try {
@@ -642,10 +642,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
         account_id: selectedRental.id,
         workspace_id: targetWorkspaceId ?? undefined,
       });
-      onToast?.(`??????? ???????? ??? ?????? #${res.order_id}.`);
+      onToast?.(`Возврат оформлен для заказа #${res.order_id}.`);
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
-      const message = (err as { message?: string })?.message || "?? ??????? ???????? ???????.";
+      const message = (err as { message?: string })?.message || "Не удалось оформить возврат.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
@@ -1094,14 +1094,14 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                   </button>
                 </div>
                 <div className="rounded-xl border border-rose-300/40 bg-rose-500/5 p-4">
-                  <div className="mb-2 text-sm font-semibold text-rose-700">??????? ???????</div>
-                  <p className="text-xs text-rose-600">????????? ??????? ?? ?????????? ?????? ??????????.</p>
+                  <div className="mb-2 text-sm font-semibold text-rose-700">Возврат средств</div>
+                  <p className="text-xs text-rose-600">Оформляет возврат по последнему заказу покупателя.</p>
                   <button
                     onClick={handleRefundRental}
                     disabled={rentalActionBusy}
                     className="mt-3 w-full rounded-lg border border-rose-300/60 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    ???????? ???????
+                    Оформить возврат
                   </button>
                 </div>
 
