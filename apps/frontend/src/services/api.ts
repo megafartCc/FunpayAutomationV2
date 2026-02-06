@@ -74,6 +74,8 @@ export type FunPayLotDetails = {
   lot_number: number;
   title: string;
   description: string;
+  title_en: string;
+  description_en: string;
   price: number | null;
   active: boolean;
 };

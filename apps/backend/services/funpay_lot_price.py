@@ -30,6 +30,8 @@ class FunPayLotSnapshot:
     lot_id: int
     title: str
     description: str
+    title_en: str
+    description_en: str
     price: float | None
     active: bool
 
@@ -64,12 +66,16 @@ def get_funpay_lot_snapshot(
     if account is None:
         return None
     lot_fields = account.get_lot_fields(int(lot_id))
-    title = (lot_fields.title_ru or lot_fields.title_en or "").strip()
-    description = (lot_fields.description_ru or lot_fields.description_en or "").strip()
+    title_ru = (lot_fields.title_ru or "").strip()
+    description_ru = (lot_fields.description_ru or "").strip()
+    title_en = (lot_fields.title_en or "").strip()
+    description_en = (lot_fields.description_en or "").strip()
     return FunPayLotSnapshot(
         lot_id=int(lot_id),
-        title=title,
-        description=description,
+        title=title_ru or title_en,
+        description=description_ru or description_en,
+        title_en=title_en,
+        description_en=description_en,
         price=lot_fields.price,
         active=bool(lot_fields.active),
     )

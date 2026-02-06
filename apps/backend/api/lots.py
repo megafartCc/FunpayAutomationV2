@@ -65,6 +65,8 @@ class FunPayLotDetails(BaseModel):
     lot_number: int
     title: str
     description: str
+    title_en: str
+    description_en: str
     price: float | None
     active: bool
 
@@ -320,6 +322,8 @@ def get_funpay_lot(
         lot_number=int(lot_number),
         title=snapshot.title,
         description=snapshot.description,
+        title_en=snapshot.title_en,
+        description_en=snapshot.description_en,
         price=snapshot.price,
         active=snapshot.active,
     )
@@ -368,6 +372,8 @@ def patch_funpay_lot(
         lot_number=int(lot_number),
         title=snapshot.title,
         description=snapshot.description,
+        title_en=snapshot.title_en,
+        description_en=snapshot.description_en,
         price=snapshot.price,
         active=snapshot.active,
     )

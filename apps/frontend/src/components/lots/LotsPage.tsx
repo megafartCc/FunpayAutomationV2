@@ -21,6 +21,8 @@ const LotsPage: React.FC = () => {
   const [manualLot, setManualLot] = useState<FunPayLotDetails | null>(null);
   const [manualTitle, setManualTitle] = useState("");
   const [manualDescription, setManualDescription] = useState("");
+  const [manualTitleEn, setManualTitleEn] = useState("");
+  const [manualDescriptionEn, setManualDescriptionEn] = useState("");
   const [manualPrice, setManualPrice] = useState("");
   const [manualActive, setManualActive] = useState(true);
   const [manualLoading, setManualLoading] = useState(false);
@@ -136,6 +138,8 @@ const LotsPage: React.FC = () => {
       setManualLot(details);
       setManualTitle(details.title || "");
       setManualDescription(details.description || "");
+      setManualTitleEn(details.title_en || "");
+      setManualDescriptionEn(details.description_en || "");
       setManualPrice(details.price !== null && details.price !== undefined ? String(details.price) : "");
       setManualActive(Boolean(details.active));
     } catch (err) {
@@ -156,7 +160,14 @@ const LotsPage: React.FC = () => {
     try {
       const updated = await api.updateFunPayLotDetails(
         manualLotId,
-        { title: manualTitle, description: manualDescription, price, active: manualActive },
+        {
+          title: manualTitle,
+          description: manualDescription,
+          title_en: manualTitleEn,
+          description_en: manualDescriptionEn,
+          price,
+          active: manualActive,
+        },
         selectedWorkspaceId as number,
       );
       setManualLot(updated);
@@ -352,8 +363,10 @@ const LotsPage: React.FC = () => {
             </div>
             {manualLot ? (
               <div className="grid gap-3">
-                <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} placeholder="Заголовок" />
-                <textarea className="min-h-[120px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualDescription} onChange={(e) => setManualDescription(e.target.value)} placeholder="Описание" />
+                <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} placeholder="Заголовок (RU)" />
+                <textarea className="min-h-[120px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualDescription} onChange={(e) => setManualDescription(e.target.value)} placeholder="Описание (RU)" />
+                <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualTitleEn} onChange={(e) => setManualTitleEn(e.target.value)} placeholder="Short description (EN)" />
+                <textarea className="min-h-[120px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualDescriptionEn} onChange={(e) => setManualDescriptionEn(e.target.value)} placeholder="Detailed description (EN)" />
                 <div className="grid gap-3 md:grid-cols-3">
                   <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} placeholder="Цена" />
                   <label className="inline-flex items-center gap-2 text-sm text-neutral-700"><input type="checkbox" checked={manualActive} onChange={(e) => setManualActive(e.target.checked)} /> Лот активен</label>
