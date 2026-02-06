@@ -3,6 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from db.notifications_repo import MySQLNotificationsRepo
+from services.funpay_refund import refund_order
+
 from api.deps import get_current_user
 from db.order_history_repo import MySQLOrderHistoryRepo
 from db.workspace_repo import MySQLWorkspaceRepo
@@ -11,6 +14,7 @@ from db.workspace_repo import MySQLWorkspaceRepo
 router = APIRouter()
 orders_repo = MySQLOrderHistoryRepo()
 workspace_repo = MySQLWorkspaceRepo()
+notifications_repo = MySQLNotificationsRepo()
 
 
 class OrderResolveResponse(BaseModel):
@@ -45,6 +49,34 @@ class OrderHistoryItem(BaseModel):
 
 class OrdersHistoryResponse(BaseModel):
     items: list[OrderHistoryItem]
+
+
+class OrderRefundRequest(BaseModel):
+    order_id: str | None = None
+    owner: str | None = None
+    account_id: int | None = None
+    workspace_id: int | None = None
+
+
+class OrderRefundResponse(BaseModel):
+    ok: bool
+    order_id: str
+    owner: str
+    workspace_id: int | None = None
+    message: str | None = None
+
+
+def _resolve_workspace_for_refund(user_id: int, workspace_id: int | None):
+    if workspace_id is not None:
+        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+        if not workspace:
+            raise HTTPException(status_code=400, detail="Select a workspace for refund.")
+        return workspace
+    workspaces = workspace_repo.list_by_user(user_id)
+    if not workspaces:
+        raise HTTPException(status_code=400, detail="No workspaces available for refund.")
+    default_ws = next((ws for ws in workspaces if int(ws.is_default) == 1), None)
+    return default_ws or workspaces[0]
 
 
 @router.get("/orders/resolve", response_model=OrderResolveResponse)
@@ -108,4 +140,97 @@ def orders_history(
             )
             for item in items
         ]
+    )
+
+
+@router.post("/orders/refund", response_model=OrderRefundResponse)
+def refund_order_api(
+    payload: OrderRefundRequest,
+    user=Depends(get_current_user),
+) -> OrderRefundResponse:
+    user_id = int(user.id)
+    order_record = None
+    workspace_hint = payload.workspace_id
+
+    if payload.order_id:
+        order_record = orders_repo.resolve_order(payload.order_id, user_id, payload.workspace_id)
+    if not order_record and (payload.owner or payload.account_id):
+        order_record = orders_repo.latest_for_owner(
+            owner=payload.owner,
+            user_id=user_id,
+            workspace_id=payload.workspace_id,
+            account_id=payload.account_id,
+        )
+    if not order_record:
+        raise HTTPException(status_code=404, detail="Order not found in history yet.")
+
+    if order_record.action and str(order_record.action).lower().startswith("refund"):
+        raise HTTPException(status_code=400, detail="Order already marked as refunded.")
+
+    workspace_id = (
+        payload.workspace_id
+        if payload.workspace_id is not None
+        else order_record.workspace_id
+        if order_record.workspace_id is not None
+        else None
+    )
+    workspace = _resolve_workspace_for_refund(user_id, workspace_id)
+    if workspace.platform != "funpay":
+        raise HTTPException(status_code=400, detail="Refunds are only available for FunPay workspaces.")
+    if not workspace.golden_key:
+        raise HTTPException(status_code=400, detail="Workspace credentials missing for refund.")
+
+    try:
+        refund_order(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            order_id=order_record.order_id,
+        )
+    except Exception as exc:
+        notifications_repo.log_notification(
+            event_type="refund_manual",
+            status="failed",
+            title="Refund failed",
+            message=str(exc),
+            owner=order_record.owner,
+            account_name=order_record.account_name,
+            account_id=order_record.account_id,
+            order_id=order_record.order_id,
+            user_id=user_id,
+            workspace_id=workspace.id,
+        )
+        raise HTTPException(status_code=502, detail=f"Refund failed: {exc}") from exc
+
+    orders_repo.insert_action(
+        order_id=order_record.order_id,
+        owner=order_record.owner,
+        user_id=user_id,
+        action="refund",
+        workspace_id=workspace.id,
+        account_id=order_record.account_id,
+        account_name=order_record.account_name,
+        steam_id=order_record.steam_id,
+        rental_minutes=order_record.rental_minutes,
+        lot_number=order_record.lot_number,
+        amount=order_record.amount,
+        price=order_record.price,
+    )
+    notifications_repo.log_notification(
+        event_type="refund_manual",
+        status="ok",
+        title="Refund completed",
+        message="Refund issued from admin panel.",
+        owner=order_record.owner,
+        account_name=order_record.account_name,
+        account_id=order_record.account_id,
+        order_id=order_record.order_id,
+        user_id=user_id,
+        workspace_id=workspace.id,
+    )
+    return OrderRefundResponse(
+        ok=True,
+        order_id=order_record.order_id,
+        owner=order_record.owner,
+        workspace_id=workspace.id,
+        message="Refund requested.",
     )

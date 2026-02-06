@@ -348,6 +348,14 @@ export type PriceDumperRefreshResponse = {
   urls: string[];
 };
 
+export type RefundResponse = {
+  ok: boolean;
+  order_id: string;
+  owner: string;
+  workspace_id?: number | null;
+  message?: string | null;
+};
+
 export type TelegramStatus = {
   connected: boolean;
   chat_id?: number | null;
@@ -690,4 +698,6 @@ export const api = {
       { method: "GET" },
     );
   },
+  refundOrder: (payload: { order_id?: string; owner?: string; account_id?: number; workspace_id?: number | null }) =>
+    request<RefundResponse>("/orders/refund", { method: "POST", body: payload }),
 };

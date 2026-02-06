@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import logging
+import sys
+from pathlib import Path
+
+
+logger = logging.getLogger("backend.funpay.refund")
+
+_HERE = Path(__file__).resolve()
+for _parent in _HERE.parents:
+    if (_parent / "workers").exists():
+        if str(_parent) not in sys.path:
+            sys.path.append(str(_parent))
+        break
+
+try:
+    from FunPayAPI.account import Account
+    from FunPayAPI.common import exceptions as fp_exceptions
+except Exception:
+    try:
+        from workers.funpay.FunPayAPI.account import Account
+        from workers.funpay.FunPayAPI.common import exceptions as fp_exceptions
+    except Exception:  # pragma: no cover - optional dependency in backend runtime
+        Account = None
+        fp_exceptions = None
+
+
+def _build_proxy_config(proxy_url: str | None) -> dict | None:
+    raw = (proxy_url or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = f"socks5://{raw}"
+    return {"http": raw, "https": raw}
+
+
+def _normalize_order_id(order_id: str) -> str:
+    value = str(order_id or "").strip()
+    if value.startswith("#"):
+        value = value[1:]
+    return value
+
+
+def refund_order(
+    *,
+    golden_key: str,
+    proxy_url: str | None,
+    order_id: str,
+    user_agent: str | None = None,
+) -> None:
+    if not Account:
+        raise RuntimeError("FunPayAPI is not available in backend runtime.")
+    normalized = _normalize_order_id(order_id)
+    if not normalized:
+        raise ValueError("order_id is required")
+    proxy_cfg = _build_proxy_config(proxy_url)
+    account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
+    account.get()
+    account.refund(normalized)
+

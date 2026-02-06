@@ -28,6 +28,8 @@ const BuyerChatPanel: React.FC<BuyerChatPanelProps> = ({ open, buyer, workspaceI
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundNote, setRefundNote] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
@@ -36,7 +38,13 @@ const BuyerChatPanel: React.FC<BuyerChatPanelProps> = ({ open, buyer, workspaceI
   const normalizedBuyer = useMemo(() => normalizeBuyer(buyer), [buyer]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setRefundNote(null);
+      setRefundBusy(false);
+      return;
+    }
+    setRefundNote(null);
+    setRefundBusy(false);
     if (!normalizedBuyer) {
       setChat(null);
       setMessages([]);
@@ -117,6 +125,23 @@ const BuyerChatPanel: React.FC<BuyerChatPanelProps> = ({ open, buyer, workspaceI
     }
   };
 
+  const handleRefund = async () => {
+    if (!buyer || !workspaceId || refundBusy) return;
+    const ok = window.confirm("Вернуть средства по последнему заказу этого покупателя?");
+    if (!ok) return;
+    setRefundBusy(true);
+    setRefundNote(null);
+    try {
+      const res = await api.refundOrder({ owner: buyer, workspace_id: workspaceId });
+      setRefundNote(`Возврат оформлен для заказа #${res.order_id}.`);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось оформить возврат.";
+      setRefundNote(message);
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -133,15 +158,31 @@ const BuyerChatPanel: React.FC<BuyerChatPanelProps> = ({ open, buyer, workspaceI
               <div className="text-xs text-neutral-400">Чат пока не найден.</div>
             )}
           </div>
-          <button
-            type="button"
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
-            onClick={onClose}
-          >
-            Закрыть
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+              onClick={handleRefund}
+              disabled={!buyer || !workspaceId || refundBusy}
+              title="Вернуть средства по последнему заказу"
+            >
+              {refundBusy ? "Возврат..." : "Возврат"}
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+              onClick={onClose}
+            >
+              Закрыть
+            </button>
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 py-4">
+          {refundNote ? (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+              {refundNote}
+            </div>
+          ) : null}
           {loading || historyLoading ? (
             <div className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-6 text-center text-sm text-neutral-500">
               Загружаем переписку...

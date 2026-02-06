@@ -124,7 +124,7 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   workspaceName: item.workspace_name ?? null,
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
-  rentalДлительность: item.rental_duration ?? 0,
+  rentalDuration: item.rental_duration ?? 0,
   rentalDurationMinutes: item.rental_duration_minutes ?? null,
   accountFrozen: !!item.account_frozen,
   rentalFrozen: !!item.rental_frozen,
@@ -467,6 +467,39 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     }
   };
 
+  const handleRefundRental = async () => {
+    if (!selectedRental) {
+      onToast?.("Сначала выберите активную аренду.", true);
+      return;
+    }
+    if (!selectedRental.buyer) {
+      onToast?.("Не удалось определить покупателя для возврата.", true);
+      return;
+    }
+    if (rentalActionBusy) return;
+    const ok = window.confirm(`Вернуть средства по последнему заказу покупателя ${selectedRental.buyer}?`);
+    if (!ok) return;
+    setRentalActionBusy(true);
+    try {
+      const targetWorkspaceId =
+        selectedRental.workspaceId ??
+        selectedAccount?.workspaceId ??
+        undefined;
+      const res = await api.refundOrder({
+        owner: selectedRental.buyer,
+        account_id: selectedRental.id,
+        workspace_id: targetWorkspaceId ?? undefined,
+      });
+      onToast?.(`Возврат оформлен для заказа #${res.order_id}.`);
+      await Promise.all([loadAccounts(), loadRentals()]);
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось оформить возврат.";
+      onToast?.(message, true);
+    } finally {
+      setRentalActionBusy(false);
+    }
+  };
+
   const handleToggleRentalFreeze = async (nextFrozen: boolean) => {
     const target = resolveRentalTarget();
     if (!target) {
@@ -778,6 +811,19 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-400"
                   >
                     Завершить аренду
+                  </button>
+                </div>
+                <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+                  <div className="mb-2 text-sm font-semibold text-rose-700">Возврат средств</div>
+                  <p className="text-xs text-rose-600">
+                    Оформляет возврат по последнему заказу покупателя и фиксирует действие в базе.
+                  </p>
+                  <button
+                    onClick={handleRefundRental}
+                    disabled={rentalActionBusy}
+                    className="mt-3 w-full rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-rose-300"
+                  >
+                    Оформить возврат
                   </button>
                 </div>
               </div>
