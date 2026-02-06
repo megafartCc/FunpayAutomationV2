@@ -538,7 +538,7 @@ def update_lot_state(cardinal: Cardinal, lot: types.LotShortcut, task: int) -> b
 
 
 def update_lots_states(cardinal: Cardinal, event: NewOrderEvent):
-    if not any([cardinal.autorestore_enabled, cardinal.autodisable_enabled]):
+    if not cardinal.autorestore_enabled:
         return
     curr_profile_tag = cardinal.curr_profile_last_tag
     if cardinal.last_state_change_tag == curr_profile_tag:
@@ -546,8 +546,6 @@ def update_lots_states(cardinal: Cardinal, event: NewOrderEvent):
     cardinal.last_state_change_tag = curr_profile_tag
     lots = cardinal.curr_profile.get_sorted_lots(1)
 
-    deactivated = []
-    restored = []
     for lot in cardinal.profile.get_sorted_lots(3)[SubCategoryTypes.COMMON].values():
         if not lot.description:
             continue
@@ -568,32 +566,9 @@ def update_lots_states(cardinal: Cardinal, event: NewOrderEvent):
             else:
                 # и глобальное автовосстановление вкл. + не выключено в самом лоте в конфиге автовыдачи
                 if cardinal.autorestore_enabled and config_obj.get("disableAutoRestore") in ["0", None]:
-                    # если глобальная автодеактивация выключена - восстанавливаем.
-                    if not cardinal.autodisable_enabled:
-                        current_task = 1
-                    # если глобальная автодеактивация включена - восстанавливаем только если есть товары.
-                    else:
-                        if check_products_amount(config_obj):
-                            current_task = 1
-
-        # Если же лот активен
-        else:
-            # и найден в конфиге автовыдачи
-            if config_obj:
-                products_count = check_products_amount(config_obj)
-                # и все условия выполнены: нет товаров + включено глобальная автодеактивация + она не выключена в
-                # самом лоте в конфига автовыдачи - отключаем.
-                if all((not products_count, cardinal.MAIN_CFG["FunPay"].getboolean("autoDisable"),
-                        config_obj.get("disableAutoDisable") in ["0", None])):
-                    current_task = -1
-
+                    current_task = 1
         if current_task:
-            result = update_lot_state(cardinal, lot, current_task)
-            if result:
-                if current_task == -1:
-                    deactivated.append(lot.description)
-                elif current_task == 1:
-                    restored.append(lot.description)
+            update_lot_state(cardinal, lot, current_task)
             time.sleep(0.5)
 
 def update_profiles_handler(cardinal: Cardinal, event: NewOrderEvent | OrdersListChangedEvent, *args):
@@ -666,4 +641,3 @@ BIND_TO_ORDER_STATUS_CHANGED = [send_thank_u_message_handler]
 BIND_TO_POST_DELIVERY: list = []
 
 BIND_TO_POST_START: list = []
-

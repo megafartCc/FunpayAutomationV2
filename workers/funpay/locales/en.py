@@ -39,7 +39,6 @@ gs_autoresponse = "{} Autoresponse"
 gs_autodelivery = "{} Auto-delivery"
 gs_nultidelivery = "{} Multi-delivery"
 gs_autorestore = "{} Reactivate lots"
-gs_autodisable = "{} Deactivate lots"
 gs_old_msg_mode = "{} Old Message Receiving Mode"
 gs_keep_sent_messages_unread = "{} Keep unread when sending"
 

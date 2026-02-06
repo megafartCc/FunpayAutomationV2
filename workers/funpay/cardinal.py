@@ -1088,10 +1088,6 @@ class Cardinal(object):
         return self.MAIN_CFG["FunPay"].getboolean("autoRestore")
 
     @property
-    def autodisable_enabled(self) -> bool:
-        return self.MAIN_CFG["FunPay"].getboolean("autoDisable")
-
-    @property
     def old_mode_enabled(self) -> bool:
         return self.MAIN_CFG["FunPay"].getboolean("oldMsgGetMode")
 

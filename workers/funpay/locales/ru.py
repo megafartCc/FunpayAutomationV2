@@ -39,7 +39,6 @@ gs_autoresponse = "{} Автоответчик"
 gs_autodelivery = "{} Авто-выдача"
 gs_nultidelivery = "{} Мульти-выдача"
 gs_autorestore = "{} Восстановление лотов"
-gs_autodisable = "{} Деактивация лотов"
 gs_old_msg_mode = "{} Старый режим получения сообщений"
 gs_keep_sent_messages_unread = "{} Оставлять непрочитанным при отправке"
 

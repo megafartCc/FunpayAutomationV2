@@ -74,7 +74,6 @@ def load_main_config(config_path: str):
             "autoDelivery": ["0", "1"],
             "multiDelivery": ["0", "1"],
             "autoRestore": ["0", "1"],
-            "autoDisable": ["0", "1"],
             "oldMsgGetMode": ["0", "1"],
             "keepSentMessagesUnread": ["0", "1"],
             "locale": ["ru", "en", "uk"]
@@ -301,7 +300,6 @@ def load_auto_delivery_config(config_path: str):
             products_file_name = check_param("productsFileName", config[lot_title], raise_if_not_exists=False)
             check_param("disable", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
             check_param("disableAutoRestore", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
-            check_param("disableAutoDisable", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
             check_param("disableAutoDelivery", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
             if products_file_name is None:
                 # Если данного параметра нет, то в текущем лоте более нечего проверять -> переход на след. итерацию.

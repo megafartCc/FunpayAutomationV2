@@ -18,7 +18,6 @@ default_config = {
         "autoDelivery": "0",
         "multiDelivery": "0",
         "autoRestore": "0",
-        "autoDisable": "0",
         "oldMsgGetMode": "0",
         "locale": "ru"
     },
