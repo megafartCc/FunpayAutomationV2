@@ -767,6 +767,10 @@ class LotFields:
         self.__fields["amount"] = self.amount if self.amount is not None else ""
         self.__fields["fields[images]"] = ",".join(map(str, self.images))
         self.__fields["csrf_token"] = self.csrf_token
+        if self.active:
+            self.__fields["active"] = "on"
+        else:
+            self.__fields.pop("active", None)
         return self
 
 

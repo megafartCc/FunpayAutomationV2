@@ -235,8 +235,10 @@ def update_funpay_lot_title(
         fields["offer_id"] = str(lot_id)
     if not fields.get("csrf_token"):
         fields["csrf_token"] = account.csrf_token
-    # FunPay treats missing "active" as unchecked; keep lots active on edit.
-    fields.setdefault("active", "on")
+    if lot_fields.active:
+        fields["active"] = "on"
+    else:
+        fields.pop("active", None)
     _post_lot_fields(account, lot_id, fields)
     return True
 
