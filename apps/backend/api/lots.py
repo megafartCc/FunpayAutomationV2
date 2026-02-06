@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -10,6 +11,7 @@ from db.account_repo import MySQLAccountRepo
 from db.lot_repo import MySQLLotRepo, LotRecord, LotCreateError
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.funpay_lot_title import maybe_update_funpay_lot_title
+from services.funpay_lot_price import get_funpay_lot_snapshot, edit_funpay_lot, update_funpay_lot_price
 
 
 router = APIRouter()
@@ -50,6 +52,45 @@ class LotBulkSyncResponse(BaseModel):
     updated: int
     skipped: int
     failed: int
+
+
+class FunPayLotDetails(BaseModel):
+    lot_number: int
+    title: str
+    description: str
+    price: float | None
+    active: bool
+
+
+class FunPayLotUpdatePayload(BaseModel):
+    title: str | None = Field(None, max_length=255)
+    description: str | None = None
+    price: float | None = Field(None, ge=0)
+    active: bool | None = None
+
+
+class FunPayLotManualPricePayload(BaseModel):
+    lot_number: int = Field(..., ge=1)
+    price: float = Field(..., ge=0)
+
+
+class FunPayLotManualPriceResponse(BaseModel):
+    ok: bool
+    changed: bool
+    old_price: float | None = None
+
+
+def _get_workspace_and_record(user_id: int, workspace_id: int | None, lot_number: int):
+    _ensure_workspace(workspace_id, int(user_id))
+    workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if not workspace.golden_key:
+        raise HTTPException(status_code=400, detail="Workspace golden_key is required")
+    record = lots_repo.get_by_number(int(user_id), int(workspace_id), int(lot_number))
+    if not record:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return workspace, record
 
 
 def _to_item(record: LotRecord) -> LotItem:
@@ -229,3 +270,75 @@ def sync_lot_titles(
         skipped=skipped_count,
         failed=failed_count,
     )
+
+
+@router.get("/lots/{lot_number}/funpay", response_model=FunPayLotDetails)
+def get_funpay_lot(
+    lot_number: int,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> FunPayLotDetails:
+    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    snapshot = get_funpay_lot_snapshot(
+        golden_key=workspace.golden_key,
+        proxy_url=workspace.proxy_url,
+        lot_id=int(lot_number),
+        user_agent=os.getenv("FUNPAY_USER_AGENT"),
+    )
+    if not snapshot:
+        raise HTTPException(status_code=500, detail="FunPay API is unavailable")
+    return FunPayLotDetails(
+        lot_number=int(lot_number),
+        title=snapshot.title,
+        description=snapshot.description,
+        price=snapshot.price,
+        active=snapshot.active,
+    )
+
+
+@router.patch("/lots/{lot_number}/funpay", response_model=FunPayLotDetails)
+def patch_funpay_lot(
+    lot_number: int,
+    payload: FunPayLotUpdatePayload,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> FunPayLotDetails:
+    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    if payload.title is None and payload.description is None and payload.price is None and payload.active is None:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    snapshot = edit_funpay_lot(
+        golden_key=workspace.golden_key,
+        proxy_url=workspace.proxy_url,
+        lot_id=int(lot_number),
+        title=payload.title,
+        description=payload.description,
+        price=payload.price,
+        active=payload.active,
+        user_agent=os.getenv("FUNPAY_USER_AGENT"),
+    )
+    if not snapshot:
+        raise HTTPException(status_code=500, detail="FunPay API is unavailable")
+    return FunPayLotDetails(
+        lot_number=int(lot_number),
+        title=snapshot.title,
+        description=snapshot.description,
+        price=snapshot.price,
+        active=snapshot.active,
+    )
+
+
+@router.post("/lots/manual-auto-price", response_model=FunPayLotManualPriceResponse)
+def manual_auto_price_lot(
+    payload: FunPayLotManualPricePayload,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> FunPayLotManualPriceResponse:
+    workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(payload.lot_number))
+    changed, old_price = update_funpay_lot_price(
+        golden_key=workspace.golden_key,
+        proxy_url=workspace.proxy_url,
+        lot_id=int(payload.lot_number),
+        price=float(payload.price),
+        user_agent=os.getenv("FUNPAY_USER_AGENT"),
+    )
+    return FunPayLotManualPriceResponse(ok=True, changed=bool(changed), old_price=old_price)
