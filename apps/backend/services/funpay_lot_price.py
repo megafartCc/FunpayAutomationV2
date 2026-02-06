@@ -108,6 +108,8 @@ def edit_funpay_lot(
         lot_fields.description_en = description_en
     if price is not None:
         lot_fields.price = round(float(price), 2)
+    # FunPay treats missing "active" as unchecked; keep lots active on edit.
+    lot_fields.edit_fields({"active": "on"})
     account.save_lot(lot_fields)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
@@ -134,5 +136,7 @@ def update_funpay_lot_price(
     if current_price is not None and abs(float(current_price) - new_price) < 0.01:
         return False, current_price
     lot_fields.price = new_price
+    # FunPay treats missing "active" as unchecked; keep lots active on edit.
+    lot_fields.edit_fields({"active": "on"})
     account.save_lot(lot_fields)
     return True, current_price
