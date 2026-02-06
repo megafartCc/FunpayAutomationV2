@@ -949,46 +949,46 @@ const FunpayStatsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-neutral-900">
+            <h2 className="text-base font-semibold text-neutral-900">
               {tr("Account popularity", "Популярные аккаунты")}
             </h2>
-            <p className="text-sm text-neutral-500">
+            <p className="text-xs text-neutral-500">
               {tr("Top rented accounts by orders.", "Топ аккаунтов по количеству аренд.")}
             </p>
           </div>
-          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-semibold text-neutral-600">
             {tr("{count} accounts", "{count} аккаунтов", { count: accountPopularity.length })}
           </span>
         </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-[2fr,1fr] items-stretch">
-          <div className="h-[520px] w-full">
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr,1fr] items-stretch">
+          <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountPopularity} margin={{ top: 8, right: 16, bottom: 28, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <BarChart data={accountPopularity} margin={{ top: 6, right: 12, bottom: 20, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fill: "#6b7280", fontSize: 11 }}
+                  tick={{ fill: "#6b7280", fontSize: 10 }}
                   interval={0}
-                  angle={-12}
+                  angle={-10}
                   textAnchor="end"
-                  height={48}
+                  height={36}
                 />
-                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} width={32} />
                 <Tooltip
                   formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
                 />
-                <Bar dataKey="orders" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="orders" fill="#0ea5e9" radius={[6, 6, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="grid h-full content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid h-full content-start gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
             {accountPopularity.map((account) => (
-              <div key={account.name} className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
-                <p className="text-sm font-semibold text-neutral-900">{account.name}</p>
-                <div className="mt-2 grid gap-1 text-xs text-neutral-500">
+              <div key={account.name} className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                <p className="text-[13px] font-semibold text-neutral-900">{account.name}</p>
+                <div className="mt-1.5 grid gap-1 text-[11px] text-neutral-500">
                   <div className="flex items-center justify-between">
                     <span>{tr("Orders", "Заказы")}</span>
                     <span className="font-semibold text-neutral-700">{account.orders}</span>
@@ -1009,7 +1009,7 @@ const FunpayStatsPage: React.FC = () => {
               </div>
             ))}
             {!accountPopularity.length && (
-              <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-4 text-sm text-neutral-500">
+              <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs text-neutral-500">
                 {tr("No account data for the selected range.", "Нет данных по аккаунтам за выбранный период.")}
               </div>
             )}
