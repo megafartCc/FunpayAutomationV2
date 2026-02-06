@@ -1758,12 +1758,11 @@ class Account:
         force_active = os.getenv("FUNPAY_FORCE_ACTIVE", "1").strip().lower() not in {"0", "false", "no", "off"}
         if force_active:
             fields["active"] = "on"
-        if os.getenv("FUNPAY_DEBUG_OFFER_SAVE"):
-            logger.info(
-                "FunPay offerSave request for %s: %s",
-                lot_fields.lot_id,
-                {k: fields.get(k) for k in sorted(fields.keys())},
-            )
+        logger.info(
+            "FunPay offerSave request for %s: %s",
+            lot_fields.lot_id,
+            {k: fields.get(k) for k in sorted(fields.keys())},
+        )
         response = self.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
         try:
             json_response = response.json()
@@ -1775,13 +1774,12 @@ class Account:
                 getattr(response, "text", ""),
             )
             raise
-        if os.getenv("FUNPAY_DEBUG_OFFER_SAVE"):
-            logger.info(
-                "FunPay offerSave response for %s (status %s): %s",
-                lot_fields.lot_id,
-                getattr(response, "status_code", "n/a"),
-                json_response,
-            )
+        logger.info(
+            "FunPay offerSave response for %s (status %s): %s",
+            lot_fields.lot_id,
+            getattr(response, "status_code", "n/a"),
+            json_response,
+        )
         errors_dict = {}
         if (errors := json_response.get("errors")) or json_response.get("error"):
             if isinstance(errors, dict):
