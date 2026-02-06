@@ -1762,10 +1762,19 @@ class Account:
         json_response = response.json()
         errors_dict = {}
         if (errors := json_response.get("errors")) or json_response.get("error"):
-            if errors:
-                for k, v in errors:
-                    errors_dict.update({k: v})
-
+            if isinstance(errors, dict):
+                errors_dict.update({str(k): str(v) for k, v in errors.items()})
+            elif isinstance(errors, (list, tuple)):
+                for item in errors:
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        k, v = item[0], item[1]
+                        errors_dict[str(k)] = str(v)
+            logger.warning(
+                "FunPay lot save validation failed for %s. error=%s field_errors=%s",
+                lot_fields.lot_id,
+                json_response.get("error"),
+                errors_dict,
+            )
             raise exceptions.LotSavingError(response, json_response.get("error"), lot_fields.lot_id, errors_dict)
 
     def delete_lot(self, lot_id: int) -> None:

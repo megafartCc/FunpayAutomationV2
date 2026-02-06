@@ -323,9 +323,19 @@ def _post_lot_fields(account: Account, lot_id: int, fields: dict) -> None:
     logger.info("FunPay lot sync response for %s (status %s): %s", lot_id, getattr(response, "status_code", "n/a"), json_response)
     errors_dict: dict = {}
     if (errors := json_response.get("errors")) or json_response.get("error"):
-        if errors:
-            for key, value in errors:
-                errors_dict.update({key: value})
+        if isinstance(errors, dict):
+            errors_dict.update({str(k): str(v) for k, v in errors.items()})
+        elif isinstance(errors, (list, tuple)):
+            for item in errors:
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    key, value = item[0], item[1]
+                    errors_dict[str(key)] = str(value)
+        logger.warning(
+            "FunPay lot title sync validation failed for %s. error=%s field_errors=%s",
+            lot_id,
+            json_response.get("error"),
+            errors_dict,
+        )
         if fp_exceptions:
             raise fp_exceptions.LotSavingError(response, json_response.get("error"), lot_id, errors_dict)
         raise RuntimeError(f"FunPay save failed: {json_response}")
