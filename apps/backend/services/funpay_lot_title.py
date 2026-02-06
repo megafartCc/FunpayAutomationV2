@@ -318,6 +318,8 @@ def _post_lot_fields(account: Account, lot_id: int, fields: dict) -> None:
         "accept": "*/*",
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
         "x-requested-with": "XMLHttpRequest",
+        "origin": "https://funpay.com",
+        "referer": f"https://funpay.com/lots/offerEdit?offer={lot_id}",
     }
     fields.setdefault("location", "offer")
     logger.info("FunPay lot sync request for %s: %s", lot_id, {k: fields.get(k) for k in sorted(fields.keys())})

@@ -896,6 +896,8 @@ class Account:
             "accept": "*/*",
             "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
             "x-requested-with": "XMLHttpRequest",
+            "origin": "https://funpay.com",
+            "referer": f"https://funpay.com/lots/offerEdit?offer={lot_fields.lot_id}",
         }
 
         payload = {
