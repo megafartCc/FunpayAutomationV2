@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
@@ -11,7 +10,7 @@ import {
   PointElement,
   Tooltip as ChartTooltip,
 } from "chart.js";
-import { Bar as ChartBar, Doughnut as ChartDoughnut, Line as ChartLine } from "react-chartjs-2";
+import { Bar as ChartBar, Line as ChartLine } from "react-chartjs-2";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
 import { api, ActiveRentalItem, NotificationItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
@@ -23,7 +22,6 @@ ChartJS.register(
   BarElement,
   LineElement,
   PointElement,
-  ArcElement,
   Filler,
   ChartTooltip,
   ChartLegend,
@@ -446,32 +444,44 @@ const FunpayStatsPage: React.FC = () => {
     return { totalOrders, refundedOrders, refundRate };
   }, [ordersInRange.length, refundsInRange.length]);
 
-  const refundChart = useMemo(() => {
+  const refundBarChart = useMemo(() => {
     const kept = Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0);
     return {
       data: {
-        labels: [tr("Refunded", "Возвраты"), tr("Kept", "Без возврата")],
+        labels: [tr("Refunds", "Возвраты")],
         datasets: [
           {
-            data: [refundStats.refundedOrders, kept],
-            backgroundColor: ["rgba(239, 68, 68, 0.85)", "rgba(16, 185, 129, 0.85)"],
-            borderWidth: 0,
-            hoverOffset: 4,
+            label: tr("Refunded", "Возвраты"),
+            data: [refundStats.refundedOrders],
+            backgroundColor: "rgba(239, 68, 68, 0.85)",
+            borderRadius: 6,
+            barThickness: 12,
+          },
+          {
+            label: tr("Kept", "Без возврата"),
+            data: [kept],
+            backgroundColor: "rgba(16, 185, 129, 0.85)",
+            borderRadius: 6,
+            barThickness: 12,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: "64%",
+        indexAxis: "y" as const,
+        scales: {
+          x: { stacked: true, display: false },
+          y: { stacked: true, display: false },
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: (context: { label: string; parsed: number }) => {
+              label: (context: { dataset: { label?: string }; parsed: { x: number } }) => {
                 const total = refundStats.totalOrders || 1;
-                const percent = Math.round((context.parsed / total) * 100);
-                return `${context.label}: ${context.parsed} (${percent}%)`;
+                const percent = Math.round((context.parsed.x / total) * 100);
+                return `${context.dataset.label ?? ""}: ${context.parsed.x} (${percent}%)`;
               },
             },
           },
@@ -1018,8 +1028,8 @@ const FunpayStatsPage: React.FC = () => {
                   {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
                 </p>
               </div>
-              <div className="h-20 w-20">
-                <ChartDoughnut data={refundChart.data} options={refundChart.options} />
+              <div className="h-10 w-28">
+                <ChartBar data={refundBarChart.data} options={refundBarChart.options} />
               </div>
             </div>
           </div>
