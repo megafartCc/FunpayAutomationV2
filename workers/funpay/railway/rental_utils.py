@@ -148,6 +148,23 @@ def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> Non
     state.expire_delay_notified.discard(account_id)
 
 
+def _is_match_active(presence: dict) -> bool:
+    if not presence or not isinstance(presence, dict):
+        return False
+    if presence.get("in_match"):
+        return True
+    derived = presence.get("derived") if isinstance(presence.get("derived"), dict) else {}
+    if derived.get("in_match") or derived.get("match_time"):
+        return True
+    if presence.get("match_time"):
+        return True
+    status_bits = " ".join(
+        str(presence.get(key) or "")
+        for key in ("presence_state", "presence_display", "status", "state")
+    ).lower()
+    return any(token in status_bits for token in ("match", "матч", "game", "dota"))
+
+
 def _should_delay_expire(
     logger: logging.Logger,
     account: Account,
@@ -165,7 +182,7 @@ def _should_delay_expire(
 
     steam_id = steam_id_from_mafile(account_row.get("mafile_json"))
     presence = fetch_presence(steam_id)
-    in_match = bool(presence.get("in_match"))
+    in_match = _is_match_active(presence)
     if not in_match:
         _clear_expire_delay_state(state, account_id)
         return False
@@ -186,7 +203,14 @@ def _should_delay_expire(
         display = presence.get("presence_display") or presence.get("presence_state")
         if display:
             extra = f"\nСтатус: {display}"
-        send_message_by_owner(logger, account, owner, f"{RENTAL_EXPIRE_DELAY_MESSAGE}{extra}")
+        lot_url = account_row.get("lot_url") or ""
+        lot_line = f"\nЕсли хотите продлить - оплатите лот: {lot_url}" if lot_url else ""
+        send_message_by_owner(
+            logger,
+            account,
+            owner,
+            f"{RENTAL_EXPIRE_DELAY_MESSAGE}{lot_line}{extra}",
+        )
         state.expire_delay_notified.add(account_id)
     return True
 
