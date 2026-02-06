@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
@@ -10,13 +11,23 @@ import {
   PointElement,
   Tooltip as ChartTooltip,
 } from "chart.js";
-import { Bar as ChartBar, Line as ChartLine } from "react-chartjs-2";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar as ChartBar, Doughnut as ChartDoughnut, Line as ChartLine } from "react-chartjs-2";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
-import { api, ActiveRentalItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
+import { api, ActiveRentalItem, NotificationItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, ChartTooltip, ChartLegend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Filler,
+  ChartTooltip,
+  ChartLegend,
+);
 
 type DeltaTone = "up" | "down";
 
@@ -125,6 +136,8 @@ const FunpayStatsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
   const [marketHistory, setMarketHistory] = useState<PriceDumperHistoryItem[]>([]);
   const [marketHistoryLoading, setMarketHistoryLoading] = useState(false);
   const [marketHistoryError, setMarketHistoryError] = useState<string | null>(null);
@@ -163,6 +176,20 @@ const FunpayStatsPage: React.FC = () => {
     }, 30000);
     return () => window.clearInterval(interval);
   }, [loadStats]);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const res = await api.listNotifications(workspaceId ?? null, 1000);
+      setNotifications(Array.isArray(res.items) ? res.items : []);
+      setNotificationsLoaded(true);
+    } catch {
+      setNotificationsLoaded(true);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void loadNotifications();
+  }, [loadNotifications]);
 
   const marketHistoryDays = useMemo(() => {
     if (range === "7d") return 7;
@@ -399,6 +426,60 @@ const FunpayStatsPage: React.FC = () => {
       .sort((a, b) => a.key.localeCompare(b.key));
   }, [ordersInRange]);
 
+  const refundsInRange = useMemo(() => {
+    if (!notificationsLoaded) return [];
+    return notifications.filter((item) => {
+      if (!item.created_at) return false;
+      if (item.event_type !== "refund_release") return false;
+      if (item.status && item.status !== "ok") return false;
+      const dt = new Date(item.created_at);
+      if (Number.isNaN(dt.getTime())) return false;
+      if (rangeCutoff && dt < rangeCutoff) return false;
+      return true;
+    });
+  }, [notifications, notificationsLoaded, rangeCutoff]);
+
+  const refundStats = useMemo(() => {
+    const totalOrders = ordersInRange.length;
+    const refundedOrders = Math.min(refundsInRange.length, totalOrders);
+    const refundRate = totalOrders ? (refundedOrders / totalOrders) * 100 : 0;
+    return { totalOrders, refundedOrders, refundRate };
+  }, [ordersInRange.length, refundsInRange.length]);
+
+  const refundChart = useMemo(() => {
+    const kept = Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0);
+    return {
+      data: {
+        labels: [tr("Refunded", "Возвраты"), tr("Kept", "Без возврата")],
+        datasets: [
+          {
+            data: [refundStats.refundedOrders, kept],
+            backgroundColor: ["rgba(239, 68, 68, 0.85)", "rgba(16, 185, 129, 0.85)"],
+            borderWidth: 0,
+            hoverOffset: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "64%",
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context: { label: string; parsed: number }) => {
+                const total = refundStats.totalOrders || 1;
+                const percent = Math.round((context.parsed / total) * 100);
+                return `${context.label}: ${context.parsed} (${percent}%)`;
+              },
+            },
+          },
+        },
+      },
+    };
+  }, [refundStats, tr]);
+
   const accountPopularity = useMemo<AccountStat[]>(() => {
     const map = new Map<string, { orders: number; revenue: number; minutes: number }>();
     ordersInRange.forEach((order) => {
@@ -586,6 +667,91 @@ const FunpayStatsPage: React.FC = () => {
       };
     });
   }, [marketHistory]);
+
+  const marketHistoryLine = useMemo(() => {
+    const labels = marketHistoryChart.map((item) => item.label);
+    const avg = marketHistoryChart.map((item) => item.avg ?? null);
+    const median = marketHistoryChart.map((item) => item.median ?? null);
+    const recommended = marketHistoryChart.map((item) => item.recommended ?? null);
+    return {
+      data: {
+        labels,
+        datasets: [
+          {
+            label: tr("Average", "Средняя"),
+            data: avg,
+            borderColor: "rgba(34, 197, 94, 0.95)",
+            backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D; chartArea?: { top: number; bottom: number } } }) => {
+              const { chart } = context;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) return "rgba(34, 197, 94, 0.18)";
+              const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, "rgba(34, 197, 94, 0.35)");
+              gradient.addColorStop(1, "rgba(34, 197, 94, 0.04)");
+              return gradient;
+            },
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+            spanGaps: true,
+          },
+          {
+            label: tr("Median", "Медиана"),
+            data: median,
+            borderColor: "rgba(15, 23, 42, 0.9)",
+            backgroundColor: "rgba(15, 23, 42, 0)",
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+            spanGaps: true,
+          },
+          {
+            label: tr("Recommended", "Рекомендованная"),
+            data: recommended,
+            borderColor: "rgba(249, 115, 22, 0.9)",
+            backgroundColor: "rgba(249, 115, 22, 0)",
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+            spanGaps: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "index" as const },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: "#94a3b8", font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(148, 163, 184, 0.2)" },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              callback: (value: number | string) =>
+                typeof value === "number" ? `${value.toLocaleString("ru-RU")} ${marketCurrency}` : value,
+            },
+          },
+        },
+        plugins: {
+          legend: { display: true, labels: { color: "#94a3b8", font: { size: 10 } } },
+          tooltip: {
+            callbacks: {
+              label: (context: { dataset: { label?: string }; parsed: { y: number } }) =>
+                `${context.dataset.label ?? ""}: ${context.parsed.y.toLocaleString("ru-RU")} ${marketCurrency}`,
+            },
+          },
+        },
+      },
+    };
+  }, [marketHistoryChart, marketCurrency, tr]);
 
   const ordersByDayChart = useMemo(() => {
     const labels = dailyOverview.map((item) => item.label);
@@ -839,6 +1005,24 @@ const FunpayStatsPage: React.FC = () => {
               </span>
             </div>
           </div>
+          <div className="mt-5 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-neutral-400">
+                  {tr("Refund rate", "Доля возвратов")}
+                </p>
+                <p className="mt-1 text-lg font-semibold text-neutral-900">
+                  {refundStats.refundRate ? `${refundStats.refundRate.toFixed(1)}%` : "0%"}
+                </p>
+                <p className="text-xs text-neutral-500">
+                  {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
+                </p>
+              </div>
+              <div className="h-20 w-20">
+                <ChartDoughnut data={refundChart.data} options={refundChart.options} />
+              </div>
+            </div>
+          </div>
           <div className="mt-5 rounded-xl bg-neutral-50 p-4">
             <p className="text-xs uppercase tracking-wide text-neutral-400">
               {tr("Most popular buyer", "Самый частый покупатель")}
@@ -892,52 +1076,8 @@ const FunpayStatsPage: React.FC = () => {
         {marketHistoryLoading ? (
           <div className="mt-6 text-sm text-neutral-500">{tr("Loading...", "Загрузка...")}</div>
         ) : marketHistoryChart.length ? (
-          <div className="mt-6 h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={marketHistoryChart}>
-                <defs>
-                  <linearGradient id="market-price-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="label" tick={{ fill: "#6b7280", fontSize: 11 }} interval="preserveStartEnd" />
-                <YAxis
-                  tick={{ fill: "#6b7280", fontSize: 11 }}
-                  tickFormatter={(value) => Number(value).toLocaleString("ru-RU")}
-                />
-                <Tooltip
-                  formatter={(value: number) => [`${value.toLocaleString("ru-RU")} ${marketCurrency}`, tr("Price", "Цена")]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="avg"
-                  stroke="#22c55e"
-                  fill="url(#market-price-fill)"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="median"
-                  stroke="#0f172a"
-                  fill="none"
-                  fillOpacity={0}
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="recommended"
-                  stroke="#f97316"
-                  fill="none"
-                  fillOpacity={0}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="mt-4 h-[260px] w-full">
+            <ChartLine data={marketHistoryLine.data} options={marketHistoryLine.options} />
           </div>
         ) : (
           <div className="mt-6 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-500">
