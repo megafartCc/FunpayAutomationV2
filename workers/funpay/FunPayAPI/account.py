@@ -1708,9 +1708,7 @@ class Account:
         for field in offer_form.find_all("select"):
             if not field.get("name"):
                 continue
-            parent = field.find_parent(class_="form-group")
-            if parent and "hidden" in parent.get("class", []):
-                continue
+            # Keep values even for conditionally hidden selects: FunPay may still validate them.
             selected_option = field.find("option", selected=True) or field.find("option")
             if selected_option and selected_option.get("value") is not None:
                 result[field["name"]] = selected_option["value"]
