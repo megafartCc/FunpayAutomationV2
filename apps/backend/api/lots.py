@@ -25,7 +25,7 @@ class LotCreate(BaseModel):
     workspace_id: int = Field(..., ge=1, description="Workspace that owns this lot")
     lot_number: int = Field(..., ge=1)
     account_id: int = Field(..., ge=1)
-    lot_url: str = Field(..., min_length=5)
+    lot_url: str | None = Field(None, min_length=5)
 
 
 class LotItem(BaseModel):
@@ -121,8 +121,6 @@ def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -
 
 @router.post("/lots", response_model=LotItem, status_code=status.HTTP_201_CREATED)
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
-    if not payload.lot_url.strip():
-        raise HTTPException(status_code=400, detail="Lot URL is required")
     _ensure_workspace(payload.workspace_id, int(user.id))
     workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
     try:
@@ -131,7 +129,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
             workspace_id=int(payload.workspace_id),
             lot_number=payload.lot_number,
             account_id=payload.account_id,
-            lot_url=payload.lot_url.strip(),
+            lot_url=(payload.lot_url or f"https://funpay.com/lots/offer?id={payload.lot_number}").strip(),
             display_name=None,
         )
     except LotCreateError as exc:

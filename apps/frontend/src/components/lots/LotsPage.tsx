@@ -210,12 +210,17 @@ const LotsPage: React.FC = () => {
     if (selectedWorkspaceId === "all") return;
     const number = Number(lotNumber);
     const account = Number(accountId);
-    if (!number || !account || !lotUrl.trim()) {
-      setStatus({ message: "Укажите номер лота, аккаунт и ссылку.", isError: true });
+    if (!number || !account) {
+      setStatus({ message: "Укажите номер лота и аккаунт.", isError: true });
       return;
     }
     try {
-      const created = await api.createLot({ workspace_id: selectedWorkspaceId as number, lot_number: number, account_id: account, lot_url: lotUrl.trim() });
+      const created = await api.createLot({
+        workspace_id: selectedWorkspaceId as number,
+        lot_number: number,
+        account_id: account,
+        ...(lotUrl.trim() ? { lot_url: lotUrl.trim() } : {}),
+      });
       setLots((prev) => [created, ...prev.filter((item) => item.lot_number !== created.lot_number)]);
       setLotNumber("");
       setAccountId("");
@@ -295,7 +300,8 @@ const LotsPage: React.FC = () => {
               <option key={item.id} value={item.id}>{item.label}</option>
             ))}
           </select>
-          <input className="rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm" type="url" value={lotUrl} onChange={(e) => setLotUrl(e.target.value)} placeholder="https://funpay.com/lots/offer?id=..." required />
+          <input className="rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm" type="url" value={lotUrl} onChange={(e) => setLotUrl(e.target.value)} placeholder="Оставьте пустым для автозаполнения по номеру" />
+          <p className="text-xs text-neutral-500">Если ссылку не указать, она создастся автоматически: https://funpay.com/lots/offer?id=НОМЕР.</p>
           <button className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white hover:bg-neutral-800" type="submit">Сохранить</button>
         </form>
 
