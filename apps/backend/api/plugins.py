@@ -25,7 +25,9 @@ _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 _PAGE_PARAM = "page"
 _DEFAULT_MAX_PAGES = 25
 _MAX_PAGE_LIMIT = 200
-_DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/"
+_DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/?search=%D0%B0%D1%80%D0%B5%D0%BD%D0%B4%D0%B0"
+_PRICE_DUMPER_INTERVAL_HOURS = 1
+_PRICE_DUMPER_CATEGORY_ID = "81"
 
 
 def _price_dumper_max_pages() -> int:
@@ -46,6 +48,15 @@ def _is_category_url(url: str) -> bool:
     if "offer" in path:
         return False
     return re.search(r"^/lots/\d+(?:/|$)", path) is not None
+
+
+def _is_target_category(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    path = parsed.path or ""
+    return re.search(rf"^/lots/{_PRICE_DUMPER_CATEGORY_ID}(?:/|$)", path) is not None
 
 
 def _strip_page_param(url: str) -> str:
@@ -135,6 +146,13 @@ def _normalize_price_dumper_url(url: str) -> str:
         parsed = parsed._replace(path=f"{path}/")
         value = urlunparse(parsed)
     return value
+
+
+def _coerce_price_dumper_url(url: str | None) -> str:
+    normalized = _normalize_price_dumper_url(url or "")
+    if normalized and _is_category_url(normalized) and _is_target_category(normalized):
+        return normalized
+    return _normalize_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
 
 
 class PriceDumpRequest(BaseModel):
@@ -429,14 +447,19 @@ def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:
     return avg, median
 
 
-def _upsert_price_dumper_setting(user_id: int, url: str, interval_hours: int = 24) -> None:
-    url = _normalize_price_dumper_url(url)
+def _upsert_price_dumper_setting(
+    user_id: int,
+    url: str,
+    interval_hours: int = _PRICE_DUMPER_INTERVAL_HOURS,
+) -> None:
+    url = _coerce_price_dumper_url(url)
     if not url:
         return
     conn = get_base_connection()
     try:
         cursor = conn.cursor()
-        next_run = datetime.utcnow() + timedelta(hours=int(interval_hours))
+        effective_interval = int(interval_hours) if interval_hours else _PRICE_DUMPER_INTERVAL_HOURS
+        next_run = datetime.utcnow() + timedelta(hours=int(effective_interval))
         cursor.execute(
             """
             INSERT INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
@@ -445,7 +468,7 @@ def _upsert_price_dumper_setting(user_id: int, url: str, interval_hours: int = 2
                 enabled = VALUES(enabled),
                 interval_hours = VALUES(interval_hours)
             """,
-            (int(user_id), url[:512], int(interval_hours), next_run),
+            (int(user_id), url[:512], int(effective_interval), next_run),
         )
         conn.commit()
     finally:
@@ -464,7 +487,7 @@ def _insert_price_dumper_history(
     second_price: float | None,
     price_count: int,
 ) -> None:
-    url = _normalize_price_dumper_url(url)
+    url = _coerce_price_dumper_url(url)
     if not url:
         return
     conn = get_base_connection()
@@ -511,8 +534,8 @@ def _load_latest_price_dumper_url(user_id: int) -> str | None:
         )
         row = cursor.fetchone()
         if row and row.get("url"):
-            return str(row["url"])
-        return _normalize_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
+            return _coerce_price_dumper_url(str(row["url"]))
+        return _coerce_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
     finally:
         conn.close()
 
@@ -522,74 +545,38 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
     try:
         cursor = conn.cursor()
         inserted = 0
-        default_url = _normalize_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
+        default_url = _coerce_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
         if user_id:
             cursor.execute(
                 """
-                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                VALUES (%s, %s, 1, 24, NULL)
+                DELETE FROM price_dumper_settings
+                WHERE user_id = %s AND url <> %s
                 """,
                 (int(user_id), default_url[:512]),
             )
-            inserted += int(cursor.rowcount or 0)
             cursor.execute(
                 """
                 INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                SELECT DISTINCT l.user_id, LEFT(l.lot_url, 512), 1, 24, NULL
-                FROM lots l
-                WHERE l.user_id = %s
-                  AND l.lot_url IS NOT NULL
-                  AND l.lot_url <> ''
-                  AND l.lot_url LIKE %s
+                VALUES (%s, %s, 1, %s, NULL)
                 """,
-                (int(user_id), "%funpay.com/%"),
-            )
-            inserted += int(cursor.rowcount or 0)
-            cursor.execute(
-                """
-                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                SELECT DISTINCT a.user_id, LEFT(a.lot_url, 512), 1, 24, NULL
-                FROM accounts a
-                WHERE a.user_id = %s
-                  AND a.lot_url IS NOT NULL
-                  AND a.lot_url <> ''
-                  AND a.lot_url LIKE %s
-                """,
-                (int(user_id), "%funpay.com/%"),
+                (int(user_id), default_url[:512], int(_PRICE_DUMPER_INTERVAL_HOURS)),
             )
             inserted += int(cursor.rowcount or 0)
         else:
             cursor.execute(
                 """
-                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                SELECT u.id, %s, 1, 24, NULL
-                FROM users u
+                DELETE FROM price_dumper_settings
+                WHERE url <> %s
                 """,
                 (default_url[:512],),
             )
-            inserted += int(cursor.rowcount or 0)
             cursor.execute(
                 """
                 INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                SELECT DISTINCT l.user_id, LEFT(l.lot_url, 512), 1, 24, NULL
-                FROM lots l
-                WHERE l.lot_url IS NOT NULL
-                  AND l.lot_url <> ''
-                  AND l.lot_url LIKE %s
+                SELECT u.id, %s, 1, %s, NULL
+                FROM users u
                 """,
-                ("%funpay.com/%",),
-            )
-            inserted += int(cursor.rowcount or 0)
-            cursor.execute(
-                """
-                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
-                SELECT DISTINCT a.user_id, LEFT(a.lot_url, 512), 1, 24, NULL
-                FROM accounts a
-                WHERE a.lot_url IS NOT NULL
-                  AND a.lot_url <> ''
-                  AND a.lot_url LIKE %s
-                """,
-                ("%funpay.com/%",),
+                (default_url[:512], int(_PRICE_DUMPER_INTERVAL_HOURS)),
             )
             inserted += int(cursor.rowcount or 0)
         conn.commit()
@@ -613,13 +600,24 @@ def _fetch_price_dumper_urls(user_id: int, limit: int = 5) -> list[str]:
             (int(user_id), int(limit)),
         )
         rows = cursor.fetchall() or []
-        return [str(row.get("url") or "") for row in rows if row.get("url")]
+        urls: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            raw = str(row.get("url") or "")
+            if not raw:
+                continue
+            normalized = _coerce_price_dumper_url(raw)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            urls.append(normalized)
+        return urls
     finally:
         conn.close()
 
 
 def _fetch_price_dumper_history(user_id: int, url: str, days: int = 30) -> list[PriceDumpHistoryItem]:
-    url = _normalize_price_dumper_url(url)
+    url = _coerce_price_dumper_url(url)
     if not url:
         return []
     conn = get_base_connection()
@@ -723,7 +721,7 @@ def _analyze_prices_with_groq(
 
 
 def _scrape_price_dumper_url(url: str, rent_only: bool) -> PriceDumpResponse:
-    normalized_url = _normalize_price_dumper_url(str(url))
+    normalized_url = _coerce_price_dumper_url(str(url))
     should_paginate = _is_category_url(normalized_url)
     base_url = normalized_url
     max_pages = _price_dumper_max_pages() if should_paginate else 1
@@ -906,7 +904,7 @@ def price_dumper_history(
     if not url:
         url = _load_latest_price_dumper_url(int(_user.id))
     if url:
-        url = _normalize_price_dumper_url(url)
+        url = _coerce_price_dumper_url(url)
     if not url:
         return PriceDumpHistoryResponse(url=None, items=[])
     items = _fetch_price_dumper_history(int(_user.id), url, days=days)
@@ -995,7 +993,7 @@ def _run_due_price_dumper_jobs(limit: int = 10) -> None:
         setting_id = int(row.get("id") or 0)
         user_id = int(row.get("user_id") or 0)
         url = str(row.get("url") or "")
-        interval_hours = int(row.get("interval_hours") or 24)
+        interval_hours = int(row.get("interval_hours") or _PRICE_DUMPER_INTERVAL_HOURS)
         if setting_id <= 0 or user_id <= 0 or not url:
             continue
         if not _claim_price_dumper_job(setting_id, interval_hours):
@@ -1023,6 +1021,9 @@ def _claim_price_dumper_job(setting_id: int, interval_hours: int) -> bool:
 
 
 def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None = None) -> None:
+    url = _coerce_price_dumper_url(url)
+    if not url:
+        return
     try:
         result = _scrape_price_dumper_url(url, True)
     except Exception as exc:

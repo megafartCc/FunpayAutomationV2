@@ -1075,8 +1075,8 @@ const FunpayStatsPage: React.FC = () => {
             </h2>
             <p className="text-sm text-neutral-500">
               {tr(
-                "Average, median, and recommended price snapshots (auto-updated every 24h).",
-                "Средняя, медианная и рекомендованная цена (обновление каждые 24 часа).",
+                "Average, median, and recommended price snapshots (auto-updated every 60 min).",
+                "Средняя, медианная и рекомендованная цена (обновление каждые 60 минут).",
               )}
             </p>
             {marketHistoryUrl ? <p className="mt-1 text-xs text-neutral-400">{marketHistoryUrl}</p> : null}
