@@ -200,6 +200,17 @@ def _compose_ranked_title(title: str, rank_label: str, max_len: int | None = Non
     return result
 
 
+def _force_lot_active(account: Account, lot_id: int) -> None:
+    """Best-effort: re-save lot with active enabled (mirrors manual re-activation flow)."""
+    try:
+        lot_fields = account.get_lot_fields(int(lot_id))
+    except Exception as exc:
+        logger.warning("Failed to reload lot %s for activation: %s", lot_id, exc)
+        return
+    lot_fields.active = True
+    account.save_lot(lot_fields)
+
+
 def update_funpay_lot_title(
     *,
     golden_key: str,
@@ -238,6 +249,7 @@ def update_funpay_lot_title(
     # Always keep lots active; deactivation disabled.
     fields["active"] = "on"
     _post_lot_fields(account, lot_id, fields)
+    _force_lot_active(account, lot_id)
     return True
 
 

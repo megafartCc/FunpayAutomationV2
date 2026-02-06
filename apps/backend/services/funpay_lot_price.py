@@ -59,6 +59,17 @@ def _create_account(golden_key: str, proxy_url: str | None, user_agent: str | No
     return account
 
 
+def _force_lot_active(account: Account, lot_id: int) -> None:
+    """Best-effort: re-save lot with active enabled (mirrors manual re-activation flow)."""
+    try:
+        lot_fields = account.get_lot_fields(int(lot_id))
+    except Exception as exc:
+        logger.warning("Failed to reload lot %s for activation: %s", lot_id, exc)
+        return
+    lot_fields.active = True
+    account.save_lot(lot_fields)
+
+
 def get_funpay_lot_snapshot(
     *,
     golden_key: str,
@@ -124,6 +135,7 @@ def edit_funpay_lot(
     if active is not None:
         lot_fields.active = bool(active)
     account.save_lot(lot_fields)
+    _force_lot_active(account, lot_id)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
         proxy_url=proxy_url,
@@ -150,4 +162,5 @@ def update_funpay_lot_price(
         return False, current_price
     lot_fields.price = new_price
     account.save_lot(lot_fields)
+    _force_lot_active(account, lot_id)
     return True, current_price
