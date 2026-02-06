@@ -520,6 +520,42 @@ def ensure_schema() -> None:
             )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS auto_price_settings (
+                user_id BIGINT PRIMARY KEY,
+                enabled TINYINT(1) NOT NULL DEFAULT 0,
+                all_workspaces TINYINT(1) NOT NULL DEFAULT 1,
+                interval_minutes INT NOT NULL DEFAULT 60,
+                premium_workspace_id BIGINT NULL,
+                premium_delta DECIMAL(10,2) NOT NULL DEFAULT 0.75,
+                last_run_at TIMESTAMP NULL,
+                next_run_at TIMESTAMP NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_auto_price_next (next_run_at),
+                CONSTRAINT fk_auto_price_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_price_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                workspace_id BIGINT NULL,
+                level VARCHAR(16) NOT NULL DEFAULT 'info',
+                source VARCHAR(128) NULL,
+                line INT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_auto_price_logs_user_ws (user_id, workspace_id),
+                INDEX idx_auto_price_logs_user (user_id),
+                CONSTRAINT fk_auto_price_logs_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS bot_customization (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,

@@ -16,10 +16,17 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from api.deps import get_current_user
 from db.mysql import get_base_connection
+from db.auto_price_repo import MySQLAutoPriceRepo, AutoPriceSettings, AutoPriceLogRecord
+from db.lot_repo import MySQLLotRepo
+from db.workspace_repo import MySQLWorkspaceRepo
+from services.funpay_lot_price import update_funpay_lot_price
 
 
 router = APIRouter()
 logger = logging.getLogger("backend.price_dumper")
+auto_price_repo = MySQLAutoPriceRepo()
+lot_repo = MySQLLotRepo()
+workspace_repo = MySQLWorkspaceRepo()
 
 _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 _PAGE_PARAM = "page"
@@ -28,8 +35,11 @@ _MAX_PAGE_LIMIT = 200
 _DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/"
 _PRICE_DUMPER_INTERVAL_HOURS = 1
 _PRICE_DUMPER_CATEGORY_ID = "81"
+_AUTO_PRICE_DEFAULT_INTERVAL = 60
+_AUTO_PRICE_DEFAULT_DELTA = 0.75
 _DEFAULT_MAX_ITEMS = 600
 _DEFAULT_MAX_SECONDS = 90
+_LOT_ID_RE = re.compile(r"(?:offer\\?id=|offer/)(\\d+)|id=(\\d+)")
 
 
 def _price_dumper_max_pages() -> int:
@@ -55,6 +65,57 @@ def _price_dumper_limits() -> tuple[int, int]:
     max_items = max(50, min(max_items, 5000))
     max_seconds = max(15, min(max_seconds, 600))
     return max_items, max_seconds
+
+
+def _auto_price_defaults() -> AutoPriceSettings:
+    return AutoPriceSettings(
+        enabled=False,
+        all_workspaces=True,
+        interval_minutes=_AUTO_PRICE_DEFAULT_INTERVAL,
+        premium_workspace_id=None,
+        premium_delta=_AUTO_PRICE_DEFAULT_DELTA,
+    )
+
+
+def _to_auto_price_settings_response(settings: AutoPriceSettings) -> AutoPriceSettingsResponse:
+    return AutoPriceSettingsResponse(
+        enabled=bool(settings.enabled),
+        all_workspaces=bool(settings.all_workspaces),
+        interval_minutes=int(settings.interval_minutes),
+        premium_workspace_id=int(settings.premium_workspace_id)
+        if settings.premium_workspace_id is not None
+        else None,
+        premium_delta=float(settings.premium_delta),
+    )
+
+
+def _to_auto_price_log_item(record: AutoPriceLogRecord) -> AutoPriceLogItem:
+    return AutoPriceLogItem(
+        id=record.id,
+        level=record.level,
+        source=record.source,
+        line=record.line,
+        message=record.message,
+        workspace_id=record.workspace_id,
+        created_at=record.created_at,
+    )
+
+
+def _resolve_lot_id(lot_number: int | None, lot_url: str | None) -> int | None:
+    if lot_number and int(lot_number) > 0:
+        return int(lot_number)
+    if not lot_url:
+        return None
+    match = _LOT_ID_RE.search(str(lot_url))
+    if not match:
+        return None
+    value = match.group(1) or match.group(2)
+    if not value:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_category_url(url: str) -> bool:
@@ -239,6 +300,44 @@ class PriceDumpRefreshResponse(BaseModel):
     ok: bool
     processed: int = 0
     urls: list[str] = []
+
+
+class AutoPriceSettingsPayload(BaseModel):
+    enabled: bool
+    all_workspaces: bool
+    interval_minutes: int = Field(ge=15, le=720)
+    premium_workspace_id: int | None = Field(None, ge=1)
+    premium_delta: float = Field(ge=0, le=50)
+
+
+class AutoPriceSettingsResponse(BaseModel):
+    enabled: bool
+    all_workspaces: bool
+    interval_minutes: int
+    premium_workspace_id: int | None = None
+    premium_delta: float
+
+
+class AutoPriceLogItem(BaseModel):
+    id: int
+    level: str
+    source: str | None = None
+    line: int | None = None
+    message: str
+    workspace_id: int | None = None
+    created_at: str | None = None
+
+
+class AutoPriceLogsResponse(BaseModel):
+    items: list[AutoPriceLogItem]
+
+
+class AutoPriceRunResponse(BaseModel):
+    ok: bool
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
+    recommended_price: float | None = None
 
 
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -1071,6 +1170,209 @@ def price_dumper_refresh(_user=Depends(get_current_user)) -> PriceDumpRefreshRes
     return PriceDumpRefreshResponse(ok=True, processed=processed, urls=urls[:processed])
 
 
+@router.get("/plugins/price-dumper/auto-price/settings", response_model=AutoPriceSettingsResponse)
+def get_auto_price_settings(_user=Depends(get_current_user)) -> AutoPriceSettingsResponse:
+    settings = auto_price_repo.get_settings(int(_user.id)) or _auto_price_defaults()
+    return _to_auto_price_settings_response(settings)
+
+
+@router.put("/plugins/price-dumper/auto-price/settings", response_model=AutoPriceSettingsResponse)
+def save_auto_price_settings(
+    payload: AutoPriceSettingsPayload, _user=Depends(get_current_user)
+) -> AutoPriceSettingsResponse:
+    interval_minutes = int(max(15, min(int(payload.interval_minutes), 720)))
+    premium_delta = float(max(0.0, min(float(payload.premium_delta), 50.0)))
+    settings = AutoPriceSettings(
+        enabled=bool(payload.enabled),
+        all_workspaces=bool(payload.all_workspaces),
+        interval_minutes=interval_minutes,
+        premium_workspace_id=int(payload.premium_workspace_id)
+        if payload.premium_workspace_id is not None
+        else None,
+        premium_delta=premium_delta,
+    )
+    auto_price_repo.save_settings(int(_user.id), settings)
+    return _to_auto_price_settings_response(settings)
+
+
+@router.get("/plugins/price-dumper/auto-price/logs", response_model=AutoPriceLogsResponse)
+def list_auto_price_logs(
+    workspace_id: int | None = None,
+    limit: int = 200,
+    _user=Depends(get_current_user),
+) -> AutoPriceLogsResponse:
+    items = auto_price_repo.list_logs(int(_user.id), workspace_id=workspace_id, limit=limit)
+    return AutoPriceLogsResponse(items=[_to_auto_price_log_item(item) for item in items])
+
+
+@router.post("/plugins/price-dumper/auto-price/run", response_model=AutoPriceRunResponse)
+def run_auto_price(_user=Depends(get_current_user)) -> AutoPriceRunResponse:
+    settings = auto_price_repo.get_settings(int(_user.id)) or _auto_price_defaults()
+    return _execute_auto_price_job(int(_user.id), settings, manual=True)
+
+
+def _log_auto_price(
+    *,
+    user_id: int,
+    level: str,
+    message: str,
+    workspace_id: int | None = None,
+) -> None:
+    try:
+        auto_price_repo.log(
+            user_id=int(user_id),
+            level=level,
+            message=message,
+            workspace_id=workspace_id,
+        )
+    except Exception:
+        logger.debug("Auto price log failed: %s", message, exc_info=True)
+
+
+def _pick_premium_workspace_id(settings: AutoPriceSettings, workspaces: list) -> int | None:
+    if settings.premium_workspace_id is not None:
+        return int(settings.premium_workspace_id)
+    for ws in workspaces:
+        if int(getattr(ws, "is_default", 0) or 0) == 1:
+            return int(ws.id)
+    if workspaces:
+        return int(workspaces[0].id)
+    return None
+
+
+def _execute_auto_price_job(
+    user_id: int, settings: AutoPriceSettings, *, manual: bool = False
+) -> AutoPriceRunResponse:
+    if not settings.enabled and not manual:
+        return AutoPriceRunResponse(ok=False)
+
+    target_url = _coerce_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
+    try:
+        scrape = _scrape_price_dumper_url(target_url, True)
+    except Exception as exc:
+        _log_auto_price(user_id=user_id, level="error", message=f"Scrape failed: {exc}")
+        return AutoPriceRunResponse(ok=False)
+
+    effective_prices, seller_count, lot_count = _effective_prices(scrape.items)
+    filtered = _filter_prices(effective_prices)
+    if not filtered:
+        _log_auto_price(user_id=user_id, level="warn", message="No prices available for auto update.")
+        return AutoPriceRunResponse(ok=False)
+
+    avg_price, median_price = _compute_stats(filtered)
+    recommended_price, lowest_price, second_price = _suggest_price(filtered)
+    recommended_price = _apply_recommendation_floor(recommended_price, median_price)
+    recommended_price = _apply_recommendation_uplift(
+        recommended_price,
+        seller_count=seller_count,
+        lot_count=lot_count,
+    )
+    if recommended_price is None:
+        _log_auto_price(user_id=user_id, level="warn", message="Recommended price is empty.")
+        return AutoPriceRunResponse(ok=False)
+
+    try:
+        _insert_price_dumper_history(
+            user_id=int(user_id),
+            url=target_url,
+            currency=scrape.currency,
+            avg_price=avg_price,
+            median_price=median_price,
+            recommended_price=recommended_price,
+            lowest_price=lowest_price,
+            second_price=second_price,
+            price_count=len(filtered),
+        )
+    except Exception:
+        logger.debug("Auto price history insert failed.", exc_info=True)
+
+    workspaces = [ws for ws in workspace_repo.list_by_user(int(user_id)) if ws.platform == "funpay"]
+    if not workspaces:
+        _log_auto_price(user_id=user_id, level="warn", message="No FunPay workspaces found.")
+        return AutoPriceRunResponse(ok=True, recommended_price=recommended_price)
+
+    premium_id = _pick_premium_workspace_id(settings, workspaces)
+    updated = 0
+    skipped = 0
+    failed = 0
+    premium_delta = float(settings.premium_delta or 0.0)
+
+    for ws in workspaces:
+        if not settings.all_workspaces:
+            if premium_id is None or int(ws.id) != int(premium_id):
+                continue
+        if not ws.golden_key:
+            _log_auto_price(
+                user_id=user_id,
+                level="warn",
+                workspace_id=int(ws.id),
+                message=f"{ws.name}: missing golden_key, skipped.",
+            )
+            continue
+
+        lots = lot_repo.list_by_user(int(user_id), int(ws.id))
+        if not lots:
+            _log_auto_price(
+                user_id=user_id,
+                level="warn",
+                workspace_id=int(ws.id),
+                message=f"{ws.name}: no lots mapped, skipped.",
+            )
+            continue
+
+        target_price = float(recommended_price)
+        if premium_id is not None and int(ws.id) == int(premium_id):
+            target_price = float(recommended_price) + premium_delta
+        target_price = round(target_price + 1e-9, 2)
+
+        ws_updated = 0
+        ws_skipped = 0
+        ws_failed = 0
+        for lot in lots:
+            lot_id = _resolve_lot_id(lot.lot_number, lot.lot_url)
+            if not lot_id:
+                ws_skipped += 1
+                continue
+            try:
+                changed, _old = update_funpay_lot_price(
+                    golden_key=ws.golden_key,
+                    proxy_url=ws.proxy_url,
+                    lot_id=int(lot_id),
+                    price=target_price,
+                    user_agent=os.getenv("FUNPAY_USER_AGENT"),
+                )
+                if changed:
+                    ws_updated += 1
+                else:
+                    ws_skipped += 1
+            except Exception as exc:
+                ws_failed += 1
+                _log_auto_price(
+                    user_id=user_id,
+                    level="warn",
+                    workspace_id=int(ws.id),
+                    message=f"{ws.name}: lot {lot_id} update failed: {exc}",
+                )
+
+        updated += ws_updated
+        skipped += ws_skipped
+        failed += ws_failed
+        _log_auto_price(
+            user_id=user_id,
+            level="info",
+            workspace_id=int(ws.id),
+            message=f"{ws.name}: set {target_price:.2f} on {ws_updated} lots (skipped {ws_skipped}, failed {ws_failed}).",
+        )
+
+    return AutoPriceRunResponse(
+        ok=True,
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
+        recommended_price=recommended_price,
+    )
+
+
 _PRICE_DUMPER_THREAD: threading.Thread | None = None
 _PRICE_DUMPER_LOCK = threading.Lock()
 
@@ -1216,3 +1518,90 @@ def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None =
         )
     except Exception:
         logger.debug("Price dumper history insert failed for %s.", url, exc_info=True)
+
+
+_AUTO_PRICE_THREAD: threading.Thread | None = None
+_AUTO_PRICE_LOCK = threading.Lock()
+
+
+def _auto_price_should_run() -> bool:
+    flag = os.getenv("AUTO_PRICE_SCHEDULER", "1").strip().lower()
+    return flag not in {"0", "false", "no", "off"}
+
+
+def start_auto_price_scheduler() -> None:
+    global _AUTO_PRICE_THREAD
+    if not _auto_price_should_run():
+        return
+    with _AUTO_PRICE_LOCK:
+        if _AUTO_PRICE_THREAD and _AUTO_PRICE_THREAD.is_alive():
+            return
+        thread = threading.Thread(target=_auto_price_scheduler_loop, daemon=True)
+        _AUTO_PRICE_THREAD = thread
+        thread.start()
+
+
+def _auto_price_scheduler_loop() -> None:
+    poll_seconds = int(os.getenv("AUTO_PRICE_POLL_SECONDS", "300"))
+    while True:
+        try:
+            _run_due_auto_price_jobs()
+        except Exception:
+            logger.exception("Auto price scheduler failed.")
+        time.sleep(max(30, poll_seconds))
+
+
+def _run_due_auto_price_jobs(limit: int = 5) -> None:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT user_id, interval_minutes, premium_workspace_id, premium_delta, all_workspaces
+            FROM auto_price_settings
+            WHERE enabled = 1 AND (next_run_at IS NULL OR next_run_at <= NOW())
+            ORDER BY next_run_at ASC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        rows = cursor.fetchall() or []
+    finally:
+        conn.close()
+
+    for row in rows:
+        user_id = int(row.get("user_id") or 0)
+        interval_minutes = int(row.get("interval_minutes") or _AUTO_PRICE_DEFAULT_INTERVAL)
+        if user_id <= 0:
+            continue
+        if not _claim_auto_price_job(user_id, interval_minutes):
+            continue
+        settings = AutoPriceSettings(
+            enabled=True,
+            all_workspaces=bool(row.get("all_workspaces", True)),
+            interval_minutes=interval_minutes,
+            premium_workspace_id=int(row["premium_workspace_id"])
+            if row.get("premium_workspace_id") is not None
+            else None,
+            premium_delta=float(row.get("premium_delta") or _AUTO_PRICE_DEFAULT_DELTA),
+        )
+        _execute_auto_price_job(user_id, settings, manual=False)
+
+
+def _claim_auto_price_job(user_id: int, interval_minutes: int) -> bool:
+    conn = get_base_connection()
+    try:
+        cursor = conn.cursor()
+        next_run = datetime.utcnow() + timedelta(minutes=int(interval_minutes))
+        cursor.execute(
+            """
+            UPDATE auto_price_settings
+            SET last_run_at = NOW(), next_run_at = %s
+            WHERE user_id = %s AND enabled = 1 AND (next_run_at IS NULL OR next_run_at <= NOW())
+            """,
+            (next_run, int(user_id)),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
