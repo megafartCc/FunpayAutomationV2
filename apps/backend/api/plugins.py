@@ -171,6 +171,8 @@ class PriceDumpItem(BaseModel):
     url: str | None = None
     raw_price: str | None = None
     rent: bool = False
+    seller_id: int | None = None
+    seller_name: str | None = None
 
 
 class PriceDumpResponse(BaseModel):
@@ -281,6 +283,23 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
     return None
 
 
+def _extract_seller_info(node: BeautifulSoup) -> tuple[int | None, str | None]:
+    seller_name = None
+    seller_id = None
+    seller_root = node.select_one(".tc-user, .lot-user, .offer-user, .media-body")
+    search_root = seller_root or node
+    name_node = search_root.select_one(".media-user-name, .user-link-name")
+    if name_node:
+        seller_name = name_node.get_text(" ", strip=True) or None
+    id_node = search_root.select_one("span.pseudo-a[data-href*='/users/'], a[href*='/users/']")
+    if id_node:
+        href = id_node.get("data-href") or id_node.get("href") or ""
+        match = re.search(r"/users/(\d+)/", str(href))
+        if match:
+            seller_id = int(match.group(1))
+    return seller_id, seller_name
+
+
 def _is_rent_offer(text: str) -> bool:
     value = text.lower()
     return "\u0430\u0440\u0435\u043d\u0434\u0430" in value or "\u0430\u0440\u0435\u043d\u0434" in value or "rent" in value
@@ -315,6 +334,7 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool, base_url: str | None = 
             prices, currency, _, _ = _extract_prices([price_text])
             if not prices:
                 continue
+            seller_id, seller_name = _extract_seller_info(node)
             url = None
             if title_node and title_node.name == "a":
                 url = title_node.get("href")
@@ -328,6 +348,8 @@ def _extract_items(soup: BeautifulSoup, rent_only: bool, base_url: str | None = 
                     url=url,
                     raw_price=price_text or None,
                     rent=is_rent,
+                    seller_id=seller_id,
+                    seller_name=seller_name,
                 )
             )
     items.sort(key=lambda item: item.price)
@@ -394,6 +416,8 @@ def _build_analysis_text(
     suggested: float | None,
     lowest: float | None,
     second: float | None,
+    seller_count: int | None = None,
+    lot_count: int | None = None,
 ) -> str:
     if not prices:
         return "No prices to analyze."
@@ -407,11 +431,17 @@ def _build_analysis_text(
         median = sorted_prices[mid]
     tiers = len(set(sorted_prices))
     unit = currency or "RUB"
-    return "\n".join(
+    lines = [
+        "Competitor price analysis:",
+        "",
+        f"- Prices in 0-50: {total}",
+    ]
+    if lot_count is not None:
+        lines.append(f"- Lots scanned: {lot_count}")
+    if seller_count is not None:
+        lines.append(f"- Unique sellers: {seller_count}")
+    lines.extend(
         [
-            "Competitor price analysis:",
-            "",
-            f"- Prices in 0-50: {total}",
             f"- Average price: {avg:.2f} {unit}",
             f"- Median price: {median:.2f} {unit}",
             f"- Lowest price: {lowest:.2f} {unit}" if lowest is not None else "- Lowest price: -",
@@ -424,6 +454,7 @@ def _build_analysis_text(
             "Summary: Slightly above the cheapest cluster and closer to the market median.",
         ]
     )
+    return "\n".join(lines)
 
 
 def _format_prices(prices: list[float], limit: int = 500) -> str:
@@ -436,6 +467,52 @@ def _filter_prices(prices: list[float], min_price: float = 0.0, max_price: float
     if filtered:
         return filtered
     return [price for price in prices if price >= min_price]
+
+
+def _effective_prices(items: list[PriceDumpItem]) -> tuple[list[float], int, int]:
+    seller_prices: dict[str, float] = {}
+    fallback_prices: list[float] = []
+    total = 0
+    for item in items:
+        if item.price is None:
+            continue
+        total += 1
+        key = None
+        if item.seller_id:
+            key = f"id:{item.seller_id}"
+        elif item.seller_name:
+            key = f"name:{item.seller_name.strip().lower()}"
+        if key:
+            current = seller_prices.get(key)
+            if current is None or item.price < current:
+                seller_prices[key] = item.price
+        else:
+            fallback_prices.append(item.price)
+    if seller_prices:
+        return list(seller_prices.values()) + fallback_prices, len(seller_prices), total
+    return [item.price for item in items if item.price is not None], total, total
+
+
+def _apply_recommendation_uplift(
+    recommended: float | None,
+    *,
+    seller_count: int,
+    lot_count: int,
+) -> float | None:
+    if recommended is None:
+        return None
+    if lot_count <= 0:
+        return recommended
+    ratio = lot_count / max(1, seller_count)
+    if ratio >= 3:
+        uplift = 0.05
+    elif ratio >= 2:
+        uplift = 0.035
+    elif ratio >= 1.5:
+        uplift = 0.025
+    else:
+        uplift = 0.015
+    return round(recommended * (1 + uplift) + 1e-9, 2)
 
 
 def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:
@@ -664,6 +741,8 @@ def _analyze_prices_with_groq(
     recommended_price: float | None,
     lowest_price: float | None,
     second_price: float | None,
+    seller_count: int | None = None,
+    lot_count: int | None = None,
 ) -> tuple[str, str | None]:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -679,6 +758,8 @@ def _analyze_prices_with_groq(
         "Data:\n"
         f"- Total prices: {len(prices)}\n"
         f"- Prices in 0-50: {len(filtered_prices)}\n"
+        f"- Lots scanned: {lot_count if lot_count is not None else 'unknown'}\n"
+        f"- Unique sellers: {seller_count if seller_count is not None else 'unknown'}\n"
         f"- Price list (0-50, max {list_limit}): {_format_prices(sorted_prices, list_limit)}\n"
         f"- Currency: {currency or 'unknown'}\n"
         f"- Lowest price: {lowest_price}\n"
@@ -836,13 +917,18 @@ def analyze_price_dumper(
     payload: PriceDumpAnalysisRequest,
     _user=Depends(get_current_user),
 ) -> PriceDumpAnalysisResponse:
-    prices = [item.price for item in payload.items if item.price is not None]
-    if not prices:
+    effective_prices, seller_count, lot_count = _effective_prices(payload.items)
+    if not effective_prices:
         raise HTTPException(status_code=400, detail="No prices provided for analysis.")
-    filtered_prices = _filter_prices(prices)
+    filtered_prices = _filter_prices(effective_prices)
     if not filtered_prices:
         raise HTTPException(status_code=400, detail="No prices in the 0-50 range for analysis.")
     recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
+    recommended_price = _apply_recommendation_uplift(
+        recommended_price,
+        seller_count=seller_count,
+        lot_count=lot_count,
+    )
     avg_price, median_price = _compute_stats(filtered_prices)
     use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
     if use_groq_flag in {"0", "false", "no", "off"}:
@@ -858,6 +944,8 @@ def analyze_price_dumper(
             recommended_price=recommended_price,
             lowest_price=lowest_price,
             second_price=second_price,
+            seller_count=seller_count,
+            lot_count=lot_count,
         )
     else:
         analysis = _build_analysis_text(
@@ -866,6 +954,8 @@ def analyze_price_dumper(
             suggested=recommended_price,
             lowest=lowest_price,
             second=second_price,
+            seller_count=seller_count,
+            lot_count=lot_count,
         )
         model = None
     if payload.url:
@@ -1034,13 +1124,18 @@ def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None =
         logger.warning("Price dumper scrape failed for %s: %s", url, exc)
         return
 
-    prices = [item.price for item in result.items if item.price is not None]
-    filtered = _filter_prices(prices)
+    effective_prices, seller_count, lot_count = _effective_prices(result.items)
+    filtered = _filter_prices(effective_prices)
     if not filtered:
         logger.info("Price dumper skipped (no prices) for %s", url)
         return
 
     recommended_price, lowest_price, second_price = _suggest_price(filtered)
+    recommended_price = _apply_recommendation_uplift(
+        recommended_price,
+        seller_count=seller_count,
+        lot_count=lot_count,
+    )
     avg_price, median_price = _compute_stats(filtered)
 
     if use_groq is None:
@@ -1059,6 +1154,8 @@ def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None =
                 recommended_price=recommended_price,
                 lowest_price=lowest_price,
                 second_price=second_price,
+                seller_count=seller_count,
+                lot_count=lot_count,
             )
         except Exception:
             logger.debug("Price dumper AI analysis failed for %s.", url, exc_info=True)
