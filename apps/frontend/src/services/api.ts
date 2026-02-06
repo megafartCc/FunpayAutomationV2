@@ -191,7 +191,7 @@ export type LotCreatePayload = {
   workspace_id?: number | null;
   lot_number: number;
   account_id: number;
-  lot_url: string;
+  lot_url?: string | null;
 };
 
 export type BlacklistEntry = {

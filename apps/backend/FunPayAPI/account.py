@@ -1691,6 +1691,13 @@ class Account:
 
         offer_form = bs.find("form", attrs={"action": lambda x: isinstance(x, str) and "offerSave" in x})
         if not offer_form:
+            for form in bs.find_all("form"):
+                offer_input = form.find("input", {"name": "offer_id"})
+                if offer_input and str(offer_input.get("value", "")).strip() == str(lot_id):
+                    offer_form = form
+                    break
+
+        if not offer_form:
             error_message = error_message or "Не удалось найти форму редактирования лота."
             raise exceptions.LotParsingError(response, error_message, lot_id)
 

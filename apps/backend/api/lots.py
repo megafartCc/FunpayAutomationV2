@@ -13,6 +13,11 @@ from db.workspace_repo import MySQLWorkspaceRepo
 from services.funpay_lot_title import maybe_update_funpay_lot_title
 from services.funpay_lot_price import get_funpay_lot_snapshot, edit_funpay_lot, update_funpay_lot_price
 
+try:
+    from FunPayAPI.common import exceptions as funpay_exceptions
+except Exception:
+    from workers.funpay.FunPayAPI.common import exceptions as funpay_exceptions
+
 
 router = APIRouter()
 lots_repo = MySQLLotRepo()
@@ -25,7 +30,7 @@ class LotCreate(BaseModel):
     workspace_id: int = Field(..., ge=1, description="Workspace that owns this lot")
     lot_number: int = Field(..., ge=1)
     account_id: int = Field(..., ge=1)
-    lot_url: str = Field(..., min_length=5)
+    lot_url: str | None = Field(None, min_length=5)
 
 
 class LotItem(BaseModel):
@@ -121,8 +126,6 @@ def list_lots(workspace_id: int | None = None, user=Depends(get_current_user)) -
 
 @router.post("/lots", response_model=LotItem, status_code=status.HTTP_201_CREATED)
 def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
-    if not payload.lot_url.strip():
-        raise HTTPException(status_code=400, detail="Lot URL is required")
     _ensure_workspace(payload.workspace_id, int(user.id))
     workspace = workspace_repo.get_by_id(int(payload.workspace_id), int(user.id))
     try:
@@ -131,7 +134,7 @@ def create_lot(payload: LotCreate, user=Depends(get_current_user)) -> LotItem:
             workspace_id=int(payload.workspace_id),
             lot_number=payload.lot_number,
             account_id=payload.account_id,
-            lot_url=payload.lot_url.strip(),
+            lot_url=(payload.lot_url or f"https://funpay.com/lots/offer?id={payload.lot_number}").strip(),
             display_name=None,
         )
     except LotCreateError as exc:
@@ -279,12 +282,17 @@ def get_funpay_lot(
     user=Depends(get_current_user),
 ) -> FunPayLotDetails:
     workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
-    snapshot = get_funpay_lot_snapshot(
-        golden_key=workspace.golden_key,
-        proxy_url=workspace.proxy_url,
-        lot_id=int(lot_number),
-        user_agent=os.getenv("FUNPAY_USER_AGENT"),
-    )
+    try:
+        snapshot = get_funpay_lot_snapshot(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(lot_number),
+            user_agent=os.getenv("FUNPAY_USER_AGENT"),
+        )
+    except funpay_exceptions.LotParsingError as exc:
+        raise HTTPException(status_code=400, detail=f"Lot #{lot_number} is not accessible for this account: {exc.short_str()}")
+    except funpay_exceptions.RequestFailedError as exc:
+        raise HTTPException(status_code=400, detail=exc.short_str())
     if not snapshot:
         raise HTTPException(status_code=500, detail="FunPay API is unavailable")
     return FunPayLotDetails(
@@ -306,16 +314,21 @@ def patch_funpay_lot(
     workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
     if payload.title is None and payload.description is None and payload.price is None and payload.active is None:
         raise HTTPException(status_code=400, detail="Nothing to update")
-    snapshot = edit_funpay_lot(
-        golden_key=workspace.golden_key,
-        proxy_url=workspace.proxy_url,
-        lot_id=int(lot_number),
-        title=payload.title,
-        description=payload.description,
-        price=payload.price,
-        active=payload.active,
-        user_agent=os.getenv("FUNPAY_USER_AGENT"),
-    )
+    try:
+        snapshot = edit_funpay_lot(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(lot_number),
+            title=payload.title,
+            description=payload.description,
+            price=payload.price,
+            active=payload.active,
+            user_agent=os.getenv("FUNPAY_USER_AGENT"),
+        )
+    except funpay_exceptions.LotParsingError as exc:
+        raise HTTPException(status_code=400, detail=f"Lot #{lot_number} is not accessible for this account: {exc.short_str()}")
+    except funpay_exceptions.RequestFailedError as exc:
+        raise HTTPException(status_code=400, detail=exc.short_str())
     if not snapshot:
         raise HTTPException(status_code=500, detail="FunPay API is unavailable")
     return FunPayLotDetails(
@@ -334,11 +347,16 @@ def manual_auto_price_lot(
     user=Depends(get_current_user),
 ) -> FunPayLotManualPriceResponse:
     workspace, _record = _get_workspace_and_record(int(user.id), workspace_id, int(payload.lot_number))
-    changed, old_price = update_funpay_lot_price(
-        golden_key=workspace.golden_key,
-        proxy_url=workspace.proxy_url,
-        lot_id=int(payload.lot_number),
-        price=float(payload.price),
-        user_agent=os.getenv("FUNPAY_USER_AGENT"),
-    )
+    try:
+        changed, old_price = update_funpay_lot_price(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(payload.lot_number),
+            price=float(payload.price),
+            user_agent=os.getenv("FUNPAY_USER_AGENT"),
+        )
+    except funpay_exceptions.LotParsingError as exc:
+        raise HTTPException(status_code=400, detail=f"Lot #{payload.lot_number} is not accessible for this account: {exc.short_str()}")
+    except funpay_exceptions.RequestFailedError as exc:
+        raise HTTPException(status_code=400, detail=exc.short_str())
     return FunPayLotManualPriceResponse(ok=True, changed=bool(changed), old_price=old_price)
