@@ -1684,18 +1684,40 @@ class Account:
 
         html_response = response.content.decode()
         bs = BeautifulSoup(html_response, "lxml")
-        error_message = bs.find("p", class_="lead")
-        if error_message:
-            raise exceptions.LotParsingError(response, error_message.text, lot_id)
+        error_message = None
+        error_container = bs.find(class_="alert alert-danger")
+        if error_container:
+            error_message = error_container.get_text(" ", strip=True)
+
+        offer_form = bs.find("form", attrs={"action": lambda x: isinstance(x, str) and "offerSave" in x})
+        if not offer_form:
+            for form in bs.find_all("form"):
+                offer_input = form.find("input", {"name": "offer_id"})
+                if offer_input and str(offer_input.get("value", "")).strip() == str(lot_id):
+                    offer_form = form
+                    break
+
+        if not offer_form:
+            error_message = error_message or "Не удалось найти форму редактирования лота."
+            raise exceptions.LotParsingError(response, error_message, lot_id)
+
         result = {}
-        result.update({field["name"]: field.get("value") or "" for field in bs.find_all("input")})
-        result.update({field["name"]: field.text or "" for field in bs.find_all("textarea")})
+        result.update({field["name"]: field.get("value") or "" for field in offer_form.find_all("input") if field.get("name")})
+        result.update({field["name"]: field.text or "" for field in offer_form.find_all("textarea") if field.get("name")})
+
+        for field in offer_form.find_all("select"):
+            if not field.get("name"):
+                continue
+            # Keep values even for conditionally hidden selects: FunPay may still validate them.
+            selected_option = field.find("option", selected=True) or field.find("option")
+            if selected_option and selected_option.get("value") is not None:
+                result[field["name"]] = selected_option["value"]
+
         result.update({
-            field["name"]: field.find("option", selected=True)["value"]
-            for field in bs.find_all("select") if
-            "hidden" not in field.find_parent(class_="form-group").get("class", [])
+            field["name"]: "on"
+            for field in offer_form.find_all("input", {"type": "checkbox"}, checked=True)
+            if field.get("name")
         })
-        result.update({field["name"]: "on" for field in bs.find_all("input", {"type": "checkbox"}, checked=True)})
         subcategory = self.get_subcategory(enums.SubCategoryTypes.COMMON, int(result.get("node_id", 0)))
         self.csrf_token = result.get("csrf_token") or self.csrf_token
         currency = utils.parse_currency(bs.find("span", class_="form-control-feedback").text)
@@ -1728,16 +1750,31 @@ class Account:
         }
         lot_fields.csrf_token = self.csrf_token
         fields = lot_fields.renew_fields().fields
-        fields["location"] = "trade"
+        # Keep location from edit form (usually "offer"); fallback only when missing.
+        if not fields.get("location"):
+            fields["location"] = "offer"
+        # Hard-force lot active for every save operation.
+        fields["active"] = "on"
+        # Prevent auto-deactivation after sale in forced-active mode.
+        fields["deactivate_after_sale"] = ""
 
         response = self.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
         json_response = response.json()
         errors_dict = {}
         if (errors := json_response.get("errors")) or json_response.get("error"):
-            if errors:
-                for k, v in errors:
-                    errors_dict.update({k: v})
-
+            if isinstance(errors, dict):
+                errors_dict.update({str(k): str(v) for k, v in errors.items()})
+            elif isinstance(errors, (list, tuple)):
+                for item in errors:
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        k, v = item[0], item[1]
+                        errors_dict[str(k)] = str(v)
+            logger.warning(
+                "FunPay lot save validation failed for %s. error=%s field_errors=%s",
+                lot_fields.lot_id,
+                json_response.get("error"),
+                errors_dict,
+            )
             raise exceptions.LotSavingError(response, json_response.get("error"), lot_fields.lot_id, errors_dict)
 
     def delete_lot(self, lot_id: int) -> None:
