@@ -112,9 +112,6 @@ def edit_funpay_lot(
     if active is not None:
         lot_fields.active = bool(active)
 
-    # Force lot active for any manual edit operation to avoid accidental deactivation.
-    lot_fields.active = True
-
     account.save_lot(lot_fields)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
@@ -141,7 +138,5 @@ def update_funpay_lot_price(
     if current_price is not None and abs(float(current_price) - new_price) < 0.01:
         return False, current_price
     lot_fields.price = new_price
-    # Force lot active during auto-price updates to prevent unintended deactivation.
-    lot_fields.active = True
     account.save_lot(lot_fields)
     return True, current_price
