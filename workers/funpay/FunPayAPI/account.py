@@ -1752,7 +1752,9 @@ class Account:
         }
         lot_fields.csrf_token = self.csrf_token
         fields = lot_fields.renew_fields().fields
-        fields["location"] = "trade"
+        # Keep location from edit form (usually "offer"); fallback only when missing.
+        if not fields.get("location"):
+            fields["location"] = "offer"
 
         response = self.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
         json_response = response.json()
