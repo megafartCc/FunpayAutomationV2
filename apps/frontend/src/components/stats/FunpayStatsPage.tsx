@@ -1,8 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  LinearScale,
+  Legend as ChartLegend,
+  Tooltip as ChartTooltip,
+} from "chart.js";
+import { Bar as ChartBar } from "react-chartjs-2";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
 import { api, ActiveRentalItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, ChartLegend);
 
 type DeltaTone = "up" | "down";
 
@@ -408,6 +419,65 @@ const FunpayStatsPage: React.FC = () => {
       .sort((a, b) => b.orders - a.orders)
       .slice(0, 6);
   }, [ordersInRange, tr]);
+
+  const accountPopularityChart = useMemo(() => {
+    const labels = accountPopularity.map((account) => account.name);
+    const values = accountPopularity.map((account) => account.orders);
+    const maxValue = values.length ? Math.max(...values) : 0;
+    return {
+      data: {
+        labels,
+        datasets: [
+          {
+            label: tr("Orders", "Заказы"),
+            data: values,
+            backgroundColor: "rgba(14, 165, 233, 0.92)",
+            borderRadius: 10,
+            maxBarThickness: 42,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 8, right: 8, bottom: 0, left: 4 } },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              maxRotation: 0,
+              autoSkip: false,
+              callback: (value: string | number) => {
+                const label = labels[Number(value)] || "";
+                return label.length > 10 ? `${label.slice(0, 10)}…` : label;
+              },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(148, 163, 184, 0.2)" },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              precision: 0,
+            },
+            suggestedMax: maxValue ? Math.ceil(maxValue * 1.15) : 4,
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context: { parsed: { y: number } }) =>
+                `${tr("Orders", "Заказы")}: ${context.parsed.y}`,
+            },
+          },
+        },
+      },
+    };
+  }, [accountPopularity, tr]);
 
   const totalRevenue = useMemo(() => {
     return ordersInRange.reduce((sum, order) => {
@@ -964,25 +1034,10 @@ const FunpayStatsPage: React.FC = () => {
           </span>
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr,1fr] items-stretch">
-          <div className="h-[320px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={accountPopularity} margin={{ top: 6, right: 12, bottom: 20, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: "#6b7280", fontSize: 10 }}
-                  interval={0}
-                  angle={-10}
-                  textAnchor="end"
-                  height={36}
-                />
-                <YAxis tick={{ fill: "#6b7280", fontSize: 10 }} width={32} />
-                <Tooltip
-                  formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
-                />
-                <Bar dataKey="orders" fill="#0ea5e9" radius={[6, 6, 0, 0]} maxBarSize={36} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex h-full min-h-[260px] w-full">
+            <div className="flex-1">
+              <ChartBar data={accountPopularityChart.data} options={accountPopularityChart.options} />
+            </div>
           </div>
           <div className="grid h-full content-start gap-2.5 sm:grid-cols-2 lg:grid-cols-1">
             {accountPopularity.map((account) => (
