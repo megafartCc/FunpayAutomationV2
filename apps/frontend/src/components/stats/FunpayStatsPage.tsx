@@ -3,17 +3,20 @@ import {
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  Filler,
   LinearScale,
   Legend as ChartLegend,
+  LineElement,
+  PointElement,
   Tooltip as ChartTooltip,
 } from "chart.js";
-import { Bar as ChartBar } from "react-chartjs-2";
+import { Bar as ChartBar, Line as ChartLine } from "react-chartjs-2";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
 import { api, ActiveRentalItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ChartTooltip, ChartLegend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler, ChartTooltip, ChartLegend);
 
 type DeltaTone = "up" | "down";
 
@@ -584,16 +587,142 @@ const FunpayStatsPage: React.FC = () => {
     });
   }, [marketHistory]);
 
-  const chartData = useMemo(
-    () =>
-      dailyOverview.map((item) => ({
-        label: item.label,
-        dateKey: item.key,
-        orders: item.orders,
-        avg: item.avg,
-      })),
-    [dailyOverview],
-  );
+  const ordersByDayChart = useMemo(() => {
+    const labels = dailyOverview.map((item) => item.label);
+    const dates = dailyOverview.map((item) => item.key);
+    const values = dailyOverview.map((item) => item.orders);
+    const maxValue = values.length ? Math.max(...values) : 0;
+    return {
+      data: {
+        labels,
+        datasets: [
+          {
+            data: values,
+            borderColor: "rgba(34, 197, 94, 0.95)",
+            backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D; chartArea?: { top: number; bottom: number } } }) => {
+              const { chart } = context;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) return "rgba(34, 197, 94, 0.18)";
+              const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, "rgba(34, 197, 94, 0.45)");
+              gradient.addColorStop(1, "rgba(34, 197, 94, 0.04)");
+              return gradient;
+            },
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "index" as const },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 10,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(148, 163, 184, 0.2)" },
+            ticks: { color: "#94a3b8", font: { size: 10 }, precision: 0 },
+            suggestedMax: maxValue ? Math.ceil(maxValue * 1.2) : 4,
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items: { dataIndex: number }[]) => {
+                const idx = items?.[0]?.dataIndex ?? 0;
+                const value = dates[idx];
+                const dt = new Date(value);
+                return Number.isNaN(dt.getTime())
+                  ? value
+                  : dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+              },
+              label: (context: { parsed: { y: number } }) => `${tr("Orders", "Заказы")}: ${context.parsed.y}`,
+            },
+          },
+        },
+      },
+    };
+  }, [dailyOverview, tr]);
+
+  const revenueFlowChart = useMemo(() => {
+    const labels = dailyRevenue.map((item) => item.label);
+    const values = dailyRevenue.map((item) => item.revenue);
+    const maxValue = values.length ? Math.max(...values) : 0;
+    return {
+      data: {
+        labels,
+        datasets: [
+          {
+            data: values,
+            borderColor: "rgba(16, 185, 129, 0.95)",
+            backgroundColor: (context: { chart: { ctx: CanvasRenderingContext2D; chartArea?: { top: number; bottom: number } } }) => {
+              const { chart } = context;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) return "rgba(16, 185, 129, 0.18)";
+              const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, "rgba(16, 185, 129, 0.45)");
+              gradient.addColorStop(1, "rgba(16, 185, 129, 0.04)");
+              return gradient;
+            },
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "index" as const },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 8,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: "rgba(148, 163, 184, 0.2)" },
+            ticks: {
+              color: "#94a3b8",
+              font: { size: 10 },
+              callback: (value: number | string) =>
+                typeof value === "number" ? formatCurrency(value) : value,
+            },
+            suggestedMax: maxValue ? Math.ceil(maxValue * 1.2) : 4,
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context: { parsed: { y: number } }) =>
+                `${tr("Revenue", "Выручка")}: ${formatCurrency(context.parsed.y)}`,
+            },
+          },
+        },
+      },
+    };
+  }, [dailyRevenue, tr]);
 
   return (
     <div className="space-y-6">
@@ -660,7 +789,7 @@ const FunpayStatsPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="lg:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900">
@@ -674,48 +803,8 @@ const FunpayStatsPage: React.FC = () => {
               {rangeLabel}
             </span>
           </div>
-          <div className="mt-6 h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="orders-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="dateKey"
-                  tickFormatter={(value) => {
-                    const dt = new Date(value);
-                    if (Number.isNaN(dt.getTime())) return value;
-                    return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                  }}
-                  tick={{ fill: "#6b7280", fontSize: 11 }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fill: "#6b7280", fontSize: 11 }}
-                  domain={[0, "dataMax + 2"]}
-                />
-                <Tooltip
-                  formatter={(value: number) => [`${value}`, tr("Orders", "Заказы")]}
-                  labelFormatter={(value) => {
-                    const dt = new Date(value as string);
-                    return Number.isNaN(dt.getTime())
-                      ? value
-                      : dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="orders"
-                  stroke="#22c55e"
-                  fill="url(#orders-fill)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="mt-4 flex-1 min-h-[240px] w-full">
+            <ChartLine data={ordersByDayChart.data} options={ordersByDayChart.options} />
           </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -858,7 +947,7 @@ const FunpayStatsPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="lg:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm flex flex-col">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900">
@@ -965,31 +1054,8 @@ const FunpayStatsPage: React.FC = () => {
               {totalRevenue ? formatCurrency(totalRevenue) : tr("No revenue", "Нет выручки")}
             </span>
           </div>
-          <div className="mt-6 h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dailyRevenue}>
-                <defs>
-                  <linearGradient id="revenue-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="key" tick={{ fill: "#6b7280", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
-                <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), tr("Revenue", "Выручка")]}
-                  labelFormatter={(value) => value}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#10b981"
-                  fill="url(#revenue-fill)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="mt-4 flex-1 min-h-[240px] w-full">
+            <ChartLine data={revenueFlowChart.data} options={revenueFlowChart.options} />
           </div>
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
