@@ -1758,7 +1758,7 @@ class Account:
         force_active = os.getenv("FUNPAY_FORCE_ACTIVE", "1").strip().lower() not in {"0", "false", "no", "off"}
         if force_active:
             fields["active"] = "on"
-        logger.info(
+        logger.error(
             "FunPay offerSave request for %s: %s",
             lot_fields.lot_id,
             {k: fields.get(k) for k in sorted(fields.keys())},
@@ -1774,7 +1774,7 @@ class Account:
                 getattr(response, "text", ""),
             )
             raise
-        logger.info(
+        logger.error(
             "FunPay offerSave response for %s (status %s): %s",
             lot_fields.lot_id,
             getattr(response, "status_code", "n/a"),
