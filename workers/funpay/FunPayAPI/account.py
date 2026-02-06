@@ -1750,8 +1750,9 @@ class Account:
         }
         lot_fields.csrf_token = self.csrf_token
         fields = lot_fields.renew_fields().fields
-        # Keep location from edit form (usually "offer"); fallback only when missing.
-        if not fields.get("location"):
+        # Keep location exactly as parsed from edit form.
+        # Fallback only if location key is absent (do not override empty string).
+        if "location" not in fields:
             fields["location"] = "offer"
         # Hard-force lot active for every save operation.
         fields["active"] = "on"
