@@ -515,6 +515,22 @@ def _apply_recommendation_uplift(
     return round(recommended * (1 + uplift) + 1e-9, 2)
 
 
+def _apply_recommendation_floor(
+    recommended: float | None,
+    median: float | None,
+    *,
+    min_factor: float = 0.5,
+) -> float | None:
+    if recommended is None:
+        return None
+    if median is None or median <= 0:
+        return recommended
+    floor_value = median * min_factor
+    if recommended < floor_value:
+        return round(floor_value + 1e-9, 2)
+    return recommended
+
+
 def _compute_stats(prices: list[float]) -> tuple[float | None, float | None]:
     if not prices:
         return None, None
@@ -923,13 +939,14 @@ def analyze_price_dumper(
     filtered_prices = _filter_prices(effective_prices)
     if not filtered_prices:
         raise HTTPException(status_code=400, detail="No prices in the 0-50 range for analysis.")
+    avg_price, median_price = _compute_stats(filtered_prices)
     recommended_price, lowest_price, second_price = _suggest_price(filtered_prices)
+    recommended_price = _apply_recommendation_floor(recommended_price, median_price)
     recommended_price = _apply_recommendation_uplift(
         recommended_price,
         seller_count=seller_count,
         lot_count=lot_count,
     )
-    avg_price, median_price = _compute_stats(filtered_prices)
     use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
     if use_groq_flag in {"0", "false", "no", "off"}:
         use_groq = False
@@ -1130,13 +1147,14 @@ def _execute_price_dumper_job(user_id: int, url: str, *, use_groq: bool | None =
         logger.info("Price dumper skipped (no prices) for %s", url)
         return
 
+    avg_price, median_price = _compute_stats(filtered)
     recommended_price, lowest_price, second_price = _suggest_price(filtered)
+    recommended_price = _apply_recommendation_floor(recommended_price, median_price)
     recommended_price = _apply_recommendation_uplift(
         recommended_price,
         seller_count=seller_count,
         lot_count=lot_count,
     )
-    avg_price, median_price = _compute_stats(filtered)
 
     if use_groq is None:
         use_groq_flag = os.getenv("PRICE_DUMPER_USE_GROQ", "").strip().lower()
