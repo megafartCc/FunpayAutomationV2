@@ -93,8 +93,10 @@ def edit_funpay_lot(
 
     if title is not None:
         lot_fields.title_ru = title
+        lot_fields.title_en = title
     if description is not None:
         lot_fields.description_ru = description
+        lot_fields.description_en = description
     if price is not None:
         lot_fields.price = round(float(price), 2)
     if active is not None:
