@@ -166,7 +166,6 @@ const LotsPage: React.FC = () => {
           title_en: manualTitleEn,
           description_en: manualDescriptionEn,
           price,
-          active: manualActive,
         },
         selectedWorkspaceId as number,
       );

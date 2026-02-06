@@ -1754,11 +1754,6 @@ class Account:
         # Fallback only if location key is absent (do not override empty string).
         if "location" not in fields:
             fields["location"] = "offer"
-        # Hard-force lot active for every save operation.
-        fields["active"] = "on"
-        # Prevent auto-deactivation after sale in forced-active mode.
-        fields["deactivate_after_sale"] = ""
-
         response = self.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
         json_response = response.json()
         errors_dict = {}

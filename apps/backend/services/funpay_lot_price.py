@@ -109,9 +109,6 @@ def edit_funpay_lot(
         lot_fields.description_en = description_en
     if price is not None:
         lot_fields.price = round(float(price), 2)
-    if active is not None:
-        lot_fields.active = bool(active)
-
     account.save_lot(lot_fields)
     return get_funpay_lot_snapshot(
         golden_key=golden_key,
