@@ -1755,6 +1755,10 @@ class Account:
         # Keep location from edit form (usually "offer"); fallback only when missing.
         if not fields.get("location"):
             fields["location"] = "offer"
+        # Hard-force lot active for every save operation.
+        fields["active"] = "on"
+        # Prevent auto-deactivation after sale in forced-active mode.
+        fields["deactivate_after_sale"] = ""
 
         response = self.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
         json_response = response.json()
