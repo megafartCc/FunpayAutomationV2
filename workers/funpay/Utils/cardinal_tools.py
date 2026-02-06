@@ -12,8 +12,6 @@ if TYPE_CHECKING:
 import FunPayAPI.types
 
 from datetime import datetime
-import Utils.exceptions
-import itertools
 import psutil
 import json
 import sys
@@ -28,23 +26,6 @@ logger = logging.getLogger("FPC.cardinal_tools")
 localizer = Localizer()
 _ = localizer.translate
 IPIFY_URL = "https://api.ipify.org"
-
-
-def count_products(path: str) -> int:
-    """
-    Считает кол-во товара в указанном файле.
-
-    :param path: путь до файла с товарами.
-
-    :return: кол-во товара в указанном файле.
-    """
-    if not os.path.exists(path):
-        return 0
-    with open(path, "r", encoding="utf-8") as f:
-        products = f.read()
-    products = products.split("\n")
-    products = list(itertools.filterfalse(lambda el: not el, products))
-    return len(products)
 
 
 def cache_blacklist(blacklist: list[str]) -> None:
@@ -322,57 +303,6 @@ def get_month_name(month_number: int) -> str:
     if month_number > len(months):
         return months[0]
     return months[month_number - 1]
-
-
-def get_products(path: str, amount: int = 1) -> list[list[str] | int] | None:
-    """
-    Берет из товарного файла товар/-ы, удаляет их из товарного файла.
-
-    :param path: путь до файла с товарами.
-    :param amount: кол-во товара.
-
-    :return: [[Товар/-ы], оставшееся кол-во товара]
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        products = f.read()
-
-    products = products.split("\n")
-
-    # Убираем пустые элементы
-    products = list(itertools.filterfalse(lambda el: not el, products))
-
-    if not products:
-        raise Utils.exceptions.NoProductsError(path)
-
-    elif len(products) < amount:
-        raise Utils.exceptions.NotEnoughProductsError(path, len(products), amount)
-
-    got_products = products[:amount]
-    save_products = products[amount:]
-    amount = len(save_products)
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(save_products))
-
-    return [got_products, amount]
-
-
-def add_products(path: str, products: list[str], at_zero_position=False):
-    """
-    Добавляет товары в файл с товарами.
-
-    :param path: путь до файла с товарами.
-    :param products: товары.
-    :param at_zero_position: добавить товары в начало товарного файла.
-    """
-    if not at_zero_position:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write("\n" + "\n".join(products))
-    else:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        with open(path, "w", encoding="utf-8") as f:
-            f.write("\n".join(products) + "\n" + text)
 
 
 def safe_text(text: str):

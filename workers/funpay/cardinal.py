@@ -200,17 +200,14 @@ class Cardinal(object):
         return getattr(cls, "instance")
 
     def __init__(self, main_config: ConfigParser,
-                 auto_delivery_config: ConfigParser,
                  auto_response_config: ConfigParser,
                  raw_auto_response_config: ConfigParser,
                  version: str):
         self.VERSION = version
         self.instance_id = random.randint(0, 999999999)
-        self.delivery_tests = {}  # Одноразовые ключи для тестов автовыдачи. {"ключ": "название лота"}
 
         # Конфиги
         self.MAIN_CFG = main_config
-        self.AD_CFG = auto_delivery_config
         self.AR_CFG = auto_response_config
         self.RAW_AR_CFG = raw_auto_response_config
         # Прокси
@@ -290,8 +287,6 @@ class Cardinal(object):
         self.new_order_handlers = []
         self.order_status_changed_handlers = []
 
-        self.pre_delivery_handlers = []
-        self.post_delivery_handlers = []
 
         self.pre_lots_raise_handlers = []
         self.post_lots_raise_handlers = []
@@ -311,8 +306,6 @@ class Cardinal(object):
             "BIND_TO_NEW_ORDER": self.new_order_handlers,
             "BIND_TO_ORDERS_LIST_CHANGED": self.orders_list_changed_handlers,
             "BIND_TO_ORDER_STATUS_CHANGED": self.order_status_changed_handlers,
-            "BIND_TO_PRE_DELIVERY": self.pre_delivery_handlers,
-            "BIND_TO_POST_DELIVERY": self.post_delivery_handlers,
             "BIND_TO_PRE_LOTS_RAISE": self.pre_lots_raise_handlers,
             "BIND_TO_POST_LOTS_RAISE": self.post_lots_raise_handlers,
         }
@@ -1071,21 +1064,8 @@ class Cardinal(object):
 
     # Настройки
     @property
-    @property
     def autoresponse_enabled(self) -> bool:
         return self.MAIN_CFG["FunPay"].getboolean("autoResponse")
-
-    @property
-    def autodelivery_enabled(self) -> bool:
-        return self.MAIN_CFG["FunPay"].getboolean("autoDelivery")
-
-    @property
-    def multidelivery_enabled(self) -> bool:
-        return self.MAIN_CFG["FunPay"].getboolean("multiDelivery")
-
-    @property
-    def autorestore_enabled(self) -> bool:
-        return self.MAIN_CFG["FunPay"].getboolean("autoRestore")
 
     @property
     def old_mode_enabled(self) -> bool:
@@ -1098,10 +1078,6 @@ class Cardinal(object):
     @property
     def show_image_name(self) -> bool:
         return self.MAIN_CFG["NewMessageView"].getboolean("showImageName")
-
-    @property
-    def bl_delivery_enabled(self) -> bool:
-        return self.MAIN_CFG["BlockList"].getboolean("blockDelivery")
 
     @property
     def bl_response_enabled(self) -> bool:

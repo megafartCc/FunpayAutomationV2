@@ -91,7 +91,6 @@ def edit_funpay_lot(
     title_en: str | None = None,
     description_en: str | None = None,
     price: float | None = None,
-    active: bool | None = None,
     user_agent: str | None = None,
 ) -> FunPayLotSnapshot | None:
     account = _create_account(golden_key, proxy_url, user_agent)

@@ -247,7 +247,6 @@ class Message(BaseOrderInfo):
         self.by_vertex: bool = False
         """Отправлено ли сообщение через FunPay Vertex?"""
         self.badge: str | None = badge_text
-        """Текст бэйджика тех. поддержки или автовыдачи FunPay."""
         self.is_employee: bool = False
         """Является ли пользователь сотрудником?"""
         self.is_support: bool = False
@@ -464,7 +463,6 @@ class Order:
     :param review: объект отзыва на заказ.
     :type review: :class:`FunPayAPI.types.Review` or :obj:`None`
 
-    :param order_secrets: cписок товаров автовыдачи FunPay.
     :type order_secrets: :obj:`list` of :obj:`str`
     """
 
@@ -511,7 +509,6 @@ class Order:
         self.amount: int = amount
         """Количество."""
         self.order_secrets: list[str] = order_secrets
-        """Список товаров автовыдачи FunPay заказа."""
 
     @property
     def lot_params_text(self) -> str | None:
@@ -703,18 +700,12 @@ class LotFields:
         """Английское сообщение покупателю после оплаты"""
         self.images: list[int] = [int(i) for i in self.__fields.get("fields[images]", "").split(",") if i]
         """ID изображений лота"""
-        self.auto_delivery: bool = self.__fields.get("auto_delivery") == "on"
-        """Включена ли автовыдача FunPay"""
-        self.secrets: list[str] = [i for i in self.__fields.get("secrets", "").strip().split("\n") if i]
-        """Товары встроенной автовыдачи"""
         self.amount: int | None = int(i) if (i := self.__fields.get("amount")) else None
         """Кол-во товара."""
         self.price: float = float(i) if (i := self.__fields.get("price")) else None
         """Цена за 1шт."""
         self.active: bool = self.__fields.get("active") == "on"
         """Активен ли лот."""
-        self.deactivate_after_sale: bool = self.__fields.get("deactivate_after_sale") == "on"
-        """Деактивировать ли лот после продажи."""
         self.subcategory: SubCategory | None = subcategory
         """Подкатегория лота"""
         self.public_link: str = f"https://funpay.com/lots/offer?id={lot_id}"
@@ -773,12 +764,8 @@ class LotFields:
         self.__fields["fields[payment_msg][ru]"] = self.payment_msg_ru
         self.__fields["fields[payment_msg][en]"] = self.payment_msg_en
         self.__fields["price"] = str(self.price) if self.price is not None else ""
-        self.__fields["deactivate_after_sale"] = "on" if self.deactivate_after_sale else ""
-        self.__fields["active"] = "on" if self.active else ""
         self.__fields["amount"] = self.amount if self.amount is not None else ""
         self.__fields["fields[images]"] = ",".join(map(str, self.images))
-        self.__fields["secrets"] = "\n".join(self.secrets)
-        self.__fields["auto_delivery"] = "on" if self.auto_delivery else ""
         self.__fields["csrf_token"] = self.csrf_token
         return self
 
@@ -907,7 +894,6 @@ class LotShortcut:
         self.seller: SellerShortcut | None = seller
         """Объект продавца (только для лотов из талицы)."""
         self.auto: bool = auto
-        """Включена ли автовыдача FunPay у лота?"""
         self.promo: bool | None = promo
         """В закрепе ли лот? (только для лотов из таблицы)"""
         self.attributes: dict[str, int | str] | None = attributes
@@ -968,7 +954,6 @@ class MyLotShortcut:
         self.currency: Currency = currency
         """Валюта лота."""
         self.auto: bool = auto
-        """Включена ли автовыдача FunPay у лота?"""
         self.subcategory: SubCategory = subcategory
         """Подкатегория лота."""
         self.active: bool = active

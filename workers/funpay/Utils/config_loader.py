@@ -4,11 +4,9 @@
 import configparser
 from configparser import ConfigParser, SectionProxy
 import codecs
-import os
 
 from Utils.exceptions import (ParamNotFoundError, EmptyValueError, ValueNotValidError, SectionNotFoundError,
-                              ConfigParseError, ProductsFileNotFoundError, NoProductVarError,
-                              SubCommandAlreadyExists, DuplicateSectionErrorWrapper)
+                              ConfigParseError, SubCommandAlreadyExists, DuplicateSectionErrorWrapper)
 
 
 def check_param(param_name: str, section: SectionProxy, valid_values: list[str | None] | None = None,
@@ -71,16 +69,12 @@ def load_main_config(config_path: str):
             "user_agent": "any+empty",
             "autoRaise": ["0", "1"],
             "autoResponse": ["0", "1"],
-            "autoDelivery": ["0", "1"],
-            "multiDelivery": ["0", "1"],
-            "autoRestore": ["0", "1"],
             "oldMsgGetMode": ["0", "1"],
             "keepSentMessagesUnread": ["0", "1"],
             "locale": ["ru", "en", "uk"]
         },
 
         "BlockList": {
-            "blockDelivery": ["0", "1"],
             "blockResponse": ["0", "1"],
             "blockNewMessageNotification": ["0", "1"],
             "blockNewOrderNotification": ["0", "1"],
@@ -278,41 +272,4 @@ def load_raw_auto_response_config(config_path: str):
     for raw_commands in config.sections():
         if not config.has_option(raw_commands, "enabled"):
             config.set(raw_commands, "enabled", "1")
-    return config
-
-
-def load_auto_delivery_config(config_path: str):
-    """
-    Парсит и проверяет на правильность конфиг автовыдачи.
-
-    :param config_path: путь до конфига автовыдачи.
-
-    :return: спарсеный конфиг товаров для автовыдачи.
-    """
-    try:
-        config = create_config_obj(config_path)
-    except configparser.DuplicateSectionError as e:
-        raise ConfigParseError(config_path, e.section, DuplicateSectionErrorWrapper())
-
-    for lot_title in config.sections():
-        try:
-            lot_response = check_param("response", config[lot_title])
-            products_file_name = check_param("productsFileName", config[lot_title], raise_if_not_exists=False)
-            check_param("disable", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
-            check_param("disableAutoRestore", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
-            check_param("disableAutoDelivery", config[lot_title], valid_values=["0", "1"], raise_if_not_exists=False)
-            if products_file_name is None:
-                # Если данного параметра нет, то в текущем лоте более нечего проверять -> переход на след. итерацию.
-                continue
-        except (ParamNotFoundError, EmptyValueError, ValueNotValidError) as e:
-            raise ConfigParseError(config_path, lot_title, e)
-
-        # Проверяем, существует ли файл.
-        if not os.path.exists(f"storage/products/{products_file_name}"):
-            raise ConfigParseError(config_path, lot_title,
-                                   ProductsFileNotFoundError(f"storage/products/{products_file_name}"))
-
-        # Проверяем, есть ли хотя бы 1 переменная $product в тексте response.
-        if "$product" not in lot_response:
-            raise ConfigParseError(config_path, lot_title, NoProductVarError())
     return config

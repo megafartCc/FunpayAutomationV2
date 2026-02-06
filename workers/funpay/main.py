@@ -83,12 +83,12 @@ if getattr(sys, 'frozen', False):
 else:
     os.chdir(os.path.dirname(__file__))
 
-folders = ["configs", "logs", "storage", "storage/cache", "storage/plugins", "storage/products", "plugins"]
+folders = ["configs", "logs", "storage", "storage/cache", "storage/plugins", "plugins"]
 for i in folders:
     if not os.path.exists(i):
         os.makedirs(i)
 
-files = ["configs/auto_delivery.cfg", "configs/auto_response.cfg"]
+files = ["configs/auto_response.cfg"]
 for i in files:
     if not os.path.exists(i):
         with open(i, "w", encoding="utf-8") as f:
@@ -132,8 +132,6 @@ try:
     AR_CFG = cfg_loader.load_auto_response_config("configs/auto_response.cfg")
     RAW_AR_CFG = cfg_loader.load_raw_auto_response_config("configs/auto_response.cfg")
 
-    logger.info("$MAGENTAЗагружаю конфиг auto_delivery.cfg...")  # locale
-    AD_CFG = cfg_loader.load_auto_delivery_config("configs/auto_delivery.cfg")
 except excs.ConfigParseError as e:
     logger.error(e)
     logger.error("Завершаю программу...")  # locale
@@ -155,7 +153,7 @@ except:
 localizer = Localizer(MAIN_CFG["Other"]["language"])
 
 try:
-    Cardinal(MAIN_CFG, AD_CFG, AR_CFG, RAW_AR_CFG, VERSION).init().run()
+    Cardinal(MAIN_CFG, AR_CFG, RAW_AR_CFG, VERSION).init().run()
 except KeyboardInterrupt:
     logger.info("Завершаю программу...")  # locale
     sys.exit()

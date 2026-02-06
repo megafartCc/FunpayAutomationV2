@@ -22,7 +22,6 @@ mm_language = "🗣️ Language"
 mm_global = "⚙️ Global switches"
 mm_notifications = "🔔 Notification settings"
 mm_autoresponse = "🤖 Autoresponse settings"
-mm_autodelivery = "📦 Auto-delivery settings"
 mm_blacklist = "🚫 Blacklist settings"
 mm_templates = "📝 Answer templates"
 mm_greetings = "👋 Greeting message"
@@ -36,9 +35,6 @@ mm_proxy = "🌐 Proxy"
 
 # Global switches
 gs_autoresponse = "{} Autoresponse"
-gs_autodelivery = "{} Auto-delivery"
-gs_nultidelivery = "{} Multi-delivery"
-gs_autorestore = "{} Reactivate lots"
 gs_old_msg_mode = "{} Old Message Receiving Mode"
 gs_keep_sent_messages_unread = "{} Keep unread when sending"
 
@@ -47,9 +43,6 @@ ns_new_msg = "{} New message"
 ns_cmd = "{} Command received"
 ns_new_order = "{} New order"
 ns_order_confirmed = "{} Order confirmed"
-ns_lot_activate = "{} Lot reactivated"
-ns_lot_deactivate = "{} Lot deactivated"
-ns_delivery = "{} Goods delivered"
 ns_raise = "{} Lots raised"
 ns_new_review = "{} New review"
 ns_bot_start = "{} Bot start"
@@ -66,41 +59,12 @@ ar_notification = "{}  notification"
 ar_add_more = "➕ Add more"
 ar_add_another = "➕ Add another"
 
-# Auto-delivery settings
-ad_edit_autodelivery = "🗳️ Edit lots auto-delivery"
-ad_add_autodelivery = "➕ Link auto-delivery to lot"
-ad_add_another_ad = "➕ Link another"
-ad_add_more_ad = "➕ Link more"
-ad_edit_goods_file = "📋 Edit goods files"
-ad_upload_goods_file = "⤴️ Upload goods file"
-ad_create_goods_file = "➕ Create goods file"
-ad_to_ad = "📦 Back to auto-delivery settings"
-ad_to_mm = "📋 Back to main menu"
 
-# - Edit auto-delivery
-ea_edit_delivery_text = "✏️ Edit delivery text"
-ea_link_goods_file = "⛓️ Link goods file"
-ea_delivery = "{} Auto-delivery"
-ea_multidelivery = "{} Multi-delivery"
-ea_restore = "{} Reactivation"
-ea_deactivate = "{} Deactivation"
-ea_test = "🗝️ Auto-delivery key"
-ea_more_test = "🗝️ 1 more key"
-ea_link_another_gf = "⛓️ Another file"
 
-# - Add auto-delivery
 fl_manual = "➕ Enter manually"
 
-# - Goods files
-gf_add_goods = "➕ Add goods"
-gf_download = "⤵️ Download"
-gf_create_another = "➕ Create another"
-gf_create_more = "➕ Create more"
-gf_add_more = "➕ Add more"
-gf_try_add_again = "➕ Try again"
 
 # Blacklist settings
-bl_autodelivery = "{} Don't deliver goods"
 bl_autoresponse = "{} Don't respond to commands"
 bl_new_msg_notifications = "{} Don't notify about new messages"
 bl_new_order_notifications = "{} Don't notify about new orders"
@@ -142,10 +106,8 @@ pl_settings = "⚙️ Settings"
 # Configs
 cfg_download_main = "⤵️ Download main config"
 cfg_download_ar = "⤵️ Download autoresponse config"
-cfg_download_ad = "⤵️ Download auto-delivery config"
 cfg_upload_main = "⤴️ Upload main config"
 cfg_upload_ar = "⤴️ Upload autoresponse config"
-cfg_upload_ad = "⤴️ Upload auto-delivery config"
 
 # Authorized users
 tg_block_login = "{} Block logins by password"
@@ -223,11 +185,7 @@ fpc_init = """✅ <b><u>FunPay Cardinal initialized!</u></b>\n
 👨‍💻 <b><i>Developer:</i></b> @woopertail, @sidor0912
 🤑 <b><i>Donate:</i></b> @sidor_donate"""
 
-create_test_ad_key = "Enter the name of the lot whose auto-delivery you want to test."
 
-test_ad_key_created = """✅ A one-time key for <code>{}</code> delivery has been created.\n
-Send the command from below to chat with the user to whom you want to deliver the item.\n
-<code>!автовыдача {}</code>"""
 
 about = """<b>🐦 FunPay Cardinal 🐦 v{}</b>\n
 <i> chat:</i> @funpay_cardinal
@@ -355,40 +313,8 @@ cookie_changed2 = "Restart the bot with the /restart command."
 cookie_incorrect_format = "❌ Incorrect format of golden_key. Please try again."
 cookie_error = "❌ Authorization failed. The golden_key might be incorrect?"
 
-ad_lot_not_found_err = "❌ Lot with index <code>{}</code> not found."
-ad_already_ad_err = "❌ Lot <code>{}</code> is already set up for auto-delivery."
-ad_lot_already_exists = "❌ The lot <code>{}</code> already has auto-delivery linked to it."
-ad_lot_linked = "✅ Auto-delivery linked to lot <code>{}</code>."
-ad_link_gf = "Enter the goods file name.\nSend <code>-</code>, if you want to unlink the goods file.\n\n" \
-             "If the goods file does not exist, it will be created automatically."
-ad_gf_unlinked = "✅ Goods file successfully unlinked from <code>{}</code>."
-ad_gf_linked = "✅ The goods file <code>storage/products/{}</code> linked to <code>{}</code>."
-ad_gf_created_and_linked = "✅ The goods file <code>storage/products/{}</code> <b><u>created</u></b> and linked to <code>{}</code>."
-ad_creating_gf = "🔄 Creating goods file <code>storage/products/{}</code>..."
-ad_product_var_err = "❌ There is the goods file linked to <code>{}</code>, but there is no <code>$product</code> variable in the delivery text."
-ad_product_var_err2 = "❌ Can't link the goods file, because the <code>$product</code> variable is missing from the delivery text."
-ad_text_changed = "✅ The delivery text of <code>{}</code> has been changed to <code>{}</code>."
-ad_updating_lots_list = "Updating lots and categories data (it may take some time)..."
-ad_lots_list_updating_err = "❌ Failed to update lots and categories data."
-gf_not_found_err = "❌ Goods file with index <code>{}</code> not found."
 copy_lot_name = "Send the name of the lot exactly as on FunPay."
 
-act_create_gf = "Enter the name of the new goods file."
-gf_name_invalid = "❌ Invalid file name.\n\n" \
-                  "Only <b><u>English</u></b> and <b><u>Russian</u></b> characters are allowed in the name," \
-                  "as well as <code>_</code>, <code>-</code> and <code>space</code>."
-gf_already_exists_err = "❌ Goods file <code>{}</code> already exists."
-gf_creation_err = "❌ An error occurred while creating the <code>{}</code> file."
-gf_created = "✅ Goods file <code>storage/products/{}</code> created."
-gf_amount = "Goods amount"
-gf_uses = "Used in lots"
-gf_send_new_goods = "Enter the goods you want to add to goods file.\n\nEach new line (<code>Shift+Enter</code>) is a new item."
-gf_add_goods_err = "❌ Failed to add new goods."
-gf_new_goods = "✅ <code>{}</code> item(s) added to <code>storage/products/{}</code>."
-gf_empty_error = "❌ File storage/products/{} is empty."
-gf_linked_err = "❌ File <code>storage/products/{}</code> is linked to one ore more lots.\n" \
-                "Before deleting this goods file, unlink it from all lots."
-gf_deleting_err = "❌ Failed to delete file <code>storage/products/{}</code>."
 
 ar_cmd_not_found_err = "❌ Command with index <code>{}</code> not found."
 ar_subcmd_duplicate_err = "❌ The command <code>{}</code> is duplicated in the command net."
@@ -402,7 +328,6 @@ ar_notification_text_changed = "✅ The notification text of the command <code>{
 
 cfg_main = "Main config.\n\n⚠️ DO NOT SEND this file to ANYONE."
 cfg_ar = "Autoresponse config."
-cfg_ad = "Auto-delivery config."
 cfg_not_found_err = "❌ Config {} not found."
 cfg_empty_err = "❌ Config {} is empty."
 
@@ -422,11 +347,8 @@ au_user_settings = "Settings for user {}"
 adv_fpc = "😎 FunPay Cardinal - the best bot for FunPay"
 adv_description = """🐦 FunPay Cardinal v{}🐦
 
-🤖 Automatic product delivery
 🚀 Auto-raise of lots
 💬 Auto-reply to prepared commands
-🔄 Auto-recovery of lots after sale
-📦 Auto-deactivation of lots if products are out of stock
 🔝 Permanent online presence
 📲 Notifications in 
 🕹️ Full control panel in 
@@ -449,12 +371,6 @@ desc_bl = "Here you can set restrictions for blacklisted users."
 desc_ar = "Here you can add commands or edit existing ones."
 desc_ar_list = "Chose a command / commands set you are interested in."
 
-desc_ad = "Here you can change auto-delivery settings, upload/download goods files, etc."
-desc_ad_list = "This is a list of lots that have auto-delivery linked to them. Select the lot you are interested in."
-desc_ad_fp_lot_list = "This is a list of lots from your FunPay profile. Select the lot you're interested in to link auto-delivery to it.\n" \
-                      "If a lot is missing from the list, click the  <code>🔄 Refresh</code> button.\n\n" \
-                      "Last scanning: {}"
-desc_gf = "Choose a goods file you are interested in."
 
 desc_mv = "Here you can configure the appearance of new message notifications."
 desc_gr = "Here you can configure the welcome message for new users.\n\n<b>Greeting text:</b>\n<code>{}</code>"
@@ -474,7 +390,6 @@ cmd_menu = "open settings"
 cmd_language = "change language"
 cmd_profile = "account statistics"
 cmd_golden_key = "change golden_key"
-cmd_test_lot = "create one-time delivery key"
 cmd_upload_chat_img = "(chat) upload an image to FunPay"
 cmd_upload_offer_img = "(lot) upload an image to FunPay"
 cmd_upload_plugin = "upload a plugin"
@@ -499,7 +414,6 @@ v_edit_greeting_text = "Enter the text of the welcome message."
 v_edit_greeting_cooldown = "Enter the greeting message cooldown (in days)."
 v_edit_order_confirm_text = "Enter the text of the order confirmation response."
 v_edit_review_reply_text = "Enter the {} review response text."
-v_edit_delivery_text = "Enter a new delivery text."
 v_edit_response_text = "Enter a new response text."
 v_edit_notification_text = "Enter a new  notification text."
 V_new_template = "Enter a text of the new answer template."
@@ -522,7 +436,6 @@ v_order_desc_or_params = "<code>$order_desc_or_params</code> - order name or par
 v_game = "<code>$game</code> - name of the game."
 v_category = "<code>$category</code> - name of the subcategory."
 v_category_fullname = "<code>$category_fullname</code> - full name of the subcategory (name of the subcategory + name of the game)."
-v_product = "<code>$product</code> - item(s) from goods file. xc Works only if goods file linked."
 v_chat_id = "<code>$chat_id</code> - chat ID."
 v_chat_name = "<code>$chat_name</code> - chat name."
 v_message_text = "<code>$message_text</code> - interlocutors message text."
@@ -532,10 +445,6 @@ v_username = "<code>$username</code> - interlocutors username."
 exc_param_not_found = "The option \"{}\" not found."
 exc_param_cant_be_empty = "The value of the option \"{}\" cannot be empty."
 exc_param_value_invalid = "Invalid value of the option \"{}\". Possible values: {}. Current value: \"{}\"."
-exc_goods_file_not_found = "Specified goods file \"{}\" not found."
-exc_goods_file_is_empty = "No items in goods file \"{}\"."
-exc_not_enough_items = "Not enough items in goods file \"{}\". Requested: {}, available: {}."
-exc_no_product_var = "\"productsFileName\" is specified, but the $product variable is not in \"response\"."
 exc_no_section = "Section does not exists."
 exc_section_duplicate = "Section duplicate found."
 exc_cmd_duplicate = "The command or the subcommand \"{}\" already exists."
@@ -551,7 +460,6 @@ log_tg_notification_error = "An error occurred while sending a notification to c
 log_access_attempt = "$MAGENTA@{} (ID: {})$RESET tried to access the control panel. I'm holding him back as best I can!"
 log_click_attempt = "$MAGENTA@{} (ID: {})$RESET presses the control panel buttons in $MAGENTA@{} (ID: {})$RESET. He won't make it!"
 log_access_granted = "$MAGENTA@{} (ID: {})$RESET gained access to the control panel."
-log_new_ad_key = "$MAGENTA@{} (ID: {})$RESET created a key to deliver $YELLOW{}$RESET: $CYAN{}$RESET."
 log_user_blacklisted = "$MAGENTA@{} (ID: {})$RESET has blacklisted $YELLOW{}$RESET."
 log_user_unbanned = "$MAGENTA@{} (ID: {})$RESET has removed $YELLOW{}$RESET from the blacklist."
 log_watermark_changed = "$MAGENTA@{} (ID: {})$RESET changed the message watermark to $YELLOW{}$RESET."
@@ -562,16 +470,6 @@ log_order_confirm_changed = "$MAGENTA@{} (ID: {})$RESET changed the text of orde
 log_review_reply_changed = "$MAGENTA@{} (ID: {})$RESET changed the text of {}-star(s) review reply to $YELLOW{}$RESET."
 log_param_changed = "$MAGENTA@{} (ID: {})$RESET changed value of $CYAN{}$RESET in $YELLOW[{}]$RESET section to $YELLOW{}$RESET."
 log_notification_switched = "$MAGENTA@{} (ID: {})$RESET switched notifications $YELLOW{}$RESET for chat $YELLOW{}$RESET to $CYAN{}$RESET."
-log_ad_linked = "$MAGENTA@{} (ID: {})$RESET linked auto-delivery to lot $YELLOW{}$RESET."
-log_ad_text_changed = "$MAGENTA@{} (ID: {})$RESET changed the delivery text of  $YELLOW{}$RESET to $YELLOW\"{}\"$RESET."
-log_ad_deleted = "$MAGENTA@{} (ID: {})$RESET deleted auto-delivery from $YELLOW{}$RESET."
-log_gf_created = "$MAGENTA@{} (ID: {})$RESET created goods file $YELLOWstorage/products/{}$RESET."
-log_gf_unlinked = "$MAGENTA@{} (ID: {})$RESET unlined goods file from $YELLOW{}$RESET."
-log_gf_linked = "$MAGENTA@{} (ID: {})$RESET linked goods file $YELLOWstorage/products/{}$RESET to $YELLOW{}$RESET."
-log_gf_created_and_linked = "$MAGENTA@{} (ID: {})$RESET created and linked goods file $YELLOWstorage/products/{}$RESET to $YELLOW{}$RESET."
-log_gf_new_goods = "$MAGENTA@{} (ID: {})$RESET added $CYAN{}$RESET item(s) in $YELLOWstorage/products/{}$RESET."
-log_gf_downloaded = "$MAGENTA@{} (ID: {})$RESET requested the goods file $YELLOWstorage/products/{}$RESET."
-log_gf_deleted = "$MAGENTA@{} (ID: {})$RESET deleted the goods file $YELLOWstorage/products/{}$RESET."
 log_ar_added = "$MAGENTA@{} (ID: {})$RESET added new command $YELLOW{}$RESET."
 log_ar_response_text_changed = "$MAGENTA@{} (ID: {})$RESET response text of command $YELLOW{}$RESET to $YELLOW\"{}\"$RESET."
 log_ar_notification_text_changed = "$MAGENTA@{} (ID: {})$RESET notification text of command $YELLOW{}$RESET to $YELLOW\"{}\"$RESET."
@@ -590,11 +488,6 @@ log_sending_greetings = "User $YELLOW{} (CID: {})$RESET wrote for the first time
 log_new_cmd = "Received the command $YELLOW{}$RESET in the chat with the user $YELLOW{} (CID: {})$RESET."
 ntfc_new_order = "💰 <b>New order:</b> <code>{}</code>\n\n<b><i>🙍‍♂️ Buyer:</i></b>  <code>{}</code>\n" \
                  "<b><i>💵 Order amount:</i></b>  <code>{}</code>\n<b><i>📇 ID:</i></b> <code>#{}</code>\n\n<i>{}</i>"
-ntfc_new_order_not_in_cfg = "ℹ️ The goods will not be delivered because auto-delivery is not linked to the lot."
-ntfc_new_order_ad_disabled = "ℹ️ The goods will not be delivered because auto-delivery is disabled in global switches."
-ntfc_new_order_ad_disabled_for_lot = "ℹ️ The goods will not be delivered because auto-delivery is disabled for this item."
-ntfc_new_order_user_blocked = "ℹ️ The goods will not be delivered, because the user is on the black list and the auto-delivery lock is on."
-ntfc_new_order_will_be_delivered = "ℹ️ The product will be delivered as soon as possible."
 ntfc_new_review = "🔮 You received {} for the order <code>{}</code>!\n\n💬<b>Review:</b>\n<code>{}</code>{}"
 ntfc_review_reply_text = "\n\n🗨️<b>Reply:</b> \n<code>{}</code>"
 

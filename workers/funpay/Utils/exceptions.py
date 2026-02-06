@@ -52,58 +52,6 @@ class ValueNotValidError(Exception):
         return _("exc_param_value_invalid", self.param_name, self.valid_values, self.current_value)
 
 
-class ProductsFileNotFoundError(Exception):
-    """
-    Исключение, которое райзится, если при обработке конфига автовыдачи не был найден указанный файл с товарами.
-    """
-    def __init__(self, goods_file_path: str):
-        self.goods_file_path = goods_file_path
-
-    def __str__(self):
-        return _("exc_goods_file_not_found", self.goods_file_path)
-
-
-class NoProductsError(Exception):
-    """
-    Исключение, которое райзится, если в товарном файле, указанном в конфиге автовыдачи, нет товаров.
-    """
-    def __init__(self, goods_file_path: str):
-        self.goods_file_path = goods_file_path
-
-    def __str__(self):
-        return _("exc_goods_file_is_empty", self.goods_file_path)
-
-
-class NotEnoughProductsError(Exception):
-    """
-    Исключение, которое райзится, если запрошено больше товаров, чем есть в товарном файле.
-    """
-    def __init__(self, goods_file_path: str, available: int, requested: int):
-        """
-        :param goods_file_path: путь до товарного файла.
-        :param available: кол-во товаров в файле.
-        :param requested: кол-во запрошенного товара.
-        """
-        self.goods_file_path = goods_file_path
-        self.available = available
-        self.requested = requested
-
-    def __str__(self):
-        return _("exc_not_enough_items", self.goods_file_path, self.requested, self.available)
-
-
-class NoProductVarError(Exception):
-    """
-    Исключение, которое райзится, если в конфиге автовыдачи указан файл с товарами, но в параметре response нет
-    ни одной переменной $product.
-    """
-    def __init__(self):
-        pass
-
-    def __str__(self):
-        return _("exc_no_product_var")
-
-
 class SectionNotFoundError(Exception):
     """
     Исключение, которое райзится, если при обработке конфига не была найдена обязательная секция.

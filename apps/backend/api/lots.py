@@ -77,7 +77,6 @@ class FunPayLotUpdatePayload(BaseModel):
     title_en: str | None = Field(None, max_length=255)
     description_en: str | None = None
     price: float | None = Field(None, ge=0)
-    active: bool | None = None
 
 
 class FunPayLotManualPricePayload(BaseModel):

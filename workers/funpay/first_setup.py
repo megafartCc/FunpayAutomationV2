@@ -15,15 +15,11 @@ default_config = {
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
         "autoRaise": "0",
         "autoResponse": "0",
-        "autoDelivery": "0",
-        "multiDelivery": "0",
-        "autoRestore": "0",
         "oldMsgGetMode": "0",
         "locale": "ru"
     },
 
     "BlockList": {
-        "blockDelivery": "0",
         "blockResponse": "0",
         "blockNewMessageNotification": "0",
         "blockNewOrderNotification": "0",
@@ -87,10 +83,6 @@ default_config = {
 def create_configs():
     if not os.path.exists("configs/auto_response.cfg"):
         with open("configs/auto_response.cfg", "w", encoding="utf-8"):
-            ...
-
-    if not os.path.exists("configs/auto_response.cfg"):
-        with open("configs/auto_delivery.cfg", "w", encoding="utf-8"):
             ...
 
 

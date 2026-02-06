@@ -222,9 +222,6 @@ def update_funpay_lot_title(
     if not current_title:
         logger.warning("Lot %s has empty RU title, skipping.", lot_id)
         return False
-    if "active" not in fields:
-        logger.warning("Lot %s missing active flag in fields, skipping.", lot_id)
-        return False
     new_title = _compose_ranked_title(current_title, rank_label)
     base_en_title = current_title_en or current_title
     max_len_en = len(current_title_en or current_title or "")
@@ -238,8 +235,6 @@ def update_funpay_lot_title(
         fields["offer_id"] = str(lot_id)
     if not fields.get("csrf_token"):
         fields["csrf_token"] = account.csrf_token
-    if "active" in fields and not fields.get("active"):
-        fields["active"] = "on"
     _post_lot_fields(account, lot_id, fields)
     return True
 
