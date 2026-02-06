@@ -25,6 +25,7 @@ _PRICE_RE = re.compile(r"(\d[\d\s.,]*)")
 _PAGE_PARAM = "page"
 _DEFAULT_MAX_PAGES = 25
 _MAX_PAGE_LIMIT = 200
+_DEFAULT_PRICE_DUMPER_URL = "https://funpay.com/lots/81/"
 
 
 def _price_dumper_max_pages() -> int:
@@ -506,7 +507,9 @@ def _load_latest_price_dumper_url(user_id: int) -> str | None:
             (int(user_id),),
         )
         row = cursor.fetchone()
-        return str(row["url"]) if row and row.get("url") else None
+        if row and row.get("url"):
+            return str(row["url"])
+        return _normalize_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
     finally:
         conn.close()
 
@@ -516,7 +519,16 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
     try:
         cursor = conn.cursor()
         inserted = 0
+        default_url = _normalize_price_dumper_url(_DEFAULT_PRICE_DUMPER_URL)
         if user_id:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                VALUES (%s, %s, 1, 24, NULL)
+                """,
+                (int(user_id), default_url[:512]),
+            )
+            inserted += int(cursor.rowcount or 0)
             cursor.execute(
                 """
                 INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
@@ -544,6 +556,15 @@ def _seed_price_dumper_settings_from_lots(user_id: int | None = None) -> int:
             )
             inserted += int(cursor.rowcount or 0)
         else:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
+                SELECT u.id, %s, 1, 24, NULL
+                FROM users u
+                """,
+                (default_url[:512],),
+            )
+            inserted += int(cursor.rowcount or 0)
             cursor.execute(
                 """
                 INSERT IGNORE INTO price_dumper_settings (user_id, url, enabled, interval_hours, next_run_at)
