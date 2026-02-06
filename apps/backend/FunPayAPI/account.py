@@ -1684,18 +1684,35 @@ class Account:
 
         html_response = response.content.decode()
         bs = BeautifulSoup(html_response, "lxml")
-        error_message = bs.find("p", class_="lead")
-        if error_message:
-            raise exceptions.LotParsingError(response, error_message.text, lot_id)
+        error_message = None
+        error_container = bs.find(class_="alert alert-danger")
+        if error_container:
+            error_message = error_container.get_text(" ", strip=True)
+
+        offer_form = bs.find("form", attrs={"action": lambda x: isinstance(x, str) and "offerSave" in x})
+        if not offer_form:
+            error_message = error_message or "Не удалось найти форму редактирования лота."
+            raise exceptions.LotParsingError(response, error_message, lot_id)
+
         result = {}
-        result.update({field["name"]: field.get("value") or "" for field in bs.find_all("input")})
-        result.update({field["name"]: field.text or "" for field in bs.find_all("textarea")})
+        result.update({field["name"]: field.get("value") or "" for field in offer_form.find_all("input") if field.get("name")})
+        result.update({field["name"]: field.text or "" for field in offer_form.find_all("textarea") if field.get("name")})
+
+        for field in offer_form.find_all("select"):
+            if not field.get("name"):
+                continue
+            parent = field.find_parent(class_="form-group")
+            if parent and "hidden" in parent.get("class", []):
+                continue
+            selected_option = field.find("option", selected=True) or field.find("option")
+            if selected_option and selected_option.get("value") is not None:
+                result[field["name"]] = selected_option["value"]
+
         result.update({
-            field["name"]: field.find("option", selected=True)["value"]
-            for field in bs.find_all("select") if
-            "hidden" not in field.find_parent(class_="form-group").get("class", [])
+            field["name"]: "on"
+            for field in offer_form.find_all("input", {"type": "checkbox"}, checked=True)
+            if field.get("name")
         })
-        result.update({field["name"]: "on" for field in bs.find_all("input", {"type": "checkbox"}, checked=True)})
         subcategory = self.get_subcategory(enums.SubCategoryTypes.COMMON, int(result.get("node_id", 0)))
         self.csrf_token = result.get("csrf_token") or self.csrf_token
         currency = utils.parse_currency(bs.find("span", class_="form-control-feedback").text)
