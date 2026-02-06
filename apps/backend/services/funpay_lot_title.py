@@ -17,12 +17,12 @@ for _parent in _HERE.parents:
         break
 
 try:
-    from FunPayAPI.account import Account
-    from FunPayAPI.common import exceptions as fp_exceptions
+    from workers.funpay.FunPayAPI.account import Account
+    from workers.funpay.FunPayAPI.common import exceptions as fp_exceptions
 except Exception:
     try:
-        from workers.funpay.FunPayAPI.account import Account
-        from workers.funpay.FunPayAPI.common import exceptions as fp_exceptions
+        from FunPayAPI.account import Account
+        from FunPayAPI.common import exceptions as fp_exceptions
     except Exception:  # pragma: no cover - optional dependency in backend runtime
         Account = None
         fp_exceptions = None

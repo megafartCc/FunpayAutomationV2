@@ -17,10 +17,10 @@ for _parent in _HERE.parents:
         break
 
 try:
-    from FunPayAPI.account import Account
+    from workers.funpay.FunPayAPI.account import Account
 except Exception:
     try:
-        from workers.funpay.FunPayAPI.account import Account
+        from FunPayAPI.account import Account
     except Exception:  # pragma: no cover
         Account = None
 

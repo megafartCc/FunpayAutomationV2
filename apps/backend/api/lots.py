@@ -15,9 +15,9 @@ from services.funpay_lot_title import maybe_update_funpay_lot_title
 from services.funpay_lot_price import get_funpay_lot_snapshot, edit_funpay_lot, update_funpay_lot_price
 
 try:
-    from FunPayAPI.common import exceptions as funpay_exceptions
-except Exception:
     from workers.funpay.FunPayAPI.common import exceptions as funpay_exceptions
+except Exception:
+    from FunPayAPI.common import exceptions as funpay_exceptions
 
 
 router = APIRouter()
