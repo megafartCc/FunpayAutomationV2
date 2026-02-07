@@ -234,7 +234,7 @@ def _load_lot_fields(
     proxy_url: str | None,
     lot_id: int,
     user_agent: str | None = None,
-) -> tuple[Account, dict[str, Any], dict[str, Any]]:
+) -> tuple[Account, Any, dict[str, Any], dict[str, Any]]:
     if not Account:
         raise RuntimeError("FunPayAPI is not available in backend runtime.")
     proxy_cfg = _build_proxy_config(proxy_url)
@@ -245,7 +245,65 @@ def _load_lot_fields(
     lot_fields.renew_fields()
     fields = {k: ("" if v is None else v) for k, v in dict(lot_fields.fields).items()}
     snapshot = _build_snapshot(fields)
-    return account, fields, snapshot
+    return account, lot_fields, fields, snapshot
+
+
+def _apply_fields_to_lot(lot_fields: Any, fields: dict[str, Any]) -> None:
+    def _parse_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        text = str(value).strip().replace(" ", "").replace(",", ".")
+        if text == "":
+            return None
+        try:
+            return float(text)
+        except Exception:
+            return None
+
+    def _parse_int(value: Any) -> int | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if text == "":
+            return None
+        try:
+            return int(float(text.replace(",", ".")))
+        except Exception:
+            return None
+
+    if "fields[summary][ru]" in fields:
+        lot_fields.title_ru = str(fields.get("fields[summary][ru]") or "")
+    if "fields[summary][en]" in fields:
+        lot_fields.title_en = str(fields.get("fields[summary][en]") or "")
+    if "fields[desc][ru]" in fields:
+        lot_fields.description_ru = str(fields.get("fields[desc][ru]") or "")
+    if "fields[desc][en]" in fields:
+        lot_fields.description_en = str(fields.get("fields[desc][en]") or "")
+    if "fields[payment_msg][ru]" in fields:
+        lot_fields.payment_msg_ru = str(fields.get("fields[payment_msg][ru]") or "")
+    if "fields[payment_msg][en]" in fields:
+        lot_fields.payment_msg_en = str(fields.get("fields[payment_msg][en]") or "")
+
+    if "price" in fields:
+        lot_fields.price = _parse_float(fields.get("price"))
+    if "amount" in fields:
+        lot_fields.amount = _parse_int(fields.get("amount"))
+
+    if "fields[images]" in fields:
+        raw = str(fields.get("fields[images]") or "")
+        images: list[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                images.append(int(part))
+            except Exception:
+                continue
+        lot_fields.images = images
+
+    if "active" in fields:
+        lot_fields.active = bool(fields.get("active") == "on")
 
 
 def get_funpay_lot_snapshot(
@@ -255,7 +313,7 @@ def get_funpay_lot_snapshot(
     lot_id: int,
     user_agent: str | None = None,
 ) -> dict[str, Any]:
-    _, _, snapshot = _load_lot_fields(
+    _, _, _, snapshot = _load_lot_fields(
         golden_key=golden_key,
         proxy_url=proxy_url,
         lot_id=lot_id,
@@ -272,7 +330,7 @@ def preview_funpay_lot_edit(
     payload: dict[str, Any],
     user_agent: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], bool, dict[str, Any]]:
-    _, raw_fields, snapshot = _load_lot_fields(
+    _, _, raw_fields, snapshot = _load_lot_fields(
         golden_key=golden_key,
         proxy_url=proxy_url,
         lot_id=lot_id,
@@ -298,9 +356,7 @@ def save_funpay_lot_edit(
     payload: dict[str, Any],
     user_agent: str | None = None,
 ) -> list[dict[str, Any]]:
-    if not _post_lot_fields:
-        raise RuntimeError("FunPay lot saver is unavailable.")
-    account, raw_fields, snapshot = _load_lot_fields(
+    account, lot_fields, raw_fields, snapshot = _load_lot_fields(
         golden_key=golden_key,
         proxy_url=proxy_url,
         lot_id=lot_id,
@@ -318,7 +374,9 @@ def save_funpay_lot_edit(
     if "offer_id" not in updated_fields:
         updated_fields["offer_id"] = str(lot_id)
     updated_fields["csrf_token"] = account.csrf_token
-    _post_lot_fields(account, lot_id, updated_fields)
+    lot_fields.edit_fields(updated_fields)
+    _apply_fields_to_lot(lot_fields, updated_fields)
+    account.save_lot(lot_fields)
     if active_value and _force_lot_active is not None:
         _force_lot_active(account, lot_id)
     return changes
