@@ -74,6 +74,13 @@ def _format_time_left(started_at: datetime | None, total_minutes: int) -> tuple[
     return started_label, time_left_label
 
 
+def _is_rental_expired(started_at: datetime | None, total_minutes: int) -> bool:
+    if not started_at or total_minutes <= 0:
+        return False
+    expiry = started_at + timedelta(minutes=total_minutes)
+    return expiry <= datetime.utcnow()
+
+
 def _format_duration_minutes(total_minutes: int) -> str:
     total = max(0, int(total_minutes))
     hours = total // 60
@@ -173,6 +180,10 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
             else int(record.rental_duration or 0) * 60
         )
         started_at = _parse_datetime(record.rental_start)
+        if _is_rental_expired(started_at, total_minutes) and not int(record.rental_frozen or 0):
+            if record.workspace_id is not None:
+                accounts_repo.release_account(record.id, user_id, int(record.workspace_id))
+            continue
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
         steam_id = _steam_id_from_mafile(record.mafile_json)
         presence = fetch_presence(steam_id)
