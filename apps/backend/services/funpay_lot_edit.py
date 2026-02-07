@@ -313,6 +313,17 @@ def _fetch_offer_form_fields(account: Account, lot_id: int, node_id: str) -> dic
             if field.get("name")
         }
     )
+    # Include submit button names (some anti-bot tokens are bound to the submit control name).
+    for button in offer_form.find_all(["button", "input"]):
+        name = button.get("name")
+        if not name or name in result:
+            continue
+        btn_type = (button.get("type") or "").lower()
+        if button.name == "button":
+            # HTML <button> defaults to submit if no type is specified.
+            btn_type = btn_type or "submit"
+        if btn_type in {"submit"}:
+            result[name] = button.get("value") or ""
     # Some anti-bot hidden inputs can sit outside the main form. Include them if they don't belong to another form.
     for field in bs.find_all("input"):
         name = field.get("name")
