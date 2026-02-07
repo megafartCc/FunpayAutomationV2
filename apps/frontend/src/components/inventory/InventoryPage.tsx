@@ -83,6 +83,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   const [accountEditWorkspaceId, setAccountEditWorkspaceId] = useState<number | null>(null);
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [accountControlBusy, setAccountControlBusy] = useState(false);
+  const [steamDeauthBusy, setSteamDeauthBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [mmrMin, setMmrMin] = useState("");
   const [mmrMax, setMmrMax] = useState("");
@@ -378,6 +379,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     if (accountControlBusy) return;
     if (!window.confirm(`Деавторизовать Steam для ${selectedAccount.name}?`)) return;
     setAccountControlBusy(true);
+    setSteamDeauthBusy(true);
     try {
       const workspaceId =
         selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined;
@@ -387,6 +389,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
       const message = (err as { message?: string })?.message || "Не удалось деавторизовать Steam.";
       onToast?.(message, true);
     } finally {
+      setSteamDeauthBusy(false);
       setAccountControlBusy(false);
     }
   };
@@ -656,9 +659,16 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
               <button
                 onClick={handleSteamDeauthorize}
                 disabled={accountControlBusy}
-                className="mt-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Деавторизовать Steam
+                {steamDeauthBusy ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                    Деавторизация...
+                  </>
+                ) : (
+                  "Деавторизовать Steam"
+                )}
               </button>
             </div>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
