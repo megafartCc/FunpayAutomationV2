@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,46 @@ def _build_snapshot(fields: dict[str, Any]) -> dict[str, Any]:
     return snapshot
 
 
+_NUMERIC_FIELD_PATTERNS = (
+    re.compile(r"^price$", re.IGNORECASE),
+    re.compile(r"^amount$", re.IGNORECASE),
+    re.compile(r"^fields\\[(decency|politeness|solommr|time|hours|days)\\]$", re.IGNORECASE),
+    re.compile(r"^fields\\[[^\\]]*mmr\\]$", re.IGNORECASE),
+)
+
+
+def _is_numeric_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        raw = value.strip().replace(" ", "").replace(",", ".")
+        if raw == "":
+            return True
+        try:
+            float(raw)
+            return True
+        except Exception:
+            return False
+    return False
+
+
+def _validate_raw_fields(raw_fields: dict[str, Any]) -> None:
+    invalid_keys: list[str] = []
+    for key, value in raw_fields.items():
+        if key is None:
+            continue
+        key_str = str(key)
+        if any(pattern.match(key_str) for pattern in _NUMERIC_FIELD_PATTERNS):
+            if not _is_numeric_value(value):
+                invalid_keys.append(key_str)
+    if invalid_keys:
+        raise ValueError(f"Numeric fields must contain numbers: {', '.join(sorted(invalid_keys))}")
+
+
 def _apply_edit(
     *,
     fields: dict[str, Any],
@@ -94,6 +135,7 @@ def _apply_edit(
 
     raw_fields = payload.get("raw_fields")
     if isinstance(raw_fields, dict):
+        _validate_raw_fields(raw_fields)
         for raw_key, raw_value in raw_fields.items():
             if raw_key is None:
                 continue

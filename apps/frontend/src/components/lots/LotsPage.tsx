@@ -245,7 +245,29 @@ const LotsPage: React.FC = () => {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Расширенные поля должны быть JSON-объектом.");
     }
-    return parsed as Record<string, unknown>;
+    const record = parsed as Record<string, unknown>;
+    const numericPatterns = [
+      /^price$/i,
+      /^amount$/i,
+      /^fields\[(decency|politeness|solommr|time|hours|days)\]$/i,
+      /^fields\[[^\]]*mmr\]$/i,
+    ];
+    const invalidKeys: string[] = [];
+    Object.entries(record).forEach(([key, value]) => {
+      if (!numericPatterns.some((pattern) => pattern.test(key))) return;
+      if (value === null || value === undefined || value === "") return;
+      if (typeof value === "number") return;
+      if (typeof value === "string") {
+        const normalized = value.trim().replace(/\s+/g, "").replace(",", ".");
+        if (normalized === "") return;
+        if (!Number.isNaN(Number(normalized))) return;
+      }
+      invalidKeys.push(key);
+    });
+    if (invalidKeys.length) {
+      throw new Error(`Числовые поля должны быть числами: ${invalidKeys.sort().join(", ")}`);
+    }
+    return record;
   };
 
   const buildEditPayload = () => {
