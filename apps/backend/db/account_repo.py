@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
 
 import mysql.connector
@@ -484,6 +485,7 @@ class MySQLAccountRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
+            has_assigned_at = self._column_exists(cursor, "rental_assigned_at")
             updates = ["owner = %s", "rental_start = NULL", "last_rented_workspace_id = %s"]
             params: list = [owner, workspace_id]
             if rental_hours is not None or rental_minutes is not None:
@@ -493,6 +495,9 @@ class MySQLAccountRepo:
                 updates.append("rental_duration = %s")
                 updates.append("rental_duration_minutes = %s")
                 params.extend([hours, total_minutes])
+            if has_assigned_at:
+                updates.append("rental_assigned_at = %s")
+                params.append(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
             cursor.execute(
                 f"""
                 UPDATE accounts
@@ -514,6 +519,8 @@ class MySQLAccountRepo:
             updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
             if has_frozen_at:
                 updates.append("rental_frozen_at = NULL")
+            if self._column_exists(cursor, "rental_assigned_at"):
+                updates.append("rental_assigned_at = NULL")
             params: list = [account_id, user_id]
             workspace_clause = ""
             if self._column_exists(cursor, "last_rented_workspace_id"):
@@ -706,6 +713,8 @@ class MySQLAccountRepo:
                 "rental_frozen = 0",
             ]
             params: list = [owner, int(rental_duration), int(rental_duration_minutes), rental_start]
+            if self._column_exists(cursor, "rental_assigned_at"):
+                updates.append("rental_assigned_at = NULL")
             if has_frozen_at:
                 updates.append("rental_frozen_at = NULL")
             if has_last_rented:
@@ -728,6 +737,8 @@ class MySQLAccountRepo:
                 return False
 
             old_updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+            if self._column_exists(cursor, "rental_assigned_at"):
+                old_updates.append("rental_assigned_at = NULL")
             if has_frozen_at:
                 old_updates.append("rental_frozen_at = NULL")
             if has_low_priority:

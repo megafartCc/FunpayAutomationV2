@@ -370,6 +370,7 @@ def assign_account_to_buyer(
         if not owner_value:
             return False
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_assigned_at = column_exists(cursor, "accounts", "rental_assigned_at")
         updates = [
             "owner = %s",
             "rental_duration = %s",
@@ -377,6 +378,8 @@ def assign_account_to_buyer(
             "rental_start = NULL",
         ]
         params: list = [owner_value, int(units), int(total_minutes)]
+        if has_assigned_at:
+            updates.append("rental_assigned_at = UTC_TIMESTAMP()")
         if has_last_rented_workspace:
             updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id) if workspace_id is not None else None)
@@ -409,6 +412,7 @@ def start_rental_for_owner(
     conn = mysql.connector.connect(**cfg)
     try:
         cursor = conn.cursor()
+        has_assigned_at = column_exists(cursor, "accounts", "rental_assigned_at")
         workspace_clause = ""
         params: list = [int(user_id), owner_key]
         if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
@@ -419,10 +423,13 @@ def start_rental_for_owner(
             placeholders = ", ".join(["%s"] * len(account_ids))
             id_clause = f" AND id IN ({placeholders})"
             params.extend([int(acc_id) for acc_id in account_ids])
+        updates = ["rental_start = UTC_TIMESTAMP()"]
+        if has_assigned_at:
+            updates.append("rental_assigned_at = NULL")
         cursor.execute(
             f"""
             UPDATE accounts
-            SET rental_start = UTC_TIMESTAMP()
+            SET {', '.join(updates)}
             WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}{id_clause}
             """,
             tuple(params),
@@ -581,6 +588,8 @@ def replace_rental_account(
             "rental_frozen = 0",
         ]
         params: list = [owner_value, int(rental_duration), int(rental_duration_minutes), rental_start_str]
+        if column_exists(cursor, "accounts", "rental_assigned_at"):
+            updates.append("rental_assigned_at = NULL")
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
         if has_last_rented:
@@ -602,6 +611,8 @@ def replace_rental_account(
             conn.rollback()
             return False
         old_updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+        if column_exists(cursor, "accounts", "rental_assigned_at"):
+            old_updates.append("rental_assigned_at = NULL")
         if has_frozen_at:
             old_updates.append("rental_frozen_at = NULL")
         if has_low_priority:

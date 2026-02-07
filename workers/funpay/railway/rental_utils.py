@@ -12,6 +12,7 @@ from .constants import (
     RENTAL_EXPIRE_DELAY_MESSAGE,
     RENTAL_EXPIRED_CONFIRM_MESSAGE,
     RENTAL_EXPIRED_MESSAGE,
+    RENTAL_CODE_AUTO_START_MESSAGE,
     RENTAL_FROZEN_MESSAGE,
     RENTAL_PAUSE_EXPIRED_MESSAGE,
     RENTAL_UNFROZEN_MESSAGE,
@@ -25,6 +26,7 @@ from .order_utils import (
     fetch_latest_order_id_for_owner_lot,
     resolve_order_id_from_funpay,
 )
+from .lot_utils import start_rental_for_owner
 from .presence_utils import fetch_presence
 from .steam_guard_utils import steam_id_from_mafile
 from .steam_utils import deauthorize_account_sessions
@@ -36,7 +38,7 @@ def fetch_active_rentals_for_monitor(
     mysql_cfg: dict,
     user_id: int,
     workspace_id: int | None,
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
     cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
     conn = mysql.connector.connect(**cfg)
     try:
@@ -49,6 +51,7 @@ def fetch_active_rentals_for_monitor(
         has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
         has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
+        has_rental_assigned_at = column_exists(cursor, "accounts", "rental_assigned_at")
         params: list = [int(user_id)]
         workspace_clause = ""
         lot_workspace_clause = ""
@@ -62,6 +65,7 @@ def fetch_active_rentals_for_monitor(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                   {'a.rental_assigned_at' if has_rental_assigned_at else 'NULL AS rental_assigned_at'},
                    {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
                    {'a.rental_frozen' if has_rental_frozen else '0 AS rental_frozen'},
                    {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
@@ -74,7 +78,7 @@ def fetch_active_rentals_for_monitor(
             """,
             tuple(params),
         )
-        return list(cursor.fetchall() or [])
+        return list(cursor.fetchall() or []), has_rental_assigned_at
     finally:
         conn.close()
 
@@ -93,6 +97,8 @@ def release_account_in_db(
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
+        if column_exists(cursor, "accounts", "rental_assigned_at"):
+            updates.append("rental_assigned_at = NULL")
         params: list = [int(account_id), int(user_id)]
         cursor.execute(
             f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
@@ -100,6 +106,33 @@ def release_account_in_db(
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _touch_rental_assigned_at(
+    mysql_cfg: dict,
+    account_id: int,
+    user_id: int,
+    workspace_id: int | None,
+    owner: str,
+) -> None:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not column_exists(cursor, "accounts", "rental_assigned_at"):
+            return
+        cursor.execute(
+            """
+            UPDATE accounts
+            SET rental_assigned_at = UTC_TIMESTAMP()
+            WHERE id = %s AND user_id = %s AND rental_start IS NULL AND LOWER(owner) = %s
+              AND (rental_assigned_at IS NULL)
+            """,
+            (int(account_id), int(user_id), normalize_owner_name(owner)),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -244,7 +277,7 @@ def process_rental_monitor(
     if user_id is None:
         return
 
-    rentals = fetch_active_rentals_for_monitor(mysql_cfg, int(user_id), workspace_id)
+    rentals, has_assigned_at = fetch_active_rentals_for_monitor(mysql_cfg, int(user_id), workspace_id)
     now = datetime.utcnow()
     active_ids = {int(row.get("id")) for row in rentals}
     if state.freeze_cache:
@@ -262,7 +295,39 @@ def process_rental_monitor(
             k: v for k, v in state.expire_soon_notified.items() if k in active_ids
         }
 
+    code_grace_minutes = env_int("RENTAL_CODE_GRACE_MINUTES", 10)
     for row in rentals:
+        if (
+            code_grace_minutes > 0
+            and row.get("rental_start") is None
+            and not row.get("rental_frozen")
+            and not row.get("account_frozen")
+        ):
+            owner = row.get("owner")
+            if not owner:
+                continue
+            assigned_at = _parse_datetime(row.get("rental_assigned_at"))
+            if assigned_at is None:
+                if has_assigned_at:
+                    _touch_rental_assigned_at(
+                        mysql_cfg,
+                        account_id=int(row.get("id") or 0),
+                        user_id=int(user_id),
+                        workspace_id=workspace_id,
+                        owner=owner,
+                    )
+                continue
+            if now >= assigned_at + timedelta(minutes=code_grace_minutes):
+                started_count = start_rental_for_owner(
+                    mysql_cfg,
+                    int(user_id),
+                    owner,
+                    workspace_id,
+                    account_ids=[int(row.get("id") or 0)],
+                )
+                if started_count:
+                    send_message_by_owner(logger, account, owner, RENTAL_CODE_AUTO_START_MESSAGE)
+                continue
         account_id = int(row.get("id"))
         owner = row.get("owner")
         frozen = bool(row.get("rental_frozen"))
