@@ -33,16 +33,13 @@ def deauthorize_account_sessions(
     except requests.RequestException as exc:
         logger.warning("Steam worker request failed: %s", exc)
         return False
-    if not resp.ok:
-        logger.warning("Steam worker error (status %s).", resp.status_code)
-        return False
+    if resp.ok:
+        return True
+    logger.warning("Steam worker error (status %s).", resp.status_code)
     try:
         data = resp.json()
     except ValueError:
-        snippet = (resp.text or "")[:200]
-        logger.warning("Steam worker returned non-JSON response: %s", snippet)
-        return False
-    if data.get("success") is True:
-        return True
-    logger.warning("Steam worker returned unsuccessful response: %s", data)
+        data = None
+    if data:
+        logger.warning("Steam worker error payload: %s", data)
     return False
