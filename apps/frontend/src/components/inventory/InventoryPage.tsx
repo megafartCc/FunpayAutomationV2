@@ -370,6 +370,27 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     }
   };
 
+  const handleSteamDeauthorize = async () => {
+    if (!selectedAccount) {
+      onToast?.("Сначала выберите аккаунт.", true);
+      return;
+    }
+    if (accountControlBusy) return;
+    if (!window.confirm(`Деавторизовать Steam для ${selectedAccount.name}?`)) return;
+    setAccountControlBusy(true);
+    try {
+      const workspaceId =
+        selectedAccount.workspaceId ?? selectedAccount.lastRentedWorkspaceId ?? undefined;
+      await api.deauthorizeSteam(selectedAccount.id, workspaceId);
+      onToast?.("Steam-сессии деавторизованы.");
+    } catch (err) {
+      const message = (err as { message?: string })?.message || "Не удалось деавторизовать Steam.";
+      onToast?.(message, true);
+    } finally {
+      setAccountControlBusy(false);
+    }
+  };
+
   const renderAccountActionsPanel = (title = "Account actions") => {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
@@ -625,6 +646,19 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                 }`}
               >
                 {lowPriority ? "Снять низкий приоритет" : "Пометить низкий приоритет"}
+              </button>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="mb-2 text-sm font-semibold text-neutral-800">Деавторизация Steam</div>
+              <p className="text-xs text-neutral-500">
+                Выйти со всех устройств Steam для выбранного аккаунта.
+              </p>
+              <button
+                onClick={handleSteamDeauthorize}
+                disabled={accountControlBusy}
+                className="mt-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Деавторизовать Steam
               </button>
             </div>
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
