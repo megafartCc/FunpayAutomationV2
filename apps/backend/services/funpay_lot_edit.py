@@ -313,6 +313,15 @@ def _fetch_offer_form_fields(account: Account, lot_id: int, node_id: str) -> dic
             if field.get("name")
         }
     )
+    # Some anti-bot hidden inputs can sit outside the main form. Include them if they don't belong to another form.
+    for field in bs.find_all("input"):
+        name = field.get("name")
+        if not name or name in result:
+            continue
+        parent_form = field.find_parent("form")
+        if parent_form is not None and parent_form is not offer_form:
+            continue
+        result[name] = field.get("value") or ""
     return result
 
 def _apply_fields_to_lot(lot_fields: Any, fields: dict[str, Any]) -> None:
