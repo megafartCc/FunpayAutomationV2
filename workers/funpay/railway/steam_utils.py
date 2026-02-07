@@ -2,14 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
-
-import requests
-
-
-from .env_utils import env_int
 
 
 def _load_local_deauthorize() -> object | None:
@@ -72,39 +66,8 @@ def deauthorize_account_sessions(
             bool(mafile_json),
         )
         return False
-    base = os.getenv("STEAM_WORKER_URL", "").strip()
-    if not base:
-        logger.warning("STEAM_WORKER_URL is not set. Trying local Steam deauthorize fallback.")
-        return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
-    url = f"{base.rstrip('/')}/api/steam/deauthorize"
-    timeout = env_int("STEAM_WORKER_TIMEOUT", 90)
-    payload = {
-        "steam_login": login,
-        "steam_password": password,
-        "mafile_json": mafile_json,
-    }
-    try:
-        resp = requests.post(url, json=payload, timeout=timeout)
-    except requests.RequestException as exc:
-        logger.warning("Steam worker request failed: %s", exc)
-        return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
-    if resp.ok:
-        success_flag = None
-        try:
-            data = resp.json()
-            if isinstance(data, dict):
-                success_flag = data.get("success")
-        except ValueError:
-            data = None
-        if success_flag in {True, 1, "1", "true", "True"}:
-            return True
-        logger.warning("Steam worker response missing success flag; falling back to local deauthorize.")
-        return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
-    logger.warning("Steam worker error (status %s).", resp.status_code)
-    try:
-        data = resp.json()
-    except ValueError:
-        data = None
-    if data:
-        logger.warning("Steam worker error payload: %s", data)
-    return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
+    # Local-only (Megamind-style) per request: no HTTP worker fallback here.
+    if _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json):
+        return True
+    logger.warning("Local Steam deauthorize failed; no fallback configured.")
+    return False
