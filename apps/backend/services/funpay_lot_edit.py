@@ -95,6 +95,11 @@ _NUMERIC_FIELD_PATTERNS = (
     re.compile(r"^fields\\[[^\\]]*mmr\\]$", re.IGNORECASE),
 )
 
+_PROTECTED_RAW_KEYS = {
+    "csrf_token",
+    "form_created_at",
+}
+
 
 def _is_numeric_value(value: Any) -> bool:
     if value is None:
@@ -151,6 +156,8 @@ def _apply_edit(
                 continue
             key = str(raw_key).strip()
             if not key:
+                continue
+            if key in _PROTECTED_RAW_KEYS:
                 continue
             existing = updated.get(key)
             if raw_value is None:
@@ -300,8 +307,7 @@ def save_funpay_lot_edit(
     )
     if "offer_id" not in updated_fields:
         updated_fields["offer_id"] = str(lot_id)
-    if not updated_fields.get("csrf_token"):
-        updated_fields["csrf_token"] = account.csrf_token
+    updated_fields["csrf_token"] = account.csrf_token
     _post_lot_fields(account, lot_id, updated_fields)
     if active_value and _force_lot_active is not None:
         _force_lot_active(account, lot_id)

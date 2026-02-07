@@ -276,6 +276,9 @@ const LotsPage: React.FC = () => {
       throw new Error("Расширенные поля должны быть JSON-объектом.");
     }
     const record = parsed as Record<string, unknown>;
+    const sanitized = { ...record };
+    delete sanitized.csrf_token;
+    delete sanitized.form_created_at;
     const numericPatterns = [
       /^price$/i,
       /^amount$/i,
@@ -283,7 +286,7 @@ const LotsPage: React.FC = () => {
       /^fields\[[^\]]*mmr\]$/i,
     ];
     const invalidKeys: string[] = [];
-    Object.entries(record).forEach(([key, value]) => {
+    Object.entries(sanitized).forEach(([key, value]) => {
       if (!numericPatterns.some((pattern) => pattern.test(key))) return;
       if (value === null || value === undefined || value === "") return;
       if (typeof value === "number") return;
@@ -297,7 +300,7 @@ const LotsPage: React.FC = () => {
     if (invalidKeys.length) {
       throw new Error(`Числовые поля должны быть числами: ${invalidKeys.sort().join(", ")}`);
     }
-    return record;
+    return sanitized;
   };
 
   const parseNumberField = (value: string, label: string) => {
