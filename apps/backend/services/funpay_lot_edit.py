@@ -34,6 +34,11 @@ except Exception:  # pragma: no cover
     _force_lot_active = None
     _post_lot_fields = None
 
+try:
+    from bs4 import BeautifulSoup
+except Exception:  # pragma: no cover
+    BeautifulSoup = None
+
 
 def _build_proxy_config(proxy_url: str | None) -> dict | None:
     raw = (proxy_url or "").strip()
@@ -244,9 +249,71 @@ def _load_lot_fields(
     # Normalize fields to match a real form submission payload.
     lot_fields.renew_fields()
     fields = {k: ("" if v is None else v) for k, v in dict(lot_fields.fields).items()}
+    node_id = str(fields.get("node_id") or "").strip()
+    if node_id:
+        try:
+            extra_fields = _fetch_offer_form_fields(account, lot_id, node_id)
+        except Exception as exc:
+            logger.warning("Failed to fetch offer form with node_id=%s: %s", node_id, exc)
+            extra_fields = {}
+        if extra_fields:
+            fields.update(extra_fields)
+            lot_fields.edit_fields(extra_fields)
     snapshot = _build_snapshot(fields)
     return account, lot_fields, fields, snapshot
 
+
+def _fetch_offer_form_fields(account: Account, lot_id: int, node_id: str) -> dict[str, Any]:
+    if not BeautifulSoup:
+        return {}
+    headers: dict[str, str] = {}
+    response = account.method(
+        "get",
+        f"lots/offerEdit?node={node_id}&offer={lot_id}",
+        headers,
+        {},
+        raise_not_200=True,
+    )
+    html_response = response.content.decode()
+    bs = BeautifulSoup(html_response, "lxml")
+    offer_form = bs.find("form", attrs={"action": lambda x: isinstance(x, str) and "offerSave" in x})
+    if not offer_form:
+        for form in bs.find_all("form"):
+            offer_input = form.find("input", {"name": "offer_id"})
+            if offer_input and str(offer_input.get("value", "")).strip() == str(lot_id):
+                offer_form = form
+                break
+    if not offer_form:
+        return {}
+    result: dict[str, Any] = {}
+    result.update(
+        {
+            field["name"]: field.get("value") or ""
+            for field in offer_form.find_all("input")
+            if field.get("name")
+        }
+    )
+    result.update(
+        {
+            field["name"]: field.text or ""
+            for field in offer_form.find_all("textarea")
+            if field.get("name")
+        }
+    )
+    for field in offer_form.find_all("select"):
+        if not field.get("name"):
+            continue
+        selected_option = field.find("option", selected=True) or field.find("option")
+        if selected_option and selected_option.get("value") is not None:
+            result[field["name"]] = selected_option["value"]
+    result.update(
+        {
+            field["name"]: "on"
+            for field in offer_form.find_all("input", {"type": "checkbox"}, checked=True)
+            if field.get("name")
+        }
+    )
+    return result
 
 def _apply_fields_to_lot(lot_fields: Any, fields: dict[str, Any]) -> None:
     def _parse_float(value: Any) -> float | None:
