@@ -72,6 +72,16 @@ export type LotEditSnapshot = {
   summary_en: string;
   desc_ru: string;
   desc_en: string;
+  decency?: number | null;
+  solommr?: number | null;
+  politeness?: number | null;
+  time?: number | null;
+  type1?: string | null;
+  type?: string | null;
+  payment_msg_ru?: string | null;
+  payment_msg_en?: string | null;
+  images?: string | null;
+  auto_delivery?: boolean;
   raw_fields?: Record<string, unknown>;
 };
 
@@ -83,6 +93,16 @@ export type LotEditPayload = {
   summary_en?: string | null;
   desc_ru?: string | null;
   desc_en?: string | null;
+  decency?: number | null;
+  solommr?: number | null;
+  politeness?: number | null;
+  time?: number | null;
+  type1?: string | null;
+  type?: string | null;
+  payment_msg_ru?: string | null;
+  payment_msg_en?: string | null;
+  images?: string | null;
+  auto_delivery?: boolean | null;
   raw_fields?: Record<string, unknown> | null;
 };
 

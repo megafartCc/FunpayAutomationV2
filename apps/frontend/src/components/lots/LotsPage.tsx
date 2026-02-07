@@ -27,6 +27,16 @@ const LotsPage: React.FC = () => {
   const [editSummaryEn, setEditSummaryEn] = useState("");
   const [editDescRu, setEditDescRu] = useState("");
   const [editDescEn, setEditDescEn] = useState("");
+  const [editDecency, setEditDecency] = useState("");
+  const [editSoloMmr, setEditSoloMmr] = useState("");
+  const [editPoliteness, setEditPoliteness] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editType1, setEditType1] = useState("");
+  const [editType, setEditType] = useState("");
+  const [editPaymentMsgRu, setEditPaymentMsgRu] = useState("");
+  const [editPaymentMsgEn, setEditPaymentMsgEn] = useState("");
+  const [editImages, setEditImages] = useState("");
+  const [editAutoDelivery, setEditAutoDelivery] = useState(false);
   const [editRawFields, setEditRawFields] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -206,6 +216,16 @@ const LotsPage: React.FC = () => {
     setEditSummaryEn("");
     setEditDescRu("");
     setEditDescEn("");
+    setEditDecency("");
+    setEditSoloMmr("");
+    setEditPoliteness("");
+    setEditTime("");
+    setEditType1("");
+    setEditType("");
+    setEditPaymentMsgRu("");
+    setEditPaymentMsgEn("");
+    setEditImages("");
+    setEditAutoDelivery(false);
     setEditRawFields("");
     setShowAdvanced(false);
   };
@@ -225,6 +245,16 @@ const LotsPage: React.FC = () => {
       setEditSummaryEn(snapshot.summary_en || "");
       setEditDescRu(snapshot.desc_ru || "");
       setEditDescEn(snapshot.desc_en || "");
+      setEditDecency(snapshot.decency !== null && snapshot.decency !== undefined ? String(snapshot.decency) : "");
+      setEditSoloMmr(snapshot.solommr !== null && snapshot.solommr !== undefined ? String(snapshot.solommr) : "");
+      setEditPoliteness(snapshot.politeness !== null && snapshot.politeness !== undefined ? String(snapshot.politeness) : "");
+      setEditTime(snapshot.time !== null && snapshot.time !== undefined ? String(snapshot.time) : "");
+      setEditType1(snapshot.type1 || "");
+      setEditType(snapshot.type || "");
+      setEditPaymentMsgRu(snapshot.payment_msg_ru || "");
+      setEditPaymentMsgEn(snapshot.payment_msg_en || "");
+      setEditImages(snapshot.images || "");
+      setEditAutoDelivery(!!snapshot.auto_delivery);
       setEditRawFields(JSON.stringify(snapshot.raw_fields ?? {}, null, 2));
     } catch (err) {
       setEditError((err as { message?: string })?.message || "Не удалось загрузить лот.");
@@ -270,6 +300,16 @@ const LotsPage: React.FC = () => {
     return record;
   };
 
+  const parseNumberField = (value: string, label: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed.replace(",", "."));
+    if (Number.isNaN(parsed)) {
+      throw new Error(`${label} должно быть числом.`);
+    }
+    return parsed;
+  };
+
   const buildEditPayload = () => {
     const priceValue = editPrice.trim();
     const amountValue = editAmount.trim();
@@ -283,6 +323,10 @@ const LotsPage: React.FC = () => {
     }
     const activeChanged =
       editOriginalActive === null ? true : editActive !== editOriginalActive;
+    const decencyNumber = parseNumberField(editDecency, "Порядочность");
+    const solommrNumber = parseNumberField(editSoloMmr, "MMR");
+    const politenessNumber = parseNumberField(editPoliteness, "Вежливость");
+    const timeNumber = parseNumberField(editTime, "Время");
     const rawFields = parseRawFields();
     return {
       price: priceNumber,
@@ -292,6 +336,16 @@ const LotsPage: React.FC = () => {
       summary_en: editSummaryEn,
       desc_ru: editDescRu,
       desc_en: editDescEn,
+      decency: decencyNumber,
+      solommr: solommrNumber,
+      politeness: politenessNumber,
+      time: timeNumber,
+      type1: editType1,
+      type: editType,
+      payment_msg_ru: editPaymentMsgRu,
+      payment_msg_en: editPaymentMsgEn,
+      images: editImages,
+      auto_delivery: editAutoDelivery,
       raw_fields: rawFields,
     };
   };
@@ -520,6 +574,124 @@ const LotsPage: React.FC = () => {
                       onChange={(e) => setEditDescEn(e.target.value)}
                     />
                   </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Порядочность
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editDecency}
+                      onChange={(e) => setEditDecency(e.target.value)}
+                      placeholder="fields[decency]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      MMR (solo)
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editSoloMmr}
+                      onChange={(e) => setEditSoloMmr(e.target.value)}
+                      placeholder="fields[solommr]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Вежливость
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editPoliteness}
+                      onChange={(e) => setEditPoliteness(e.target.value)}
+                      placeholder="fields[politeness]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Время
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editTime}
+                      onChange={(e) => setEditTime(e.target.value)}
+                      placeholder="fields[time]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Тип 1
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editType1}
+                      onChange={(e) => setEditType1(e.target.value)}
+                      placeholder="fields[type1]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Тип
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editType}
+                      onChange={(e) => setEditType(e.target.value)}
+                      placeholder="fields[type]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Сообщение после оплаты RU
+                    </label>
+                    <textarea
+                      className="min-h-[90px] w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editPaymentMsgRu}
+                      onChange={(e) => setEditPaymentMsgRu(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Сообщение после оплаты EN
+                    </label>
+                    <textarea
+                      className="min-h-[90px] w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editPaymentMsgEn}
+                      onChange={(e) => setEditPaymentMsgEn(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[1fr_auto] items-end">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Изображения (ID через запятую)
+                    </label>
+                    <input
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      value={editImages}
+                      onChange={(e) => setEditImages(e.target.value)}
+                      placeholder="fields[images]"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-400"
+                      checked={editAutoDelivery}
+                      onChange={(e) => setEditAutoDelivery(e.target.checked)}
+                    />
+                    Автовыдача
+                  </label>
                 </div>
 
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">

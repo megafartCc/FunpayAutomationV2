@@ -64,6 +64,16 @@ class LotEditPayload(BaseModel):
     summary_en: str | None = None
     desc_ru: str | None = None
     desc_en: str | None = None
+    decency: int | None = None
+    solommr: int | None = None
+    politeness: int | None = None
+    time: int | None = None
+    type1: str | None = None
+    type: str | None = None
+    payment_msg_ru: str | None = None
+    payment_msg_en: str | None = None
+    images: str | None = None
+    auto_delivery: bool | None = None
     raw_fields: dict[str, object] | None = None
 
 
@@ -75,6 +85,16 @@ class LotEditSnapshot(BaseModel):
     summary_en: str
     desc_ru: str
     desc_en: str
+    decency: int | None = None
+    solommr: int | None = None
+    politeness: int | None = None
+    time: int | None = None
+    type1: str = ""
+    type: str = ""
+    payment_msg_ru: str = ""
+    payment_msg_en: str = ""
+    images: str = ""
+    auto_delivery: bool = False
     raw_fields: dict[str, object] = Field(default_factory=dict)
 
 

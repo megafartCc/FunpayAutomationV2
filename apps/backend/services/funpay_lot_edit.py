@@ -69,6 +69,16 @@ def _extract_snapshot(fields: dict[str, Any]) -> dict[str, Any]:
         "summary_en": str(fields.get("fields[summary][en]", "") or ""),
         "desc_ru": str(fields.get("fields[desc][ru]", "") or ""),
         "desc_en": str(fields.get("fields[desc][en]", "") or ""),
+        "decency": _coerce_int(fields.get("fields[decency]")),
+        "solommr": _coerce_int(fields.get("fields[solommr]")),
+        "politeness": _coerce_int(fields.get("fields[politeness]")),
+        "time": _coerce_int(fields.get("fields[time]")),
+        "type1": str(fields.get("fields[type1]", "") or ""),
+        "type": str(fields.get("fields[type]", "") or ""),
+        "payment_msg_ru": str(fields.get("fields[payment_msg][ru]", "") or ""),
+        "payment_msg_en": str(fields.get("fields[payment_msg][en]", "") or ""),
+        "images": str(fields.get("fields[images]", "") or ""),
+        "auto_delivery": bool(fields.get("auto_delivery") == "on"),
     }
 
 
@@ -165,6 +175,36 @@ def _apply_edit(
         set_field("fields[desc][ru]", str(payload["desc_ru"]))
     if payload.get("desc_en") is not None:
         set_field("fields[desc][en]", str(payload["desc_en"]))
+    if payload.get("decency") is not None:
+        set_field("fields[decency]", str(payload["decency"]))
+    if payload.get("solommr") is not None:
+        set_field("fields[solommr]", str(payload["solommr"]))
+    if payload.get("politeness") is not None:
+        set_field("fields[politeness]", str(payload["politeness"]))
+    if payload.get("time") is not None:
+        set_field("fields[time]", str(payload["time"]))
+    if payload.get("type1") is not None:
+        set_field("fields[type1]", str(payload["type1"]))
+    if payload.get("type") is not None:
+        set_field("fields[type]", str(payload["type"]))
+    if payload.get("payment_msg_ru") is not None:
+        set_field("fields[payment_msg][ru]", str(payload["payment_msg_ru"]))
+    if payload.get("payment_msg_en") is not None:
+        set_field("fields[payment_msg][en]", str(payload["payment_msg_en"]))
+    if payload.get("images") is not None:
+        set_field("fields[images]", str(payload["images"]))
+
+    if "auto_delivery" in payload and payload["auto_delivery"] is not None:
+        auto_value = payload["auto_delivery"]
+        if isinstance(auto_value, bool):
+            if auto_value:
+                set_field("auto_delivery", "on")
+            else:
+                if "auto_delivery" in updated:
+                    changes.append({"field": "auto_delivery", "from": updated.get("auto_delivery"), "to": None})
+                updated.pop("auto_delivery", None)
+        else:
+            set_field("auto_delivery", str(auto_value))
 
     active_value: bool | None = None
     if "active" in payload and payload["active"] is not None:
