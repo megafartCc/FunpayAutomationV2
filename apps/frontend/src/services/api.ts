@@ -64,9 +64,55 @@ export type LotItem = {
   workspace_id?: number | null;
 };
 
+export type LotEditSnapshot = {
+  price?: number | null;
+  amount?: number | null;
+  active: boolean;
+  summary_ru: string;
+  summary_en: string;
+  desc_ru: string;
+  desc_en: string;
+};
+
+export type LotEditPayload = {
+  price?: number | null;
+  amount?: number | null;
+  active?: boolean | null;
+  summary_ru?: string | null;
+  summary_en?: string | null;
+  desc_ru?: string | null;
+  desc_en?: string | null;
+};
+
+export type LotEditPreview = {
+  ok: boolean;
+  changes: { field: string; from: unknown; to: unknown }[];
+  active: boolean;
+  snapshot: LotEditSnapshot;
+};
+
+export type LotEditSaveResult = {
+  ok: boolean;
+  changes: { field: string; from: unknown; to: unknown }[];
+};
+
 export type LotSyncResult = {
   ok: boolean;
   updated: boolean;
+};
+
+export type RentalsHeatmapCell = {
+  day: number;
+  hour: number;
+  count: number;
+};
+
+export type RentalsHeatmapResponse = {
+  items: RentalsHeatmapCell[];
+  max: number;
+  total: number;
+  days?: number | null;
+  actions: string[];
 };
 
 
@@ -597,6 +643,18 @@ export const api = {
       workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
       { method: "DELETE" },
     ),
+  getLotEditSnapshot: (lotNumber: number, workspaceId?: number | null) =>
+    request<LotEditSnapshot>(withWorkspace(`/lots/${lotNumber}/edit`, workspaceId), { method: "GET" }),
+  previewLotEdit: (lotNumber: number, payload: LotEditPayload, workspaceId?: number | null) =>
+    request<LotEditPreview>(withWorkspace(`/lots/${lotNumber}/edit/preview`, workspaceId), {
+      method: "POST",
+      body: payload,
+    }),
+  saveLotEdit: (lotNumber: number, payload: LotEditPayload, workspaceId?: number | null) =>
+    request<LotEditSaveResult>(withWorkspace(`/lots/${lotNumber}/edit`, workspaceId), {
+      method: "POST",
+      body: payload,
+    }),
   syncLotTitle: (lotNumber: number, workspaceId?: number) =>
     request<LotSyncResult>(
       workspaceId ? `/lots/${lotNumber}/sync-title?workspace_id=${workspaceId}` : `/lots/${lotNumber}/sync-title`,
@@ -635,6 +693,16 @@ export const api = {
     const suffix = params.toString();
     return request<{ items: OrderHistoryItem[] }>(
       withWorkspace(`/orders/history${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
+  rentalsHeatmap: (workspaceId?: number | null, days?: number | null, actions?: string[]) => {
+    const params = new URLSearchParams();
+    if (days) params.set("days", String(days));
+    if (actions && actions.length) params.set("actions", actions.join(","));
+    const suffix = params.toString();
+    return request<RentalsHeatmapResponse>(
+      withWorkspace(`/orders/heatmap${suffix ? `?${suffix}` : ""}`, workspaceId),
       { method: "GET" },
     );
   },

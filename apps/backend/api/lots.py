@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,7 @@ from db.account_repo import MySQLAccountRepo
 from db.lot_repo import MySQLLotRepo, LotRecord, LotCreateError
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.funpay_lot_title import maybe_update_funpay_lot_title
+from services.funpay_lot_edit import get_funpay_lot_snapshot, preview_funpay_lot_edit, save_funpay_lot_edit
 
 
 
@@ -52,6 +54,38 @@ class LotBulkSyncResponse(BaseModel):
     updated: int
     skipped: int
     failed: int
+
+
+class LotEditPayload(BaseModel):
+    price: float | None = Field(None, ge=0)
+    amount: int | None = Field(None, ge=1)
+    active: bool | None = None
+    summary_ru: str | None = None
+    summary_en: str | None = None
+    desc_ru: str | None = None
+    desc_en: str | None = None
+
+
+class LotEditSnapshot(BaseModel):
+    price: float | None = None
+    amount: int | None = None
+    active: bool
+    summary_ru: str
+    summary_en: str
+    desc_ru: str
+    desc_en: str
+
+
+class LotEditPreviewResponse(BaseModel):
+    ok: bool
+    changes: list[dict]
+    active: bool
+    snapshot: LotEditSnapshot
+
+
+class LotEditSaveResponse(BaseModel):
+    ok: bool
+    changes: list[dict]
 
 
 def _get_workspace_and_record(user_id: int, workspace_id: int | None, lot_number: int):
@@ -206,3 +240,79 @@ def sync_lot_titles(
         skipped=skipped_count,
         failed=failed_count,
     )
+
+
+@router.get("/lots/{lot_number}/edit", response_model=LotEditSnapshot)
+def get_lot_edit_snapshot(
+    lot_number: int,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> LotEditSnapshot:
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve lot id from URL")
+    user_agent = os.getenv("FUNPAY_USER_AGENT")
+    try:
+        snapshot = get_funpay_lot_snapshot(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(offer_id),
+            user_agent=user_agent,
+        )
+    except Exception as exc:
+        logger.warning("Lot snapshot failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    return LotEditSnapshot(**snapshot)
+
+
+@router.post("/lots/{lot_number}/edit/preview", response_model=LotEditPreviewResponse)
+def preview_lot_edit(
+    lot_number: int,
+    payload: LotEditPayload,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> LotEditPreviewResponse:
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve lot id from URL")
+    user_agent = os.getenv("FUNPAY_USER_AGENT")
+    try:
+        _, changes, active_value, snapshot = preview_funpay_lot_edit(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(offer_id),
+            payload=payload.model_dump(),
+            user_agent=user_agent,
+        )
+    except Exception as exc:
+        logger.warning("Lot preview failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    return LotEditPreviewResponse(ok=True, changes=changes, active=bool(active_value), snapshot=LotEditSnapshot(**snapshot))
+
+
+@router.post("/lots/{lot_number}/edit", response_model=LotEditSaveResponse)
+def save_lot_edit(
+    lot_number: int,
+    payload: LotEditPayload,
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> LotEditSaveResponse:
+    workspace, record = _get_workspace_and_record(int(user.id), workspace_id, int(lot_number))
+    offer_id = _resolve_offer_id(record)
+    if not offer_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve lot id from URL")
+    user_agent = os.getenv("FUNPAY_USER_AGENT")
+    try:
+        changes = save_funpay_lot_edit(
+            golden_key=workspace.golden_key,
+            proxy_url=workspace.proxy_url,
+            lot_id=int(offer_id),
+            payload=payload.model_dump(),
+            user_agent=user_agent,
+        )
+    except Exception as exc:
+        logger.warning("Lot save failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+    return LotEditSaveResponse(ok=True, changes=changes)

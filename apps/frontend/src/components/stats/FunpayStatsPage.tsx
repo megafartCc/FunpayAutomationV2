@@ -13,7 +13,14 @@ import {
 import { Bar as ChartBar, Line as ChartLine } from "react-chartjs-2";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../../i18n/useI18n";
-import { api, ActiveRentalItem, NotificationItem, OrderHistoryItem, PriceDumperHistoryItem } from "../../services/api";
+import {
+  api,
+  ActiveRentalItem,
+  NotificationItem,
+  OrderHistoryItem,
+  PriceDumperHistoryItem,
+  RentalsHeatmapResponse,
+} from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 ChartJS.register(
@@ -141,6 +148,9 @@ const FunpayStatsPage: React.FC = () => {
   const [marketHistoryError, setMarketHistoryError] = useState<string | null>(null);
   const [marketHistoryUrl, setMarketHistoryUrl] = useState<string | null>(null);
   const [marketHistoryRefreshed, setMarketHistoryRefreshed] = useState(false);
+  const [heatmap, setHeatmap] = useState<RentalsHeatmapResponse | null>(null);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [heatmapError, setHeatmapError] = useState<string | null>(null);
 
   const workspaceId = selectedId === "all" ? undefined : selectedId;
 
@@ -180,7 +190,37 @@ const FunpayStatsPage: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [loadStats]);
 
-  
+  const heatmapDays = useMemo(() => {
+    if (range === "7d") return 7;
+    if (range === "90d") return 90;
+    if (range === "all") return 365;
+    return 30;
+  }, [range]);
+
+  const loadHeatmap = useCallback(async () => {
+    setHeatmapLoading(true);
+    setHeatmapError(null);
+    try {
+      const res = await api.rentalsHeatmap(workspaceId ?? null, heatmapDays, [
+        "assign",
+        "replace_assign",
+        "extend",
+      ]);
+      setHeatmap(res);
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message ||
+        tr("Failed to load heatmap.", "Не удалось загрузить тепловую карту.");
+      setHeatmapError(message);
+      setHeatmap(null);
+    } finally {
+      setHeatmapLoading(false);
+    }
+  }, [workspaceId, heatmapDays, tr]);
+
+  useEffect(() => {
+    void loadHeatmap();
+  }, [loadHeatmap]);
 
   const marketHistoryDays = useMemo(() => {
     if (range === "7d") return 7;
@@ -363,6 +403,30 @@ const FunpayStatsPage: React.FC = () => {
     }
     return results;
   }, [ordersInRange, rangeCutoff]);
+
+  const heatmapMatrix = useMemo(() => {
+    const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+    const maxValue = heatmap?.max ?? 0;
+    (heatmap?.items || []).forEach((item) => {
+      if (item.day >= 0 && item.day < 7 && item.hour >= 0 && item.hour < 24) {
+        grid[item.day][item.hour] = item.count;
+      }
+    });
+    return { grid, max: maxValue };
+  }, [heatmap]);
+
+  const heatmapDayLabels = useMemo(
+    () => [
+      tr("Mon", "Пн"),
+      tr("Tue", "Вт"),
+      tr("Wed", "Ср"),
+      tr("Thu", "Чт"),
+      tr("Fri", "Пт"),
+      tr("Sat", "Сб"),
+      tr("Sun", "Вс"),
+    ],
+    [tr],
+  );
 
   const dailyRevenue = useMemo<RevenuePoint[]>(() => {
     const map = new Map<string, { revenue: number; orders: number }>();
@@ -1065,6 +1129,77 @@ const FunpayStatsPage: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">
+              {tr("Rentals heatmap", "Тепловая карта аренд")}
+            </h2>
+            <p className="text-sm text-neutral-500">
+              {tr(
+                "Orders grouped by hour and day of week.",
+                "Заказы, сгруппированные по часу и дню недели.",
+              )}
+            </p>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+            {rangeLabel}
+          </span>
+        </div>
+        {heatmapError ? (
+          <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            {heatmapError}
+          </div>
+        ) : null}
+        {heatmapLoading ? (
+          <div className="mt-6 text-sm text-neutral-500">{tr("Loading...", "Загрузка...")}</div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <div className="min-w-[760px] space-y-2">
+              <div
+                className="grid items-center gap-1 text-[10px] text-neutral-400"
+                style={{ gridTemplateColumns: "60px repeat(24, minmax(18px, 1fr))" }}
+              >
+                <div />
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <div key={`h-${hour}`} className="text-center">
+                    {hour % 2 === 0 ? String(hour).padStart(2, "0") : ""}
+                  </div>
+                ))}
+              </div>
+              {heatmapMatrix.grid.map((row, dayIdx) => (
+                <div
+                  key={`day-${dayIdx}`}
+                  className="grid items-center gap-1"
+                  style={{ gridTemplateColumns: "60px repeat(24, minmax(18px, 1fr))" }}
+                >
+                  <div className="text-xs font-semibold text-neutral-500">{heatmapDayLabels[dayIdx]}</div>
+                  {row.map((count, hour) => {
+                    const max = heatmapMatrix.max || 0;
+                    const intensity = max > 0 ? count / max : 0;
+                    const alpha = 0.08 + intensity * 0.82;
+                    return (
+                      <div
+                        key={`cell-${dayIdx}-${hour}`}
+                        title={`${heatmapDayLabels[dayIdx]} ${String(hour).padStart(2, "0")}:00 — ${count}`}
+                        className="h-5 rounded-sm"
+                        style={{
+                          backgroundColor: `rgba(16, 185, 129, ${alpha})`,
+                          border: "1px solid rgba(15, 23, 42, 0.06)",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+              {!heatmapMatrix.max ? (
+                <div className="text-xs text-neutral-400">{tr("No data for this range.", "Нет данных за период.")}</div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">

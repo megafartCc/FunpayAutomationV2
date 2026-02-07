@@ -132,6 +132,45 @@ class MySQLOrderHistoryRepo:
         finally:
             conn.close()
 
+    def rentals_heatmap(
+        self,
+        *,
+        user_id: int,
+        workspace_id: int | None = None,
+        days: int | None = None,
+        actions: list[str] | None = None,
+    ) -> list[dict]:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            params: list = [int(user_id)]
+            where = ["user_id = %s"]
+            if workspace_id is not None:
+                where.append("(workspace_id = %s OR workspace_id IS NULL)")
+                params.append(int(workspace_id))
+            if days and int(days) > 0:
+                where.append("created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)")
+                params.append(int(days))
+            action_list = [str(a).strip() for a in (actions or []) if str(a).strip()]
+            if action_list:
+                placeholders = ", ".join(["%s"] * len(action_list))
+                where.append(f"action IN ({placeholders})")
+                params.extend(action_list)
+            cursor.execute(
+                f"""
+                SELECT DAYOFWEEK(created_at) AS dow,
+                       HOUR(created_at) AS hour,
+                       COUNT(*) AS count
+                FROM order_history
+                WHERE {' AND '.join(where)}
+                GROUP BY dow, hour
+                """,
+                tuple(params),
+            )
+            return list(cursor.fetchall() or [])
+        finally:
+            conn.close()
+
     def list_history(
         self,
         user_id: int,

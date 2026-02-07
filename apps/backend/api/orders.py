@@ -54,6 +54,20 @@ class OrdersHistoryResponse(BaseModel):
     items: list[OrderHistoryItem]
 
 
+class HeatmapCell(BaseModel):
+    day: int
+    hour: int
+    count: int
+
+
+class RentalsHeatmapResponse(BaseModel):
+    items: list[HeatmapCell]
+    max: int
+    total: int
+    days: int | None = None
+    actions: list[str]
+
+
 class OrderRefundRequest(BaseModel):
     order_id: str | None = None
     owner: str | None = None
@@ -143,6 +157,50 @@ def orders_history(
             )
             for item in items
         ]
+    )
+
+
+@router.get("/orders/heatmap", response_model=RentalsHeatmapResponse)
+def rentals_heatmap(
+    days: int | None = 30,
+    actions: str | None = "assign,replace_assign,extend",
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> RentalsHeatmapResponse:
+    user_id = int(user.id)
+    if workspace_id is not None:
+        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
+        if not workspace:
+            raise HTTPException(status_code=400, detail="Select a workspace for heatmap.")
+    action_list = [a.strip() for a in (actions or "").split(",") if a.strip()]
+    rows = orders_repo.rentals_heatmap(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        days=int(days) if days is not None else None,
+        actions=action_list,
+    )
+    items: list[HeatmapCell] = []
+    total = 0
+    max_count = 0
+    for row in rows:
+        try:
+            dow = int(row.get("dow") or 0)
+            hour = int(row.get("hour") or 0)
+            count = int(row.get("count") or 0)
+        except Exception:
+            continue
+        # MySQL DAYOFWEEK: 1=Sunday..7=Saturday. Convert to Monday=0..Sunday=6.
+        day_index = (dow + 5) % 7
+        items.append(HeatmapCell(day=day_index, hour=hour, count=count))
+        total += count
+        if count > max_count:
+            max_count = count
+    return RentalsHeatmapResponse(
+        items=items,
+        max=max_count,
+        total=total,
+        days=int(days) if days is not None else None,
+        actions=action_list,
     )
 
 
