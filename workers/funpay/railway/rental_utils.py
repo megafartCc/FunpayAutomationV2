@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime, timedelta
 
 import mysql.connector
+import requests
 from FunPayAPI.account import Account
 
 from .chat_utils import send_message_by_owner
@@ -32,6 +34,49 @@ from .steam_guard_utils import steam_id_from_mafile
 from .steam_utils import deauthorize_account_sessions
 from .text_utils import _calculate_resume_start, _parse_datetime, build_expire_soon_message, normalize_owner_name
 from .user_utils import get_user_id_by_username
+
+
+def _notify_expired_via_backend(
+    logger: logging.Logger,
+    *,
+    account_id: int,
+    user_id: int,
+    workspace_id: int | None,
+    owner: str | None,
+    account_name: str | None,
+    login: str | None,
+    confirm_url: str | None,
+) -> bool:
+    base = os.getenv("BACKEND_INTERNAL_URL", "").strip()
+    token = os.getenv("BACKEND_INTERNAL_TOKEN", "").strip()
+    if not base or not token:
+        return False
+    if workspace_id is None:
+        logger.warning("Backend expire skipped: workspace_id is required for internal notify.")
+        return False
+    payload = {
+        "account_id": int(account_id),
+        "user_id": int(user_id),
+        "workspace_id": int(workspace_id),
+        "owner": owner,
+        "account_name": account_name,
+        "login": login,
+        "confirm_url": confirm_url,
+    }
+    try:
+        resp = requests.post(
+            f"{base.rstrip('/')}/api/internal/rentals/expire",
+            json=payload,
+            headers={"X-Worker-Token": token},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Backend expire request failed: %s", exc)
+        return False
+    if not resp.ok:
+        logger.warning("Backend expire failed (status %s).", resp.status_code)
+        return False
+    return True
 
 
 def fetch_active_rentals_for_monitor(
@@ -434,7 +479,45 @@ def process_rental_monitor(
                 else:
                     state.expire_soon_notified.pop(account_id, None)
             continue
+
         if _should_delay_expire(logger, account, owner, row, mysql_cfg, int(user_id), workspace_id, state, now):
+            continue
+
+        order_id = fetch_latest_order_id_for_account(
+            mysql_cfg,
+            account_id=account_id,
+            owner=owner,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+        if not order_id and row.get("lot_number") is not None:
+            order_id = fetch_latest_order_id_for_owner_lot(
+                mysql_cfg,
+                owner=owner,
+                lot_number=int(row.get("lot_number")),
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+        if not order_id:
+            order_id = resolve_order_id_from_funpay(
+                account,
+                owner=owner,
+                lot_number=row.get("lot_number"),
+                account_name=row.get("account_name") or row.get("login"),
+            )
+        confirm_url = f"https://funpay.com/orders/{order_id}/" if order_id else None
+
+        if _notify_expired_via_backend(
+            logger,
+            account_id=account_id,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+            owner=owner,
+            account_name=row.get("account_name"),
+            login=row.get("login"),
+            confirm_url=confirm_url,
+        ):
+            _clear_expire_delay_state(state, account_id)
             continue
 
         if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
@@ -474,33 +557,11 @@ def process_rental_monitor(
                 user_id=int(user_id),
                 workspace_id=workspace_id,
             )
-            order_id = fetch_latest_order_id_for_account(
-                mysql_cfg,
-                account_id=account_id,
-                owner=owner,
-                user_id=int(user_id),
-                workspace_id=workspace_id,
-            )
-            if not order_id and row.get("lot_number") is not None:
-                order_id = fetch_latest_order_id_for_owner_lot(
-                    mysql_cfg,
-                    owner=owner,
-                    lot_number=int(row.get("lot_number")),
-                    user_id=int(user_id),
-                    workspace_id=workspace_id,
-                )
-            if not order_id:
-                order_id = resolve_order_id_from_funpay(
-                    account,
-                    owner=owner,
-                    lot_number=row.get("lot_number"),
-                    account_name=row.get("account_name") or row.get("login"),
-                )
             confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
-            if order_id:
+            if confirm_url:
                 confirm_message = (
                     f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
-                    f"Подтвердите тут -> https://funpay.com/orders/{order_id}/"
+                    f"\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u0442\u0443\u0442 -> {confirm_url}"
                 )
             send_message_by_owner(
                 logger,

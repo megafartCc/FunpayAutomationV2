@@ -89,7 +89,17 @@ def deauthorize_account_sessions(
         logger.warning("Steam worker request failed: %s", exc)
         return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
     if resp.ok:
-        return True
+        success_flag = None
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                success_flag = data.get("success")
+        except ValueError:
+            data = None
+        if success_flag in {True, 1, "1", "true", "True"}:
+            return True
+        logger.warning("Steam worker response missing success flag; falling back to local deauthorize.")
+        return _local_deauthorize(logger, login=login, password=password, mafile_json=mafile_json)
     logger.warning("Steam worker error (status %s).", resp.status_code)
     try:
         data = resp.json()

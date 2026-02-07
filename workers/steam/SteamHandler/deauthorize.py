@@ -124,14 +124,14 @@ async def _deauthorize_via_twofactor_manage_action(steam: CustomSteam) -> bool:
                 success = data.get("success")
                 return success in {1, True, "1", "true"}
             except Exception:
-                pass
+                return False
         lowered = (body or "").lower()
         if "\"success\":1" in lowered or "\"success\":true" in lowered:
             return True
-        # Some responses are empty/HTML but the request still succeeds.
-        return True
+        # If we cannot confirm success, fall back to other methods.
+        return False
     except Exception:
-        return True
+        return False
 
 
 async def _ensure_playwright_chromium_installed() -> bool:
@@ -277,6 +277,7 @@ async def logout_all_steam_sessions(
     # Prefer server-side deauth endpoint (no browser deps).
     try:
         if await _deauthorize_via_twofactor_manage_action(steam):
+            logger.info("Steam deauthorize succeeded via twofactor/manage_action.")
             return True
     except Exception as exc:
         logger.warning(f"Steam twofactor deauthorize attempt failed: {exc}")
@@ -284,6 +285,7 @@ async def logout_all_steam_sessions(
     # Prefer Playwright flow (closest to steamautorentbot).
     try:
         if await _logout_all_steam_sessions_playwright(steam):
+            logger.info("Steam deauthorize succeeded via Playwright sessions page.")
             return True
     except Exception as exc:
         logger.warning(f"Playwright logout attempt failed: {exc}")
@@ -345,7 +347,9 @@ async def logout_all_steam_sessions(
         )
 
         ok = int(getattr(final_resp, "status", 0)) in {200, 302}
-        if not ok:
+        if ok:
+            logger.info("Steam deauthorize succeeded via sessions logout form.")
+        else:
             logger.warning(f"Steam sessions logout failed: status={getattr(final_resp, 'status', None)}")
         return ok
 
@@ -366,6 +370,7 @@ async def logout_all_steam_sessions(
             )
             ok = int(getattr(final_resp, "status", 0)) in {200, 302}
             if ok:
+                logger.info("Steam deauthorize succeeded via sessions logout link.")
                 return True
         except Exception:
             pass
