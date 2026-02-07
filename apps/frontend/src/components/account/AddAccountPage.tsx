@@ -21,6 +21,12 @@ const AddAccountPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [mmr, setMmr] = useState("");
   const [mafileJson, setMafileJson] = useState("");
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkCredentials, setBulkCredentials] = useState("");
+  const [bulkStatus, setBulkStatus] = useState<{ message: string; isError?: boolean } | null>(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [bulkMafileMap, setBulkMafileMap] = useState<Record<string, string>>({});
+  const [bulkMafileErrors, setBulkMafileErrors] = useState<string[]>([]);
   const { visibleWorkspaces, selectedId } = useWorkspace();
   const { tr } = useI18n();
   const defaultWorkspaceId = useMemo(() => {
@@ -31,6 +37,7 @@ const AddAccountPage: React.FC = () => {
   const [status, setStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkMafileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -41,6 +48,49 @@ const AddAccountPage: React.FC = () => {
       setMafileJson(text);
     };
     reader.readAsText(file);
+  };
+
+  const extractMafileLogin = (raw: string, fallbackName: string) => {
+    try {
+      const data = JSON.parse(raw);
+      const direct =
+        data?.account_name ??
+        data?.AccountName ??
+        data?.accountName ??
+        data?.login ??
+        data?.Login ??
+        data?.steam_login ??
+        data?.SteamLogin ??
+        data?.Session?.AccountName ??
+        data?.Session?.account_name;
+      if (direct) return String(direct).trim();
+    } catch {
+      return fallbackName;
+    }
+    return fallbackName;
+  };
+
+  const handleBulkMafileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const map: Record<string, string> = {};
+    const errors: string[] = [];
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        const fallback = file.name.replace(/\.(mafile|json)$/i, "").trim();
+        const loginKey = extractMafileLogin(text, fallback);
+        if (!loginKey) {
+          errors.push(`${file.name}: ${tr("login not found", "логин не найден")}`);
+          continue;
+        }
+        map[loginKey.toLowerCase()] = text;
+      } catch {
+        errors.push(`${file.name}: ${tr("failed to read", "не удалось прочитать")}`);
+      }
+    }
+    setBulkMafileMap(map);
+    setBulkMafileErrors(errors);
   };
 
   useEffect(() => {
@@ -108,6 +158,102 @@ const AddAccountPage: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const parseCredentials = (raw: string) => {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+    const parsed: { login: string; password: string; accountName: string }[] = [];
+    for (const line of lines) {
+      const match = line.match(/^([^:;|\t]+)[:;|\t](.+)$/);
+      if (!match) continue;
+      const loginValue = match[1].trim();
+      const rest = match[2].trim();
+      if (!loginValue || !rest) continue;
+      const accountName = loginValue;
+      parsed.push({ login: loginValue, password: rest, accountName });
+    }
+    return parsed;
+  };
+
+  const handleBulkSubmit = async () => {
+    setBulkStatus(null);
+    if (!workspaceId) {
+      setBulkStatus({
+        message: tr("Select a workspace for these accounts.", "Выберите рабочее пространство для этих аккаунтов."),
+        isError: true,
+      });
+      return;
+    }
+    const entries = parseCredentials(bulkCredentials);
+    if (!entries.length) {
+      setBulkStatus({
+        message: tr(
+          "Paste credentials in the format login:password, one per line.",
+          "Вставьте логин:пароль, по одному на строку.",
+        ),
+        isError: true,
+      });
+      return;
+    }
+    if (!Object.keys(bulkMafileMap).length) {
+      setBulkStatus({
+        message: tr("Upload maFiles to match by login.", "Загрузите maFile'ы для сопоставления по логину."),
+        isError: true,
+      });
+      return;
+    }
+
+    const toCreate: typeof entries = [];
+    const missing: string[] = [];
+    for (const entry of entries) {
+      const mafile = bulkMafileMap[entry.login.toLowerCase()];
+      if (!mafile) {
+        missing.push(entry.login);
+        continue;
+      }
+      toCreate.push(entry);
+    }
+    if (!toCreate.length) {
+      setBulkStatus({
+        message: tr("No accounts matched maFiles.", "Нет совпавших maFile по логинам."),
+        isError: true,
+      });
+      return;
+    }
+
+    setBulkSubmitting(true);
+    let created = 0;
+    let failed = 0;
+    for (const entry of toCreate) {
+      try {
+        await api.createAccount({
+          workspace_id: workspaceId,
+          account_name: entry.accountName,
+          login: entry.login,
+          password: entry.password,
+          mafile_json: bulkMafileMap[entry.login.toLowerCase()],
+          mmr: undefined,
+          rental_duration: 1,
+          rental_minutes: 0,
+        });
+        created += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+
+    const missingLabel = missing.length ? ` ${tr("Missing maFiles:", "Нет maFile:")} ${missing.join(", ")}` : "";
+    setBulkStatus({
+      message: tr(
+        `Created ${created}, failed ${failed}.${missingLabel}`,
+        `Создано ${created}, ошибок ${failed}.${missingLabel}`,
+      ),
+      isError: failed > 0,
+    });
+    setBulkSubmitting(false);
   };
 
   return (
@@ -226,9 +372,91 @@ const AddAccountPage: React.FC = () => {
             >
               {submitting ? tr("Creating...", "Создаём...") : tr("Create account", "Создать аккаунт")}
             </button>
+            <button
+              type="button"
+              onClick={() => setBulkMode((prev) => !prev)}
+              className="rounded-lg border border-neutral-200 px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-100"
+            >
+              {bulkMode ? tr("Hide bulk upload", "Скрыть массовую загрузку") : tr("Bulk upload", "Массовая загрузка")}
+            </button>
           </div>
         </form>
       </div>
+
+      {bulkMode && (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-neutral-900">
+              {tr("Bulk upload accounts", "Массовая загрузка аккаунтов")}
+            </h3>
+            <p className="text-sm text-neutral-500">
+              {tr(
+                "Paste login:password per line and upload maFiles. Account name defaults to login.",
+                "Вставьте логин:пароль построчно и загрузите maFile. Название аккаунта = логин.",
+              )}
+            </p>
+          </div>
+
+          {bulkStatus ? (
+            <div
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                bulkStatus.isError
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              {bulkStatus.message}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4">
+            <textarea
+              className="min-h-[140px] w-full rounded-lg border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-900 shadow-sm outline-none focus:border-neutral-400"
+              placeholder={tr("login:password (one per line)", "логин:пароль (по одному на строку)")}
+              value={bulkCredentials}
+              onChange={(event) => setBulkCredentials(event.target.value)}
+            />
+            <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+              <input
+                ref={bulkMafileInputRef}
+                type="file"
+                multiple
+                accept=".maFile,.json,application/json"
+                className="hidden"
+                onChange={handleBulkMafileChange}
+              />
+              <button
+                type="button"
+                onClick={() => bulkMafileInputRef.current?.click()}
+                className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-100"
+              >
+                {tr("Upload maFiles", "Загрузить maFile")}
+              </button>
+              <span>
+                {tr(
+                  `Matched maFiles: ${Object.keys(bulkMafileMap).length}`,
+                  `Совпадений maFile: ${Object.keys(bulkMafileMap).length}`,
+                )}
+              </span>
+            </div>
+            {bulkMafileErrors.length ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {bulkMafileErrors.join("; ")}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleBulkSubmit}
+                disabled={bulkSubmitting}
+                className="rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-neutral-800 disabled:opacity-60"
+              >
+                {bulkSubmitting ? tr("Uploading...", "Загружаем...") : tr("Create accounts", "Создать аккаунты")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
