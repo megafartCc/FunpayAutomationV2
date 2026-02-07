@@ -2019,7 +2019,15 @@ def _handle_refund_release(
 
     if released:
 
-        send_message_by_owner(logger, account, buyer, RENTAL_REFUND_MESSAGE)
+        send_message_by_owner(
+            logger,
+            account,
+            buyer,
+            RENTAL_REFUND_MESSAGE,
+            mysql_cfg=mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=target_workspace_id,
+        )
 
 
 

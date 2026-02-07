@@ -124,14 +124,14 @@ async def _deauthorize_via_twofactor_manage_action(steam: CustomSteam) -> bool:
                 success = data.get("success")
                 return success in {1, True, "1", "true"}
             except Exception:
-                pass
+                return False
         lowered = (body or "").lower()
         if "\"success\":1" in lowered or "\"success\":true" in lowered:
             return True
-        # Some responses are empty/HTML but the request still succeeds.
-        return True
+        # Unknown response: treat as failure to allow other fallbacks.
+        return False
     except Exception:
-        return True
+        return False
 
 
 async def _ensure_playwright_chromium_installed() -> bool:

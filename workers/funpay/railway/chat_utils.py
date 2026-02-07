@@ -73,20 +73,111 @@ def send_chat_message(logger: logging.Logger, account: Account, chat_id: int, te
             return False
 
 
-def send_message_by_owner(logger: logging.Logger, account: Account, owner: str | None, text: str) -> bool:
+def _fetch_chat_id_by_owner(
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+    owner: str,
+) -> int | None:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key:
+        return None
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "chats"):
+            return None
+        cursor.execute(
+            """
+            SELECT chat_id
+            FROM chats
+            WHERE user_id = %s AND workspace_id <=> %s AND LOWER(name) = %s
+            ORDER BY updated_at DESC, last_message_time DESC, id DESC
+            LIMIT 1
+            """,
+            (int(user_id), int(workspace_id) if workspace_id is not None else None, owner_key),
+        )
+        row = cursor.fetchone()
+        if row and row.get("chat_id") is not None:
+            return int(row["chat_id"])
+    finally:
+        conn.close()
+    if owner_key.startswith("@"):
+        trimmed = owner_key.lstrip("@").strip()
+        if not trimmed:
+            return None
+        cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+        conn = mysql.connector.connect(**cfg)
+        try:
+            cursor = conn.cursor(dictionary=True)
+            if not table_exists(cursor, "chats"):
+                return None
+            cursor.execute(
+                """
+                SELECT chat_id
+                FROM chats
+                WHERE user_id = %s AND workspace_id <=> %s AND LOWER(name) = %s
+                ORDER BY updated_at DESC, last_message_time DESC, id DESC
+                LIMIT 1
+                """,
+                (int(user_id), int(workspace_id) if workspace_id is not None else None, trimmed),
+            )
+            row = cursor.fetchone()
+            if row and row.get("chat_id") is not None:
+                return int(row["chat_id"])
+        finally:
+            conn.close()
+    return None
+
+
+def send_message_by_owner(
+    logger: logging.Logger,
+    account: Account,
+    owner: str | None,
+    text: str,
+    *,
+    mysql_cfg: dict | None = None,
+    user_id: int | None = None,
+    workspace_id: int | None = None,
+) -> bool:
     if not owner:
         return False
     owner_key = normalize_owner_name(owner)
     if not owner_key:
         return False
+    if mysql_cfg is not None and user_id is not None:
+        try:
+            chat_id = _fetch_chat_id_by_owner(mysql_cfg, int(user_id), workspace_id, owner)
+        except Exception as exc:
+            logger.warning("Failed to resolve chat id for %s from DB: %s", owner, exc)
+            chat_id = None
+        if chat_id:
+            return send_chat_message(logger, account, int(chat_id), text)
     try:
         chat = account.get_chat_by_name(owner, True)
     except Exception as exc:
         logger.warning("Failed to resolve chat for %s: %s", owner, exc)
-        return False
+        chat = None
+    if not chat:
+        try:
+            chats_map = account.get_chats(update=True) or {}
+            for candidate in chats_map.values():
+                name = getattr(candidate, "name", None)
+                if name and normalize_owner_name(name) == owner_key:
+                    chat = candidate
+                    break
+        except Exception as exc:
+            logger.warning("Failed to scan chats for %s: %s", owner, exc)
+            chat = None
     chat_id = getattr(chat, "id", None)
     if not chat_id:
-        logger.warning("Chat not found for %s.", owner)
+        logger.warning(
+            "Chat not found for %s (user_id=%s workspace=%s).",
+            owner,
+            user_id,
+            workspace_id,
+        )
         return False
     return send_chat_message(logger, account, int(chat_id), text)
 

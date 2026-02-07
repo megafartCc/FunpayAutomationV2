@@ -203,6 +203,9 @@ def _should_delay_expire(
     account: Account,
     owner: str,
     account_row: dict,
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
     state: RentalMonitorState,
     now: datetime,
 ) -> bool:
@@ -243,6 +246,9 @@ def _should_delay_expire(
             account,
             owner,
             f"{RENTAL_EXPIRE_DELAY_MESSAGE}{lot_line}{extra}",
+            mysql_cfg=mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
         )
         state.expire_delay_notified.add(account_id)
     return True
@@ -326,7 +332,15 @@ def process_rental_monitor(
                     account_ids=[int(row.get("id") or 0)],
                 )
                 if started_count:
-                    send_message_by_owner(logger, account, owner, RENTAL_CODE_AUTO_START_MESSAGE)
+                    send_message_by_owner(
+                        logger,
+                        account,
+                        owner,
+                        RENTAL_CODE_AUTO_START_MESSAGE,
+                        mysql_cfg=mysql_cfg,
+                        user_id=int(user_id),
+                        workspace_id=workspace_id,
+                    )
                 continue
         account_id = int(row.get("id"))
         owner = row.get("owner")
@@ -346,7 +360,15 @@ def process_rental_monitor(
             if unfrozen:
                 frozen = False
                 row["rental_frozen"] = 0
-                send_message_by_owner(logger, account, owner, RENTAL_PAUSE_EXPIRED_MESSAGE)
+                send_message_by_owner(
+                    logger,
+                    account,
+                    owner,
+                    RENTAL_PAUSE_EXPIRED_MESSAGE,
+                    mysql_cfg=mysql_cfg,
+                    user_id=int(user_id),
+                    workspace_id=workspace_id,
+                )
                 state.freeze_cache[account_id] = False
                 continue
         prev = state.freeze_cache.get(account_id)
@@ -355,7 +377,15 @@ def process_rental_monitor(
         elif prev != frozen:
             state.freeze_cache[account_id] = frozen
             message = RENTAL_FROZEN_MESSAGE if frozen else RENTAL_UNFROZEN_MESSAGE
-            send_message_by_owner(logger, account, owner, message)
+            send_message_by_owner(
+                logger,
+                account,
+                owner,
+                message,
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
 
     for row in rentals:
         account_id = int(row.get("id"))
@@ -389,12 +419,20 @@ def process_rental_monitor(
                 if 0 < seconds_left <= remind_minutes * 60:
                     if state.expire_soon_notified.get(account_id) != expiry_ts:
                         message = build_expire_soon_message(row, seconds_left)
-                        send_message_by_owner(logger, account, owner, message)
+                        send_message_by_owner(
+                            logger,
+                            account,
+                            owner,
+                            message,
+                            mysql_cfg=mysql_cfg,
+                            user_id=int(user_id),
+                            workspace_id=workspace_id,
+                        )
                         state.expire_soon_notified[account_id] = expiry_ts
                 else:
                     state.expire_soon_notified.pop(account_id, None)
             continue
-        if _should_delay_expire(logger, account, owner, row, state, now):
+        if _should_delay_expire(logger, account, owner, row, mysql_cfg, int(user_id), workspace_id, state, now):
             continue
 
         if env_bool("AUTO_STEAM_DEAUTHORIZE_ON_EXPIRE", True):
@@ -425,7 +463,15 @@ def process_rental_monitor(
             workspace_id=workspace_id,
         )
         if released:
-            send_message_by_owner(logger, account, owner, RENTAL_EXPIRED_MESSAGE)
+            send_message_by_owner(
+                logger,
+                account,
+                owner,
+                RENTAL_EXPIRED_MESSAGE,
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
             order_id = fetch_latest_order_id_for_account(
                 mysql_cfg,
                 account_id=account_id,
@@ -454,5 +500,13 @@ def process_rental_monitor(
                     f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
                     f"Подтвердите тут -> https://funpay.com/orders/{order_id}/"
                 )
-            send_message_by_owner(logger, account, owner, confirm_message)
+            send_message_by_owner(
+                logger,
+                account,
+                owner,
+                confirm_message,
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
         _clear_expire_delay_state(state, account_id)
