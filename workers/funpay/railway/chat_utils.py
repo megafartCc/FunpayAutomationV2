@@ -162,11 +162,24 @@ def send_message_by_owner(
     if not chat:
         try:
             chats_map = account.get_chats(update=True) or {}
+            owner_key_alt = owner_key.lstrip("@")
             for candidate in chats_map.values():
                 name = getattr(candidate, "name", None)
-                if name and normalize_owner_name(name) == owner_key:
+                if not name:
+                    continue
+                name_key = normalize_owner_name(name)
+                if name_key == owner_key or (owner_key_alt and name_key == owner_key_alt):
                     chat = candidate
                     break
+            if not chat and owner_key_alt and len(owner_key_alt) >= 3:
+                for candidate in chats_map.values():
+                    name = getattr(candidate, "name", None)
+                    if not name:
+                        continue
+                    name_key = normalize_owner_name(name)
+                    if owner_key_alt in name_key or name_key in owner_key_alt:
+                        chat = candidate
+                        break
         except Exception as exc:
             logger.warning("Failed to scan chats for %s: %s", owner, exc)
             chat = None

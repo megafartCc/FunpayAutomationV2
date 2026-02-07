@@ -465,6 +465,7 @@ def process_rental_monitor(
             user_id=int(user_id),
             workspace_id=workspace_id,
         )
+
         if released:
             order_id = fetch_latest_order_id_for_account(
                 mysql_cfg,
@@ -489,28 +490,33 @@ def process_rental_monitor(
                     account_name=row.get("account_name") or row.get("login"),
                 )
             confirm_url = f"https://funpay.com/orders/{order_id}/" if order_id else None
-            send_message_by_owner(
-                logger,
-                account,
-                owner,
-                RENTAL_EXPIRED_MESSAGE,
-                mysql_cfg=mysql_cfg,
-                user_id=int(user_id),
-                workspace_id=workspace_id,
-            )
             confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
             if confirm_url:
                 confirm_message = (
                     f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
-                    f"\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u0442\u0443\u0442 -> {confirm_url}"
+                    f"Подтвердите тут -> {confirm_url}"
                 )
-            send_message_by_owner(
+            full_message = f"{RENTAL_EXPIRED_MESSAGE}\n\n{confirm_message}"
+            sent = send_message_by_owner(
                 logger,
                 account,
                 owner,
-                confirm_message,
+                full_message,
                 mysql_cfg=mysql_cfg,
                 user_id=int(user_id),
                 workspace_id=workspace_id,
             )
+            if not sent:
+                log_notification_event(
+                    mysql_cfg,
+                    event_type="rental_expired_message",
+                    status="failed",
+                    title="Rental expired message failed",
+                    message="Failed to send expiration message to buyer.",
+                    owner=owner,
+                    account_name=row.get("account_name") or row.get("login"),
+                    account_id=account_id,
+                    user_id=int(user_id),
+                    workspace_id=workspace_id,
+                )
         _clear_expire_delay_state(state, account_id)
