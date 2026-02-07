@@ -1,0 +1,1 @@
+-r workers/funpay/requirements.txt
