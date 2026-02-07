@@ -99,6 +99,8 @@ def release_account_in_db(
             updates.append("rental_frozen_at = NULL")
         if column_exists(cursor, "accounts", "rental_assigned_at"):
             updates.append("rental_assigned_at = NULL")
+        if column_exists(cursor, "accounts", "last_code_at"):
+            updates.append("last_code_at = NULL")
         params: list = [int(account_id), int(user_id)]
         cursor.execute(
             f"UPDATE accounts SET {', '.join(updates)} WHERE id = %s AND user_id = %s",

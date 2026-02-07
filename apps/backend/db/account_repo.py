@@ -486,6 +486,7 @@ class MySQLAccountRepo:
         try:
             cursor = conn.cursor()
             has_assigned_at = self._column_exists(cursor, "rental_assigned_at")
+            has_last_code_at = self._column_exists(cursor, "last_code_at")
             updates = ["owner = %s", "rental_start = NULL", "last_rented_workspace_id = %s"]
             params: list = [owner, workspace_id]
             if rental_hours is not None or rental_minutes is not None:
@@ -498,6 +499,8 @@ class MySQLAccountRepo:
             if has_assigned_at:
                 updates.append("rental_assigned_at = %s")
                 params.append(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+            if has_last_code_at:
+                updates.append("last_code_at = NULL")
             cursor.execute(
                 f"""
                 UPDATE accounts
@@ -521,6 +524,8 @@ class MySQLAccountRepo:
                 updates.append("rental_frozen_at = NULL")
             if self._column_exists(cursor, "rental_assigned_at"):
                 updates.append("rental_assigned_at = NULL")
+            if self._column_exists(cursor, "last_code_at"):
+                updates.append("last_code_at = NULL")
             params: list = [account_id, user_id]
             workspace_clause = ""
             if self._column_exists(cursor, "last_rented_workspace_id"):
@@ -700,6 +705,7 @@ class MySQLAccountRepo:
             has_frozen_at = self._column_exists(cursor, "rental_frozen_at")
             has_account_frozen = self._column_exists(cursor, "account_frozen")
             has_rental_frozen = self._column_exists(cursor, "rental_frozen")
+            has_last_code_at = self._column_exists(cursor, "last_code_at")
             try:
                 conn.start_transaction()
             except Exception:
@@ -717,6 +723,8 @@ class MySQLAccountRepo:
                 updates.append("rental_assigned_at = NULL")
             if has_frozen_at:
                 updates.append("rental_frozen_at = NULL")
+            if has_last_code_at:
+                updates.append("last_code_at = NULL")
             if has_last_rented:
                 updates.append("last_rented_workspace_id = %s")
                 params.append(int(workspace_id) if workspace_id is not None else None)
@@ -743,6 +751,8 @@ class MySQLAccountRepo:
                 old_updates.append("rental_frozen_at = NULL")
             if has_low_priority:
                 old_updates.append("low_priority = 1")
+            if has_last_code_at:
+                old_updates.append("last_code_at = NULL")
             old_params: list = [int(old_account_id), int(user_id)]
             old_where = "id = %s AND user_id = %s"
             cursor.execute(

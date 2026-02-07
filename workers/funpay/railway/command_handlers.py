@@ -55,6 +55,7 @@ from .lot_utils import (
     extend_rental_for_buyer,
     replace_rental_account,
     start_rental_for_owner,
+    touch_last_code_at,
 )
 from .order_utils import fetch_previous_owner_for_account
 from .pending_utils import set_pending_command
@@ -600,6 +601,20 @@ def handle_code_command(
         start_rental_for_owner(mysql_cfg, int(user_id), sender_username, workspace_id, account_ids)
         lines.extend(["", RENTAL_STARTED_MESSAGE])
 
+    account_ids = [
+        int(acc.get("id"))
+        for acc in active_accounts
+        if acc.get("id") is not None
+    ]
+    if account_ids:
+        touch_last_code_at(
+            mysql_cfg,
+            user_id=int(user_id),
+            owner=sender_username,
+            workspace_id=workspace_id,
+            account_ids=account_ids,
+        )
+
     send_chat_message(logger, account, chat_id, "\n".join(lines))
     return True
 
@@ -674,11 +689,11 @@ def handle_low_priority_replace_command(
             details=suggestion_details,
         )
 
-    rental_start = _parse_datetime(selected.get("rental_start"))
-    if rental_start is None:
+    last_code_at = _parse_datetime(selected.get("last_code_at"))
+    if last_code_at is None:
         send_chat_message(logger, account, chat_id, LP_REPLACE_NO_CODE_MESSAGE)
         return True
-    if datetime.utcnow() - rental_start > timedelta(minutes=LP_REPLACE_WINDOW_MINUTES):
+    if datetime.utcnow() - last_code_at > timedelta(minutes=LP_REPLACE_WINDOW_MINUTES):
         send_chat_message(logger, account, chat_id, LP_REPLACE_TOO_LATE_MESSAGE)
         return True
     owner_key = normalize_owner_name(sender_username)

@@ -244,6 +244,7 @@ def fetch_owner_accounts(
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
         has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
+        has_last_code_at = column_exists(cursor, "accounts", "last_code_at")
         has_lot_workspace = has_lots and column_exists(cursor, "lots", "workspace_id")
         params: list = [owner_key, int(user_id)]
         workspace_clause = ""
@@ -259,6 +260,7 @@ def fetch_owner_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       {'a.last_code_at' if has_last_code_at else 'NULL AS last_code_at'},
                        {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
                        {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
                        {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
@@ -278,6 +280,7 @@ def fetch_owner_accounts(
                 f"""
                 SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
                        a.rental_start, a.rental_duration, a.rental_duration_minutes,
+                       {'a.last_code_at' if has_last_code_at else 'NULL AS last_code_at'},
                        {'a.account_frozen' if column_exists(cursor, 'accounts', 'account_frozen') else '0 AS account_frozen'},
                        {'a.rental_frozen' if column_exists(cursor, 'accounts', 'rental_frozen') else '0 AS rental_frozen'},
                        {'a.rental_frozen_at' if has_rental_frozen_at else 'NULL AS rental_frozen_at'},
@@ -371,6 +374,7 @@ def assign_account_to_buyer(
             return False
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_assigned_at = column_exists(cursor, "accounts", "rental_assigned_at")
+        has_last_code_at = column_exists(cursor, "accounts", "last_code_at")
         updates = [
             "owner = %s",
             "rental_duration = %s",
@@ -380,6 +384,8 @@ def assign_account_to_buyer(
         params: list = [owner_value, int(units), int(total_minutes)]
         if has_assigned_at:
             updates.append("rental_assigned_at = UTC_TIMESTAMP()")
+        if has_last_code_at:
+            updates.append("last_code_at = NULL")
         if has_last_rented_workspace:
             updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id) if workspace_id is not None else None)
@@ -431,6 +437,45 @@ def start_rental_for_owner(
             UPDATE accounts
             SET {', '.join(updates)}
             WHERE user_id = %s AND LOWER(owner) = %s AND rental_start IS NULL{workspace_clause}{id_clause}
+            """,
+            tuple(params),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def touch_last_code_at(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    owner: str,
+    workspace_id: int | None = None,
+    account_ids: list[int] | None = None,
+) -> int:
+    owner_key = normalize_owner_name(owner)
+    if not owner_key or not account_ids:
+        return 0
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not column_exists(cursor, "accounts", "last_code_at"):
+            return 0
+        params: list = [int(user_id), owner_key]
+        workspace_clause = ""
+        if workspace_id is not None and column_exists(cursor, "accounts", "last_rented_workspace_id"):
+            workspace_clause = " AND last_rented_workspace_id = %s"
+            params.append(int(workspace_id))
+        placeholders = ", ".join(["%s"] * len(account_ids))
+        id_clause = f" AND id IN ({placeholders})"
+        params.extend([int(acc_id) for acc_id in account_ids])
+        cursor.execute(
+            f"""
+            UPDATE accounts
+            SET last_code_at = UTC_TIMESTAMP()
+            WHERE user_id = %s AND LOWER(owner) = %s{workspace_clause}{id_clause}
             """,
             tuple(params),
         )
@@ -575,6 +620,7 @@ def replace_rental_account(
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
         has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
+        has_last_code_at = column_exists(cursor, "accounts", "last_code_at")
         rental_start_str = rental_start.strftime("%Y-%m-%d %H:%M:%S")
         try:
             conn.start_transaction()
@@ -592,6 +638,8 @@ def replace_rental_account(
             updates.append("rental_assigned_at = NULL")
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
+        if has_last_code_at:
+            updates.append("last_code_at = NULL")
         if has_last_rented:
             updates.append("last_rented_workspace_id = %s")
             params.append(int(workspace_id) if workspace_id is not None else None)
@@ -617,6 +665,8 @@ def replace_rental_account(
             old_updates.append("rental_frozen_at = NULL")
         if has_low_priority:
             old_updates.append("`low_priority` = 1")
+        if has_last_code_at:
+            old_updates.append("last_code_at = NULL")
         old_params: list = [int(old_account_id), int(user_id)]
         old_where = "id = %s AND user_id = %s"
         if owner_value:

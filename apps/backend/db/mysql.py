@@ -214,6 +214,7 @@ def ensure_schema() -> None:
                 owner VARCHAR(255) DEFAULT NULL,
                 rental_start DATETIME DEFAULT NULL,
                 rental_assigned_at DATETIME DEFAULT NULL,
+                last_code_at DATETIME DEFAULT NULL,
                 `low_priority` TINYINT(1) NOT NULL DEFAULT 0,
                 account_frozen TINYINT(1) NOT NULL DEFAULT 0,
                 rental_frozen TINYINT(1) NOT NULL DEFAULT 0,
@@ -246,6 +247,15 @@ def ensure_schema() -> None:
         )
         if cursor.fetchone() is None:
             cursor.execute("ALTER TABLE accounts ADD COLUMN rental_assigned_at DATETIME NULL AFTER rental_start")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = 'last_code_at'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN last_code_at DATETIME NULL AFTER rental_assigned_at")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS lots (
