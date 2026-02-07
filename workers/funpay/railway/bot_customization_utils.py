@@ -225,7 +225,7 @@ def build_commands_text(settings: dict[str, Any], display_map: dict[str, list[st
     for item in COMMAND_DEFINITIONS:
         key = item["key"]
         aliases = display_map.get(key) or [DEFAULT_COMMANDS.get(key, "")]
-        label = " / ".join(aliases)
+        label = " / ".join(str(alias) for alias in aliases)
         suffix = COMMAND_USAGE_SUFFIX.get(key, "")
         lines.append(f"{label}{suffix} — {item['desc']}")
     return "\n".join(lines)

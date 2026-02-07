@@ -1449,7 +1449,7 @@ def _build_ai_context(
 
         sections.extend(rental_lines)
 
-    return "\n".join(sections) if sections else None
+    return "\n".join(str(section) for section in sections) if sections else None
 
 
 
@@ -2575,7 +2575,7 @@ def log_message(
 
                     if lines:
 
-                        intent_context = "\n".join(lines[-4:])
+                        intent_context = "\n".join(str(line) for line in lines[-4:])
 
                 except Exception:
 

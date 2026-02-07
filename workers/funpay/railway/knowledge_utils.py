@@ -128,7 +128,7 @@ def build_knowledge_context(question: str, *, max_chars: int, max_items: int) ->
     scored: list[tuple[int, dict[str, Any]]] = []
     for item in _knowledge_items():
         keywords = item.get("keywords", [])
-        keyword_tokens = _tokenize(" ".join(keywords))
+        keyword_tokens = _tokenize(" ".join(str(keyword) for keyword in keywords))
         overlap = len(tokens & keyword_tokens)
         score = overlap * 3
         for kw in keywords:
