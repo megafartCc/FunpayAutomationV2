@@ -16,3 +16,4 @@ rsa==4.7
 bitstring==3.1.2
 protobuf==5.28.2
 playwright==1.49.0
+pydantic==2.7.4
