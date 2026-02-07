@@ -69,7 +69,12 @@ const LotsPage: React.FC = () => {
   const accountOptions = useMemo(
     () =>
       accounts.map((acc) => {
-        const details = [accountStatusLabel(acc), [workspaceLabel(acc), lastRentedLabel(acc)].filter(Boolean).join(", ")]
+        const loginLabel = acc.login ? `Логин: ${acc.login}` : "";
+        const details = [
+          loginLabel,
+          accountStatusLabel(acc),
+          [workspaceLabel(acc), lastRentedLabel(acc)].filter(Boolean).join(", "),
+        ]
           .filter(Boolean)
           .join(" | ");
         return { id: acc.id, label: `ID ${acc.id}${details ? ` | ${details}` : ""}` };
