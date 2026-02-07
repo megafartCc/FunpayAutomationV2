@@ -75,7 +75,6 @@ def _apply_edit(
     *,
     fields: dict[str, Any],
     payload: dict[str, Any],
-    current_active: bool,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], bool]:
     updated = dict(fields)
     changes: list[dict[str, Any]] = []
@@ -100,18 +99,19 @@ def _apply_edit(
     if payload.get("desc_en") is not None:
         set_field("fields[desc][en]", str(payload["desc_en"]))
 
-    active_value = current_active
+    active_value: bool | None = None
     if "active" in payload and payload["active"] is not None:
         active_value = bool(payload["active"])
 
-    if active_value:
+    if active_value is True:
         set_field("active", "on")
-    else:
+    elif active_value is False:
         if "active" in updated:
             changes.append({"field": "active", "from": updated.get("active"), "to": None})
         updated.pop("active", None)
 
-    return updated, changes, active_value
+    final_active = bool(updated.get("active") == "on")
+    return updated, changes, final_active
 
 
 def _load_lot_fields(
@@ -127,7 +127,9 @@ def _load_lot_fields(
     account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
     account.get()
     lot_fields = account.get_lot_fields(lot_id)
-    fields = dict(lot_fields.fields)
+    # Normalize fields to match a real form submission payload.
+    lot_fields.renew_fields()
+    fields = {k: ("" if v is None else v) for k, v in dict(lot_fields.fields).items()}
     snapshot = _extract_snapshot(fields)
     return account, fields, snapshot
 
@@ -165,7 +167,6 @@ def preview_funpay_lot_edit(
     updated_fields, changes, active_value = _apply_edit(
         fields=raw_fields,
         payload=payload,
-        current_active=bool(snapshot.get("active")),
     )
     return updated_fields, changes, active_value, snapshot
 
@@ -189,7 +190,6 @@ def save_funpay_lot_edit(
     updated_fields, changes, active_value = _apply_edit(
         fields=raw_fields,
         payload=payload,
-        current_active=bool(snapshot.get("active")),
     )
     if "offer_id" not in updated_fields:
         updated_fields["offer_id"] = str(lot_id)

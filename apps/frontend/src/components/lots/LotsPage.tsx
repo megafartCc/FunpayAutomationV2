@@ -22,6 +22,7 @@ const LotsPage: React.FC = () => {
   const [editPrice, setEditPrice] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editActive, setEditActive] = useState(true);
+  const [editOriginalActive, setEditOriginalActive] = useState<boolean | null>(null);
   const [editSummaryRu, setEditSummaryRu] = useState("");
   const [editSummaryEn, setEditSummaryEn] = useState("");
   const [editDescRu, setEditDescRu] = useState("");
@@ -198,6 +199,7 @@ const LotsPage: React.FC = () => {
     setEditPrice("");
     setEditAmount("");
     setEditActive(true);
+    setEditOriginalActive(null);
     setEditSummaryRu("");
     setEditSummaryEn("");
     setEditDescRu("");
@@ -214,6 +216,7 @@ const LotsPage: React.FC = () => {
       setEditPrice(snapshot.price !== null && snapshot.price !== undefined ? String(snapshot.price) : "");
       setEditAmount(snapshot.amount !== null && snapshot.amount !== undefined ? String(snapshot.amount) : "");
       setEditActive(!!snapshot.active);
+      setEditOriginalActive(!!snapshot.active);
       setEditSummaryRu(snapshot.summary_ru || "");
       setEditSummaryEn(snapshot.summary_en || "");
       setEditDescRu(snapshot.desc_ru || "");
@@ -236,10 +239,12 @@ const LotsPage: React.FC = () => {
     if (amountValue && Number.isNaN(amountNumber)) {
       throw new Error("Количество должно быть числом.");
     }
+    const activeChanged =
+      editOriginalActive === null ? true : editActive !== editOriginalActive;
     return {
       price: priceNumber,
       amount: amountNumber,
-      active: editActive,
+      active: activeChanged ? editActive : null,
       summary_ru: editSummaryRu,
       summary_en: editSummaryEn,
       desc_ru: editDescRu,
