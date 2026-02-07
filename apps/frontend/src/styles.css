@@ -64,6 +64,9 @@
   .dashboard-list-scroll {
     max-height: min(760px, calc(100vh - 380px));
   }
+  .orders-history-scroll {
+    max-height: min(900px, calc(100vh - 260px));
+  }
 }
 
 /* Hide native password reveal/clear buttons (Edge/IE) to avoid double eye icon */

@@ -168,7 +168,7 @@ const OrdersHistoryPage: React.FC<OrdersHistoryPageProps> = ({ onToast }) => {
         </div>
         <div className="overflow-x-hidden">
           <div className="min-w-0">
-            <div className="mt-3 list-scroll">
+            <div className="mt-3 list-scroll orders-history-scroll">
               <div
                 className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                 style={{ gridTemplateColumns: ORDERS_GRID }}

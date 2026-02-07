@@ -397,6 +397,19 @@ def freeze_account(
     success = accounts_repo.set_account_frozen(account_id, int(user.id), int(workspace_id), payload.frozen)
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
+    account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
+    if account and account.get("owner"):
+        notify_owner(
+            user_id=int(user.id),
+            workspace_id=int(workspace_id),
+            owner=account.get("owner"),
+            text=(
+                "Администратор заморозил ваш аккаунт. Доступ приостановлен."
+                if payload.frozen
+                else "Администратор разморозил ваш аккаунт. Доступ восстановлен. "
+                     "Чтобы получить код еще раз, пропишите команду !код."
+            ),
+        )
     return {"success": True, "frozen": payload.frozen}
 
 
