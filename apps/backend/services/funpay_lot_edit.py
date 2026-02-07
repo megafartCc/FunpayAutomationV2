@@ -282,6 +282,11 @@ def preview_funpay_lot_edit(
         fields=raw_fields,
         payload=payload,
     )
+    if payload.get("active") is not False:
+        if updated_fields.get("active") != "on":
+            changes.append({"field": "active", "from": updated_fields.get("active"), "to": "on"})
+        updated_fields["active"] = "on"
+        active_value = True
     return updated_fields, changes, active_value, snapshot
 
 
@@ -305,6 +310,11 @@ def save_funpay_lot_edit(
         fields=raw_fields,
         payload=payload,
     )
+    if payload.get("active") is not False:
+        if updated_fields.get("active") != "on":
+            changes.append({"field": "active", "from": updated_fields.get("active"), "to": "on"})
+        updated_fields["active"] = "on"
+        active_value = True
     if "offer_id" not in updated_fields:
         updated_fields["offer_id"] = str(lot_id)
     updated_fields["csrf_token"] = account.csrf_token
