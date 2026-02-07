@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { api, AccountItem, FunPayLotDetails, LotItem } from "../../services/api";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { api, AccountItem, LotItem } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 
 const LotsPage: React.FC = () => {
@@ -12,23 +12,8 @@ const LotsPage: React.FC = () => {
   const [lotNumber, setLotNumber] = useState("");
   const [accountId, setAccountId] = useState("");
   const [lotUrl, setLotUrl] = useState("");
-  const [editingLot, setEditingLot] = useState<number | null>(null);
-  const [displayName, setDisplayName] = useState("");
   const [syncingLot, setSyncingLot] = useState<number | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
-
-  const [manualLotId, setManualLotId] = useState<number | null>(null);
-  const [manualLot, setManualLot] = useState<FunPayLotDetails | null>(null);
-  const [manualTitle, setManualTitle] = useState("");
-  const [manualDescription, setManualDescription] = useState("");
-  const [manualTitleEn, setManualTitleEn] = useState("");
-  const [manualDescriptionEn, setManualDescriptionEn] = useState("");
-  const [manualPrice, setManualPrice] = useState("");
-  const [manualActive, setManualActive] = useState(true);
-  const [manualRawFields, setManualRawFields] = useState<Record<string, string> | null>(null);
-  const [manualLoading, setManualLoading] = useState(false);
-  const [manualSaving, setManualSaving] = useState(false);
-  const [manualAutoPricing, setManualAutoPricing] = useState(false);
 
   const hasFlag = (value?: number | string | null) => {
     if (value === null || value === undefined) return false;
@@ -103,8 +88,6 @@ const LotsPage: React.FC = () => {
       setStatus({ message: "Выберите рабочее пространство, чтобы редактировать лоты.", isError: true });
       setAccounts([]);
       setLots([]);
-      setManualLotId(null);
-      setManualLot(null);
       setLoading(false);
       return;
     }
@@ -129,96 +112,6 @@ const LotsPage: React.FC = () => {
       mounted = false;
     };
   }, [selectedWorkspaceId]);
-
-  const openManualPanel = async (lotNum: number) => {
-    if (selectedWorkspaceId === "all") return;
-    setManualLotId(lotNum);
-    setManualLoading(true);
-    try {
-      const details = await api.getFunPayLotDetails(lotNum, selectedWorkspaceId as number);
-      setManualLot(details);
-      setManualTitle(details.title || "");
-      setManualDescription(details.description || "");
-      setManualTitleEn(details.title_en || "");
-      setManualDescriptionEn(details.description_en || "");
-      setManualPrice(details.price !== null && details.price !== undefined ? String(details.price) : "");
-      setManualActive(Boolean(details.active));
-      setManualRawFields(details.raw_fields ? { ...details.raw_fields } : null);
-    } catch (err) {
-      setStatus({ message: (err as { message?: string })?.message || "Не удалось получить данные лота.", isError: true });
-    } finally {
-      setManualLoading(false);
-    }
-  };
-
-  const handleSaveManual = async () => {
-    if (selectedWorkspaceId === "all" || manualLotId === null) return;
-    const price = manualPrice.trim() === "" ? null : Number(manualPrice);
-    if (price !== null && Number.isNaN(price)) {
-      setStatus({ message: "Цена должна быть числом.", isError: true });
-      return;
-    }
-    setManualSaving(true);
-    try {
-      const updated = await api.updateFunPayLotDetails(
-        manualLotId,
-        {
-          title: manualTitle,
-          description: manualDescription,
-          title_en: manualTitleEn,
-          description_en: manualDescriptionEn,
-          price,
-          active: manualActive,
-          raw_fields: manualRawFields,
-        },
-        selectedWorkspaceId as number,
-      );
-      setManualLot(updated);
-      setManualRawFields(updated.raw_fields ? { ...updated.raw_fields } : manualRawFields);
-      setStatus({ message: `Лот #${manualLotId} обновлён.` });
-    } catch (err) {
-      setStatus({ message: (err as { message?: string })?.message || "Не удалось обновить лот.", isError: true });
-    } finally {
-      setManualSaving(false);
-    }
-  };
-
-  const handleManualAutoPrice = async () => {
-    if (selectedWorkspaceId === "all" || manualLotId === null) return;
-    const price = Number(manualPrice);
-    if (Number.isNaN(price)) {
-      setStatus({ message: "Введите цену для ручного авто-прайса.", isError: true });
-      return;
-    }
-    setManualAutoPricing(true);
-    try {
-      const result = await api.manualAutoPriceLot({ lot_number: manualLotId, price }, selectedWorkspaceId as number);
-      await openManualPanel(manualLotId);
-      setStatus({ message: result.changed ? "Цена обновлена." : "Цена уже актуальна." });
-    } catch (err) {
-      setStatus({ message: (err as { message?: string })?.message || "Не удалось применить авто-прайс.", isError: true });
-    } finally {
-      setManualAutoPricing(false);
-    }
-  };
-
-  const startEdit = (lot: LotItem) => {
-    setEditingLot(lot.lot_number);
-    setDisplayName(lot.display_name || "");
-  };
-
-  const handleSaveDisplay = async () => {
-    if (selectedWorkspaceId === "all" || editingLot === null) return;
-    try {
-      const updated = await api.updateLot(editingLot, { display_name: displayName || null }, selectedWorkspaceId as number);
-      setLots((prev) => prev.map((item) => (item.lot_number === editingLot ? { ...item, ...updated } : item)));
-      setStatus({ message: "Название лота обновлено." });
-      setEditingLot(null);
-      setDisplayName("");
-    } catch (err) {
-      setStatus({ message: (err as { message?: string })?.message || "Не удалось обновить лот.", isError: true });
-    }
-  };
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -251,10 +144,6 @@ const LotsPage: React.FC = () => {
     try {
       await api.deleteLot(lotNum, selectedWorkspaceId as number);
       setLots((prev) => prev.filter((item) => item.lot_number !== lotNum));
-      if (manualLotId === lotNum) {
-        setManualLotId(null);
-        setManualLot(null);
-      }
     } catch (err) {
       setStatus({ message: (err as { message?: string })?.message || "Не удалось удалить лот.", isError: true });
     }
@@ -292,7 +181,7 @@ const LotsPage: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Привязка лотов</h3>
-            <p className="text-sm text-neutral-500">Список лотов и ручное управление параметрами на FunPay.</p>
+            <p className="text-sm text-neutral-500">Список лотов и синхронизация заголовков на FunPay.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60" type="button" onClick={handleSyncAllTitles} disabled={syncingAll || selectedWorkspaceId === "all" || lots.length === 0}>
@@ -324,7 +213,11 @@ const LotsPage: React.FC = () => {
           <table className="min-w-[640px] w-full border-separate border-spacing-y-2 text-sm">
             <thead className="text-xs uppercase tracking-wide text-neutral-500">
               <tr>
-                <th className="px-3 py-2 text-left">Лот</th><th className="px-3 py-2 text-left">Аккаунт</th><th className="px-3 py-2 text-left">Статус</th><th className="px-3 py-2 text-left">Ссылка</th><th className="px-3 py-2 text-left">Отображаемое имя</th><th className="px-3 py-2"></th>
+                <th className="px-3 py-2 text-left">Лот</th>
+                <th className="px-3 py-2 text-left">Аккаунт</th>
+                <th className="px-3 py-2 text-left">Статус</th>
+                <th className="px-3 py-2 text-left">Ссылка</th>
+                <th className="px-3 py-2 text-left">Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -337,53 +230,20 @@ const LotsPage: React.FC = () => {
                     <td className="px-3 py-3 text-neutral-700">{lot.account_name ?? "-"} (ID {lot.account_id})</td>
                     <td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusInfo.className}`}>{statusInfo.label}</span></td>
                     <td className="px-3 py-3">{lot.lot_url ? <a className="text-emerald-600 hover:underline" href={lot.lot_url} target="_blank" rel="noreferrer">{lot.lot_url}</a> : "-"}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <input className="w-48 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs" value={editingLot === lot.lot_number ? displayName : lot.display_name || ""} onFocus={() => startEdit(lot)} onChange={(e) => { if (editingLot !== lot.lot_number) startEdit(lot); setDisplayName(e.target.value); }} />
-                        <button className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60" type="button" onClick={handleSaveDisplay} disabled={editingLot !== lot.lot_number}>Сохранить</button>
-                      </div>
-                    </td>
                     <td className="rounded-r-xl px-3 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-60" type="button" onClick={() => handleSyncTitle(lot.lot_number)} disabled={syncingLot === lot.lot_number}>{syncingLot === lot.lot_number ? "Синхр..." : "Синхр. заголовок"}</button>
-                        <button className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100" type="button" onClick={() => openManualPanel(lot.lot_number)}>Ручное</button>
                         <button className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100" type="button" onClick={() => handleDelete(lot.lot_number)}>Удалить</button>
                       </div>
                     </td>
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={6} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">{loading ? "Загружаем лоты..." : "Лоты ещё не настроены."}</td></tr>
+                <tr><td colSpan={5} className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">{loading ? "Загружаем лоты..." : "Лоты ещё не настроены."}</td></tr>
               )}
             </tbody>
           </table>
         </div>
-
-        {manualLotId !== null ? (
-          <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-neutral-800">Ручное управление лотом #{manualLotId}</h4>
-              <button className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100" type="button" onClick={() => openManualPanel(manualLotId)} disabled={manualLoading}>{manualLoading ? "Загрузка..." : "Обновить"}</button>
-            </div>
-            {manualLot ? (
-              <div className="grid gap-3">
-                <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} placeholder="Заголовок (RU)" />
-                <textarea className="min-h-[120px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualDescription} onChange={(e) => setManualDescription(e.target.value)} placeholder="Описание (RU)" />
-                <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualTitleEn} onChange={(e) => setManualTitleEn(e.target.value)} placeholder="Short description (EN)" />
-                <textarea className="min-h-[120px] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualDescriptionEn} onChange={(e) => setManualDescriptionEn(e.target.value)} placeholder="Detailed description (EN)" />
-                <div className="grid gap-3 md:grid-cols-3">
-                  <input className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900" value={manualPrice} onChange={(e) => setManualPrice(e.target.value)} placeholder="Цена" />
-                  <label className="inline-flex items-center gap-2 text-sm text-neutral-700"><input type="checkbox" checked={manualActive} onChange={(e) => setManualActive(e.target.checked)} /> Лот активен</label>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60" type="button" onClick={handleSaveManual} disabled={manualSaving}>{manualSaving ? "Сохраняем..." : "Сохранить изменения"}</button>
-                  <button className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 disabled:opacity-60" type="button" onClick={handleManualAutoPrice} disabled={manualAutoPricing}>{manualAutoPricing ? "Запуск..." : "Ручной авто-прайс"}</button>
-                </div>
-                <div className="text-xs text-neutral-500">Текущие данные: цена {manualLot.price ?? "—"}, активен: {manualLot.active ? "да" : "нет"}</div>
-              </div>
-            ) : <p className="text-sm text-neutral-500">Загрузка данных лота...</p>}
-          </div>
-        ) : null}
       </div>
     </div>
   );

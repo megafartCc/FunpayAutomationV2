@@ -60,7 +60,6 @@ export type LotItem = {
   lot_number: number;
   account_id: number;
   account_name: string;
-  display_name?: string | null;
   lot_url?: string | null;
   workspace_id?: number | null;
 };
@@ -70,26 +69,6 @@ export type LotSyncResult = {
   updated: boolean;
 };
 
-export type FunPayLotDetails = {
-  lot_number: number;
-  title: string;
-  description: string;
-  title_en: string;
-  description_en: string;
-  price: number | null;
-  active: boolean;
-  raw_fields?: Record<string, string> | null;
-};
-
-export type FunPayLotUpdatePayload = {
-  title?: string | null;
-  description?: string | null;
-  title_en?: string | null;
-  description_en?: string | null;
-  price?: number | null;
-  active?: boolean | null;
-  raw_fields?: Record<string, string> | null;
-};
 
 export type RaiseCategoryItem = {
   category_id: number;
@@ -534,21 +513,6 @@ export const api = {
       workspaceId ? `/lots?workspace_id=${workspaceId}` : "/lots",
       { method: "GET" },
     ),
-  getFunPayLotDetails: (lotNumber: number, workspaceId?: number | null) =>
-    request<FunPayLotDetails>(withWorkspace(`/lots/${lotNumber}/funpay`, workspaceId), { method: "GET" }),
-  updateFunPayLotDetails: (lotNumber: number, payload: FunPayLotUpdatePayload, workspaceId?: number | null) =>
-    request<FunPayLotDetails>(withWorkspace(`/lots/${lotNumber}/funpay`, workspaceId), {
-      method: "PATCH",
-      body: payload,
-    }),
-  manualAutoPriceLot: (payload: { lot_number: number; price: number }, workspaceId?: number | null) =>
-    request<{ ok: boolean; changed: boolean; old_price?: number | null }>(
-      withWorkspace("/lots/manual-auto-price", workspaceId),
-      {
-        method: "POST",
-        body: payload,
-      },
-    ),
   listRaiseCategories: (workspaceId?: number | null) => {
     const params = new URLSearchParams();
     if (workspaceId) params.set("workspace_id", String(workspaceId));
@@ -620,11 +584,6 @@ export const api = {
       body: payload,
     }),
   createLot: (payload: LotCreatePayload) => request<LotItem>("/lots", { method: "POST", body: payload }),
-  updateLot: (lotNumber: number, payload: Partial<LotCreatePayload> & { display_name?: string | null }, workspaceId?: number) =>
-    request<LotItem>(
-      workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,
-      { method: "PATCH", body: payload },
-    ),
   deleteLot: (lotNumber: number, workspaceId?: number) =>
     request<{ ok: boolean }>(
       workspaceId ? `/lots/${lotNumber}?workspace_id=${workspaceId}` : `/lots/${lotNumber}`,

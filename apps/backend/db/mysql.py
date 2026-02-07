@@ -245,7 +245,6 @@ def ensure_schema() -> None:
                 lot_number INT NOT NULL,
                 account_id BIGINT NOT NULL,
                 lot_url TEXT NULL,
-                display_name VARCHAR(255) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_lots_account (account_id),
                 UNIQUE KEY uniq_lot_workspace (workspace_id, lot_number),
@@ -257,15 +256,6 @@ def ensure_schema() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
-        cursor.execute(
-            """
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'lots' AND column_name = 'display_name'
-            LIMIT 1
-            """
-        )
-        if cursor.fetchone() is None:
-            cursor.execute("ALTER TABLE lots ADD COLUMN display_name VARCHAR(255) NULL AFTER lot_url")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS order_history (
