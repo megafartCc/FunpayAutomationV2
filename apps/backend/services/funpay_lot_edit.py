@@ -393,6 +393,64 @@ def _apply_fields_to_lot(lot_fields: Any, fields: dict[str, Any]) -> None:
         lot_fields.active = bool(fields.get("active") == "on")
 
 
+def _post_lot_fields_browserlike(account: Account, lot_id: int, node_id: str | None, fields: dict[str, Any]) -> None:
+    headers = {
+        "accept": "application/json, text/javascript, */*; q=0.01",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "x-requested-with": "XMLHttpRequest",
+        "origin": "https://funpay.com",
+    }
+    if getattr(account, "user_agent", None):
+        headers["user-agent"] = account.user_agent
+    if node_id:
+        headers["referer"] = f"https://funpay.com/lots/offerEdit?node={node_id}&offer={lot_id}"
+    else:
+        headers["referer"] = f"https://funpay.com/lots/offerEdit?offer={lot_id}"
+    logger.info("FunPay lot sync request for %s: %s", lot_id, {k: fields.get(k) for k in sorted(fields.keys())})
+    response = account.method("post", "lots/offerSave", headers, fields, raise_not_200=True)
+    try:
+        json_response = response.json()
+    except Exception as exc:
+        logger.warning("FunPay lot sync response parse failed for %s: %s", lot_id, exc)
+        raise
+    logger.info(
+        "FunPay lot sync response for %s (status %s): %s",
+        lot_id,
+        getattr(response, "status_code", "n/a"),
+        json_response,
+    )
+    errors_dict: dict = {}
+    if (errors := json_response.get("errors")) or json_response.get("error"):
+        if isinstance(errors, dict):
+            errors_dict.update({str(k): str(v) for k, v in errors.items()})
+        elif isinstance(errors, (list, tuple)):
+            for item in errors:
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    key, value = item[0], item[1]
+                    errors_dict[str(key)] = str(value)
+        logger.warning(
+            "FunPay lot sync validation failed for %s. error=%s field_errors=%s",
+            lot_id,
+            json_response.get("error"),
+            errors_dict,
+        )
+        if fp_exceptions:
+            raise fp_exceptions.LotSavingError(response, json_response.get("error"), lot_id, errors_dict)
+        raise RuntimeError(f"FunPay save failed: {json_response}")
+
+    if node_id:
+        try:
+            account.method(
+                "get",
+                f"lots/{node_id}/trade",
+                {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                {},
+                raise_not_200=False,
+            )
+        except Exception:
+            pass
+
+
 def get_funpay_lot_snapshot(
     *,
     golden_key: str,
@@ -463,7 +521,6 @@ def save_funpay_lot_edit(
     updated_fields["csrf_token"] = account.csrf_token
     lot_fields.edit_fields(updated_fields)
     _apply_fields_to_lot(lot_fields, updated_fields)
-    account.save_lot(lot_fields)
-    if active_value and _force_lot_active is not None:
-        _force_lot_active(account, lot_id)
+    node_id = str(updated_fields.get("node_id") or "").strip() or None
+    _post_lot_fields_browserlike(account, lot_id, node_id, updated_fields)
     return changes
