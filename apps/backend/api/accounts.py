@@ -343,10 +343,52 @@ def assign_account(
 @router.post("/accounts/{account_id}/release")
 def release_account(account_id: int, workspace_id: int | None = None, user=Depends(get_current_user)) -> dict:
     _ensure_workspace(workspace_id, int(user.id))
+    account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
     success = accounts_repo.release_account(account_id, int(user.id), int(workspace_id))
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
-    return {"status": "ok"}
+
+    deauth_status = "skipped"
+    login = account.get("login") or account.get("account_name")
+    password = account.get("password") or ""
+    mafile_json = account.get("mafile_json")
+    if login and password and mafile_json:
+        try:
+            deauthorize_sessions(
+                steam_login=login,
+                steam_password=password,
+                mafile_json=mafile_json,
+            )
+            deauth_status = "ok"
+            notifications_repo.log_notification(
+                event_type="deauthorize",
+                status="ok",
+                title="Steam deauthorize on release",
+                message="Steam sessions deauthorized after rental release.",
+                owner=account.get("owner"),
+                account_name=account.get("account_name") or account.get("login"),
+                account_id=account_id,
+                user_id=int(user.id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
+            )
+        except SteamWorkerError as exc:
+            deauth_status = "failed"
+            notifications_repo.log_notification(
+                event_type="deauthorize",
+                status="failed",
+                title="Steam deauthorize on release",
+                message=f"Steam deauthorize after release failed: {exc.message}",
+                owner=account.get("owner"),
+                account_name=account.get("account_name") or account.get("login"),
+                account_id=account_id,
+                user_id=int(user.id),
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
+            )
+
+    return {"status": "ok", "deauthorize": deauth_status}
 
 
 @router.post("/accounts/{account_id}/extend")

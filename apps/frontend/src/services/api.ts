@@ -469,10 +469,13 @@ export const api = {
         ...(minutes !== null && minutes !== undefined ? { minutes } : {}),
       },
     }),
-  releaseAccount: (accountId: number, workspaceId?: number | null) =>
-    request<{ status: string }>(withWorkspace(`/accounts/${accountId}/release`, workspaceId), {
-      method: "POST",
-    }),
+    releaseAccount: (accountId: number, workspaceId?: number | null) =>
+      request<{ status: string; deauthorize?: "ok" | "failed" | "skipped" }>(
+        withWorkspace(`/accounts/${accountId}/release`, workspaceId),
+        {
+          method: "POST",
+        },
+      ),
   extendAccount: (accountId: number, hours: number, minutes: number, workspaceId?: number | null) =>
     request<{ status: string }>(withWorkspace(`/accounts/${accountId}/extend`, workspaceId), {
       method: "POST",
@@ -491,11 +494,16 @@ export const api = {
         body: { low_priority: lowPriority },
       },
     ),
-  freezeRental: (accountId: number, frozen: boolean, workspaceId?: number | null) =>
-    request<{ success: boolean; frozen: boolean }>(withWorkspace(`/rentals/${accountId}/freeze`, workspaceId), {
-      method: "POST",
-      body: { frozen },
-    }),
+    freezeRental: (accountId: number, frozen: boolean, workspaceId?: number | null) =>
+      request<{ success: boolean; frozen: boolean }>(withWorkspace(`/rentals/${accountId}/freeze`, workspaceId), {
+        method: "POST",
+        body: { frozen },
+      }),
+    deauthorizeAllRentals: (workspaceId?: number | null) =>
+      request<{ success: boolean; total: number; ok: number; failed: number; skipped: number }>(
+        withWorkspace("/rentals/deauthorize/all", workspaceId),
+        { method: "POST" },
+      ),
   replaceRental: (accountId: number, workspaceId?: number | null, mmrRange?: number) =>
     request<{ success: boolean; new_account_id?: number }>(
       withWorkspace(`/rentals/${accountId}/replace`, workspaceId),

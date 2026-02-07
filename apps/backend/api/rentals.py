@@ -48,6 +48,14 @@ class ReplaceRequest(BaseModel):
     mmr_range: int | None = Field(None, ge=0, le=5000)
 
 
+class DeauthorizeAllResponse(BaseModel):
+    success: bool
+    total: int
+    ok: int
+    failed: int
+    skipped: int
+
+
 def _parse_datetime(value: object) -> datetime | None:
     if value is None:
         return None
@@ -219,6 +227,85 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
         )
     rentals_cache.set(user_id, [item.model_dump() for item in items], workspace_id)
     return ActiveRentalResponse(items=items)
+
+
+@router.post("/rentals/deauthorize/all", response_model=DeauthorizeAllResponse)
+def deauthorize_all_rentals(
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> DeauthorizeAllResponse:
+    user_id = int(user.id)
+    records = accounts_repo.list_active_rentals(user_id, workspace_id)
+    if not records:
+        return DeauthorizeAllResponse(success=True, total=0, ok=0, failed=0, skipped=0)
+
+    ok_count = 0
+    failed_count = 0
+    skipped_count = 0
+    total = len(records)
+    for record in records:
+        account = accounts_repo.get_by_id(record.id, user_id, workspace_id)
+        if not account:
+            continue
+        login = account.get("login") or account.get("account_name")
+        password = account.get("password") or ""
+        mafile_json = account.get("mafile_json")
+        owner = account.get("owner")
+        account_name = account.get("account_name") or account.get("login")
+        if not login or not password or not mafile_json:
+            skipped_count += 1
+            notifications_repo.log_notification(
+                event_type="deauthorize",
+                status="skipped",
+                title="Bulk Steam deauthorize",
+                message="Skipped deauthorize: missing Steam credentials or mafile.",
+                owner=owner,
+                account_name=account_name,
+                account_id=record.id,
+                user_id=user_id,
+                workspace_id=workspace_id,
+            )
+            continue
+
+        try:
+            deauthorize_sessions(
+                steam_login=login,
+                steam_password=password,
+                mafile_json=mafile_json,
+            )
+            ok_count += 1
+            notifications_repo.log_notification(
+                event_type="deauthorize",
+                status="ok",
+                title="Bulk Steam deauthorize",
+                message="Steam sessions deauthorized by admin.",
+                owner=owner,
+                account_name=account_name,
+                account_id=record.id,
+                user_id=user_id,
+                workspace_id=workspace_id,
+            )
+        except SteamWorkerError as exc:
+            failed_count += 1
+            notifications_repo.log_notification(
+                event_type="deauthorize",
+                status="failed",
+                title="Bulk Steam deauthorize",
+                message=f"Bulk deauthorize failed: {exc.message}",
+                owner=owner,
+                account_name=account_name,
+                account_id=record.id,
+                user_id=user_id,
+                workspace_id=workspace_id,
+            )
+
+    return DeauthorizeAllResponse(
+        success=True,
+        total=total,
+        ok=ok_count,
+        failed=failed_count,
+        skipped=skipped_count,
+    )
 
 
 @router.post("/rentals/{account_id}/freeze")

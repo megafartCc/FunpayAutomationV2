@@ -220,6 +220,7 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [rentalExtendMinutes, setRentalExtendMinutes] = useState("");
   const [accountActionBusy, setAccountActionBusy] = useState(false);
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
+  const [bulkDeauthBusy, setBulkDeauthBusy] = useState(false);
   const [chatTarget, setChatTarget] = useState<{ buyer: string; workspaceId?: number | null } | null>(null);
 
   const accountByKey = useMemo(
@@ -456,14 +457,47 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     if (rentalActionBusy) return;
     setRentalActionBusy(true);
     try {
-      await api.releaseAccount(target.id, target.workspaceId ?? undefined);
-      onToast?.("Аренда завершена.");
+      const res = await api.releaseAccount(target.id, target.workspaceId ?? undefined);
+      if (res.deauthorize === "failed") {
+        onToast?.("Аренда завершена, но деавторизация не удалась.", true);
+      } else if (res.deauthorize === "skipped") {
+        onToast?.("Аренда завершена, деавторизация пропущена (нет данных Steam).");
+      } else {
+        onToast?.("Аренда завершена.");
+      }
       await Promise.all([loadAccounts(), loadRentals()]);
     } catch (err) {
       const message = (err as { message?: string })?.message || "Не удалось завершить аренду.";
       onToast?.(message, true);
     } finally {
       setRentalActionBusy(false);
+    }
+  };
+
+  const handleDeauthorizeAllRentals = async () => {
+    if (bulkDeauthBusy) return;
+    if (rentals.length === 0) {
+      onToast?.("Нет активных аренд для деавторизации.", true);
+      return;
+    }
+    const workspaceRecord = workspaceId ? workspaces.find((item) => item.id === workspaceId) : null;
+    const scopeLabel = workspaceId
+      ? resolveWorkspaceName(workspaceId, workspaceRecord?.name ?? null, workspaces)
+      : "все рабочие пространства";
+    const ok = window.confirm(`Деавторизовать Steam для всех активных аренд (${scopeLabel})?`);
+    if (!ok) return;
+    setBulkDeauthBusy(true);
+    try {
+      const res = await api.deauthorizeAllRentals(workspaceId ?? undefined);
+      const skippedLabel = res.skipped ? `, пропущено ${res.skipped}` : "";
+      onToast?.(`Деавторизация: успешно ${res.ok}, ошибок ${res.failed}${skippedLabel}.`);
+      await Promise.all([loadAccounts(), loadRentals()]);
+    } catch (err) {
+      const message =
+        (err as { message?: string })?.message || "Не удалось деавторизовать активные аренды.";
+      onToast?.(message, true);
+    } finally {
+      setBulkDeauthBusy(false);
     }
   };
 
@@ -847,6 +881,14 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
           {rentals.length} активных аренд
         </div>
         <div className="text-sm text-neutral-500">Обновляется в реальном времени каждую секунду</div>
+        <button
+          type="button"
+          onClick={handleDeauthorizeAllRentals}
+          disabled={bulkDeauthBusy || rentals.length === 0}
+          className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Деавторизовать всех
+        </button>
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
