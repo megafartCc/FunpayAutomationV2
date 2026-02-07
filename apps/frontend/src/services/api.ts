@@ -137,35 +137,6 @@ export type AutoRaiseSettings = {
   workspaces: Record<number, boolean>;
 };
 
-export type AutoPriceSettings = {
-  enabled: boolean;
-  all_workspaces: boolean;
-  interval_minutes: number;
-  premium_workspace_id?: number | null;
-  premium_delta: number;
-};
-
-export type AutoPriceLogItem = {
-  id: number;
-  level: string;
-  source?: string | null;
-  line?: number | null;
-  message: string;
-  workspace_id?: number | null;
-  created_at?: string | null;
-};
-
-export type AutoPriceLogsResponse = {
-  items: AutoPriceLogItem[];
-};
-
-export type AutoPriceRunResponse = {
-  ok: boolean;
-  updated: number;
-  skipped: number;
-  failed: number;
-  recommended_price?: number | null;
-};
 
 export type BotCustomizationSettings = {
   ai_enabled: boolean;
@@ -606,22 +577,6 @@ export const api = {
       method: "POST",
       body: workspaceId ? { workspace_id: workspaceId } : {},
     }),
-  getAutoPriceSettings: () =>
-    request<AutoPriceSettings>("/plugins/price-dumper/auto-price/settings", { method: "GET" }),
-  saveAutoPriceSettings: (payload: AutoPriceSettings) =>
-    request<AutoPriceSettings>("/plugins/price-dumper/auto-price/settings", { method: "PUT", body: payload }),
-  listAutoPriceLogs: (workspaceId?: number | null, limit: number = 200) => {
-    const params = new URLSearchParams();
-    if (workspaceId) params.set("workspace_id", String(workspaceId));
-    if (limit) params.set("limit", String(limit));
-    const suffix = params.toString();
-    return request<AutoPriceLogsResponse>(
-      `/plugins/price-dumper/auto-price/logs${suffix ? `?${suffix}` : ""}`,
-      { method: "GET" },
-    );
-  },
-  runAutoPrice: () =>
-    request<AutoPriceRunResponse>("/plugins/price-dumper/auto-price/run", { method: "POST" }),
   getBotCustomization: (workspaceId?: number | null) =>
     request<BotCustomizationResponse>(withWorkspace("/bot-customization", workspaceId), { method: "GET" }),
   saveBotCustomization: (payload: BotCustomizationSettings, workspaceId?: number | null) =>

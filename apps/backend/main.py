@@ -17,7 +17,7 @@ from api.bot_customization import router as bot_customization_router
 from api.telegram import router as telegram_router
 from api.bonus import router as bonus_router
 from api.workspaces import router as workspaces_router
-from api.plugins import router as plugins_router, start_price_dumper_scheduler, start_auto_price_scheduler
+from api.plugins import router as plugins_router, start_price_dumper_scheduler
 from db.mysql import ensure_schema
 from settings.config import settings
 
@@ -30,7 +30,6 @@ logger = logging.getLogger("uvicorn.error")
 def _startup() -> None:
     ensure_schema()
     start_price_dumper_scheduler()
-    start_auto_price_scheduler()
 
 if settings.cors_origins == ["*"]:
     app.add_middleware(

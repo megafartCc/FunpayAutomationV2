@@ -6,8 +6,6 @@ import {
   api,
   AutoRaiseLogItem,
   AutoRaiseSettings,
-  AutoPriceLogItem,
-  AutoPriceSettings,
   PriceDumperHistoryItem,
   PriceDumperResponse,
   RaiseCategoryItem,
@@ -98,19 +96,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
   const [logs, setLogs] = useState<AutoRaiseLogItem[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
-
-  const [autoPriceEnabled, setAutoPriceEnabled] = useState(false);
-  const [autoPriceAllWorkspaces, setAutoPriceAllWorkspaces] = useState(true);
-  const [autoPriceInterval, setAutoPriceInterval] = useState(60);
-  const [autoPricePremiumWorkspace, setAutoPricePremiumWorkspace] = useState<number | null>(null);
-  const [autoPriceDelta, setAutoPriceDelta] = useState(0.75);
-  const [autoPriceSettingsLoaded, setAutoPriceSettingsLoaded] = useState(false);
-  const [autoPriceSettingsLoading, setAutoPriceSettingsLoading] = useState(false);
-  const [autoPriceSettingsSaving, setAutoPriceSettingsSaving] = useState(false);
-  const [autoPriceSettingsError, setAutoPriceSettingsError] = useState<string | null>(null);
-  const [autoPriceLogs, setAutoPriceLogs] = useState<AutoPriceLogItem[]>([]);
-  const [autoPriceLogsLoading, setAutoPriceLogsLoading] = useState(false);
-  const [autoPriceLogsError, setAutoPriceLogsError] = useState<string | null>(null);
 
   const workspaceMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -214,97 +199,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     void loadLogs();
   }, [loadLogs]);
 
-  const loadAutoPriceSettings = useCallback(async () => {
-    setAutoPriceSettingsLoading(true);
-    setAutoPriceSettingsError(null);
-    try {
-      const res = await api.getAutoPriceSettings();
-      setAutoPriceEnabled(Boolean(res.enabled));
-      setAutoPriceAllWorkspaces(Boolean(res.all_workspaces));
-      setAutoPriceInterval(clampInterval(res.interval_minutes));
-      setAutoPricePremiumWorkspace(res.premium_workspace_id ?? null);
-      setAutoPriceDelta(typeof res.premium_delta === "number" ? res.premium_delta : 0.75);
-      setAutoPriceSettingsLoaded(true);
-    } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load auto pricing settings.";
-      setAutoPriceSettingsError(message);
-      onToast?.(message, true);
-      setAutoPriceSettingsLoaded(true);
-    } finally {
-      setAutoPriceSettingsLoading(false);
-    }
-  }, [onToast]);
-
-  useEffect(() => {
-    if (selectedPlugin !== "price_dumper") return;
-    if (autoPriceSettingsLoaded) return;
-    void loadAutoPriceSettings();
-  }, [selectedPlugin, autoPriceSettingsLoaded, loadAutoPriceSettings]);
-
-  useEffect(() => {
-    if (!autoPriceSettingsLoaded) return;
-    const payload: AutoPriceSettings = {
-      enabled: autoPriceEnabled,
-      all_workspaces: autoPriceAllWorkspaces,
-      interval_minutes: autoPriceInterval,
-      premium_workspace_id: autoPricePremiumWorkspace,
-      premium_delta: autoPriceDelta,
-    };
-    const handle = window.setTimeout(async () => {
-      setAutoPriceSettingsSaving(true);
-      try {
-        await api.saveAutoPriceSettings(payload);
-        setAutoPriceSettingsError(null);
-      } catch (err) {
-        const message = (err as { message?: string })?.message || "Failed to save auto pricing settings.";
-        setAutoPriceSettingsError(message);
-        onToast?.(message, true);
-      } finally {
-        setAutoPriceSettingsSaving(false);
-      }
-    }, 500);
-    return () => window.clearTimeout(handle);
-  }, [
-    autoPriceEnabled,
-    autoPriceAllWorkspaces,
-    autoPriceInterval,
-    autoPricePremiumWorkspace,
-    autoPriceDelta,
-    autoPriceSettingsLoaded,
-    onToast,
-  ]);
-
-  const loadAutoPriceLogs = useCallback(async () => {
-    setAutoPriceLogsLoading(true);
-    setAutoPriceLogsError(null);
-    try {
-      const res = await api.listAutoPriceLogs(null, 200);
-      setAutoPriceLogs(res.items || []);
-    } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to load auto pricing logs.";
-      setAutoPriceLogsError(message);
-    } finally {
-      setAutoPriceLogsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedPlugin !== "price_dumper") return;
-    void loadAutoPriceLogs();
-  }, [selectedPlugin, loadAutoPriceLogs]);
-
-  const handleAutoPriceRun = async () => {
-    try {
-      const res = await api.runAutoPrice();
-      const priceLabel =
-        typeof res.recommended_price === "number" ? ` (rec ${res.recommended_price.toFixed(2)})` : "";
-      onToast?.(`Auto pricing finished. Updated ${res.updated}.${priceLabel}`);
-      void loadAutoPriceLogs();
-    } catch (err) {
-      const message = (err as { message?: string })?.message || "Failed to run auto pricing.";
-      onToast?.(message, true);
-    }
-  };
 
   const handleManualRaise = async () => {
     try {
@@ -338,16 +232,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
     if (hours) return `${hours}${hoursLabel}`;
     return `${minutes}${minutesLabel}`;
   }, [intervalMinutes, t]);
-
-  const autoPriceIntervalLabel = useMemo(() => {
-    const hours = Math.floor(autoPriceInterval / 60);
-    const minutes = autoPriceInterval % 60;
-    const hoursLabel = t("common.hoursShort");
-    const minutesLabel = t("common.minutesShort");
-    if (hours && minutes) return `${hours}${hoursLabel} ${minutes}${minutesLabel}`;
-    if (hours) return `${hours}${hoursLabel}`;
-    return `${minutes}${minutesLabel}`;
-  }, [autoPriceInterval, t]);
 
   const handleIntervalChange = useCallback((value: number) => {
     setIntervalMinutes(clampInterval(value));
@@ -772,174 +656,6 @@ const PluginsPage: React.FC<PluginsPageProps> = ({ onToast }) => {
           </div>
         </div>
       </div>
-
-      {selectedPlugin === "price_dumper" ? (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-neutral-900">Auto price update</h3>
-              <p className="text-sm text-neutral-500">
-                Apply the recommended market price to all FunPay lots and keep one workspace slightly higher.
-              </p>
-            </div>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                autoPriceEnabled ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"
-              }`}
-            >
-              {autoPriceEnabled ? "Enabled" : "Disabled"}
-            </span>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <Switch
-              checked={autoPriceEnabled}
-              onChange={() => setAutoPriceEnabled((prev) => !prev)}
-              label="Enable auto pricing"
-              description="Update lot prices from the AI market analysis."
-              disabled={autoPriceSettingsLoading}
-            />
-            <Switch
-              checked={autoPriceAllWorkspaces}
-              onChange={() => setAutoPriceAllWorkspaces((prev) => !prev)}
-              label="All workspaces"
-              description="Apply to all workspaces (otherwise only the premium workspace)."
-              disabled={autoPriceSettingsLoading}
-            />
-          </div>
-
-          <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-neutral-900">Update interval</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  How often to refresh the market price and update lots.
-                </div>
-              </div>
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-neutral-700">
-                {autoPriceIntervalLabel}
-              </span>
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <input
-                type="range"
-                min={MIN_INTERVAL}
-                max={MAX_INTERVAL}
-                step={INTERVAL_STEP}
-                value={autoPriceInterval}
-                onChange={(event) => setAutoPriceInterval(clampInterval(Number(event.target.value)))}
-                disabled={autoPriceSettingsLoading}
-                className="w-full accent-neutral-900"
-              />
-              <input
-                type="number"
-                min={MIN_INTERVAL}
-                max={MAX_INTERVAL}
-                step={INTERVAL_STEP}
-                value={autoPriceInterval}
-                onChange={(event) => setAutoPriceInterval(clampInterval(Number(event.target.value)))}
-                disabled={autoPriceSettingsLoading}
-                className="w-24 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              <div className="text-sm font-semibold text-neutral-900">Premium workspace</div>
-              <div className="mt-1 text-xs text-neutral-500">
-                This workspace will be priced slightly higher to appear right after the main listing.
-              </div>
-              <select
-                value={autoPricePremiumWorkspace ?? ""}
-                onChange={(event) =>
-                  setAutoPricePremiumWorkspace(event.target.value ? Number(event.target.value) : null)
-                }
-                disabled={autoPriceSettingsLoading}
-                className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700"
-              >
-                <option value="">None</option>
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>
-                    {ws.name} (ID {ws.id})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-              <div className="text-sm font-semibold text-neutral-900">Premium delta (RUB)</div>
-              <div className="mt-1 text-xs text-neutral-500">
-                Add this amount to the premium workspace price.
-              </div>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                value={autoPriceDelta}
-                onChange={(event) => setAutoPriceDelta(Number(event.target.value))}
-                disabled={autoPriceSettingsLoading}
-                className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
-            <span>
-              {autoPriceSettingsSaving ? "Saving..." : "Changes are saved automatically."}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleAutoPriceRun}
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 transition hover:border-neutral-300"
-              >
-                Run now
-              </button>
-            </div>
-          </div>
-          {autoPriceSettingsError ? <div className="mt-2 text-xs text-rose-500">{autoPriceSettingsError}</div> : null}
-        </div>
-      ) : null}
-
-      {selectedPlugin === "price_dumper" ? (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-neutral-900">Auto pricing logs</h3>
-              <p className="text-sm text-neutral-500">Recent updates from the auto pricing worker.</p>
-            </div>
-          </div>
-
-          {autoPriceLogsLoading ? (
-            <div className="mt-4 text-xs text-neutral-400">Loading logs...</div>
-          ) : autoPriceLogsError ? (
-            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-              {autoPriceLogsError}
-            </div>
-          ) : autoPriceLogs.length ? (
-            <div className="mt-4 space-y-2">
-              {autoPriceLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
-                      {formatLogLevel(log.level)}
-                    </span>
-                    <span className="text-neutral-700">{log.message}</span>
-                  </div>
-                  <span className="text-[10px] text-neutral-400">{formatLogTimestamp(log.created_at)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-xs text-neutral-500">
-              No auto pricing logs yet.
-            </div>
-          )}
-        </div>
-      ) : null}
 
       {selectedPlugin === "auto_raise" ? (
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
