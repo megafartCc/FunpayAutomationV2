@@ -9,13 +9,20 @@ from pathlib import Path
 def _load_local_deauthorize() -> object | None:
     steam_root = Path(__file__).resolve().parents[2] / "steam"
     if not steam_root.exists():
+        logging.getLogger(__name__).warning(
+            "Local Steam deauthorize unavailable: %s not found.", steam_root
+        )
         return None
     steam_root_str = str(steam_root)
     if steam_root_str not in sys.path:
         sys.path.insert(0, steam_root_str)
     try:
         from SteamHandler.deauthorize import logout_all_steam_sessions  # type: ignore
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Local Steam deauthorize unavailable: SteamHandler import failed: %s",
+            exc,
+        )
         return None
     return logout_all_steam_sessions
 
