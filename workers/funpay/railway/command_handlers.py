@@ -278,7 +278,7 @@ def handle_account_command(
             display = build_display_name(acc)
             lines.append(f"{display} - ID {acc.get('id')}")
         lines.extend(["", "Выберите, к какому аккаунту хотите получить данные: !акк <ID>"])
-        send_chat_message(logger, account, chat_id, "\n".join(lines))
+        send_chat_message(logger, account, chat_id, "\n".join(str(line) for line in lines))
 
     account_id = parse_account_id_arg(args)
     if len(accounts) > 1 and account_id is None:

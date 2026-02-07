@@ -61,7 +61,7 @@ def build_rental_choice_message(accounts: list[dict], command: str) -> str:
     for acc in accounts:
         display = build_display_name(acc)
         lines.append(f"ID {acc.get('id')}: {display}")
-    return "\n".join(lines)
+    return "\n".join(str(line) for line in lines)
 
 
 def build_account_message(account: dict, duration_minutes: int, include_timer_note: bool) -> str:
@@ -82,4 +82,4 @@ def build_account_message(account: dict, duration_minutes: int, include_timer_no
         if include_timer_note:
             lines.extend(["", ACCOUNT_TIMER_NOTE])
     lines.extend(["", COMMANDS_RU])
-    return "\n".join(lines)
+    return "\n".join(str(line) for line in lines)
