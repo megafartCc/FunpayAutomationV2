@@ -64,6 +64,7 @@ class LotEditPayload(BaseModel):
     summary_en: str | None = None
     desc_ru: str | None = None
     desc_en: str | None = None
+    raw_fields: dict[str, object] | None = None
 
 
 class LotEditSnapshot(BaseModel):
@@ -74,6 +75,7 @@ class LotEditSnapshot(BaseModel):
     summary_en: str
     desc_ru: str
     desc_en: str
+    raw_fields: dict[str, object] = Field(default_factory=dict)
 
 
 class LotEditPreviewResponse(BaseModel):

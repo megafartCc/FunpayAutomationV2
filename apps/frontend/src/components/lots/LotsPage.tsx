@@ -27,6 +27,8 @@ const LotsPage: React.FC = () => {
   const [editSummaryEn, setEditSummaryEn] = useState("");
   const [editDescRu, setEditDescRu] = useState("");
   const [editDescEn, setEditDescEn] = useState("");
+  const [editRawFields, setEditRawFields] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const hasFlag = (value?: number | string | null) => {
     if (value === null || value === undefined) return false;
@@ -204,6 +206,8 @@ const LotsPage: React.FC = () => {
     setEditSummaryEn("");
     setEditDescRu("");
     setEditDescEn("");
+    setEditRawFields("");
+    setShowAdvanced(false);
   };
 
   const handleOpenEdit = async (lot: LotItem) => {
@@ -221,11 +225,27 @@ const LotsPage: React.FC = () => {
       setEditSummaryEn(snapshot.summary_en || "");
       setEditDescRu(snapshot.desc_ru || "");
       setEditDescEn(snapshot.desc_en || "");
+      setEditRawFields(JSON.stringify(snapshot.raw_fields ?? {}, null, 2));
     } catch (err) {
       setEditError((err as { message?: string })?.message || "Не удалось загрузить лот.");
     } finally {
       setEditLoading(false);
     }
+  };
+
+  const parseRawFields = () => {
+    const raw = editRawFields.trim();
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new Error("Некорректный JSON в расширенных полях.");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Расширенные поля должны быть JSON-объектом.");
+    }
+    return parsed as Record<string, unknown>;
   };
 
   const buildEditPayload = () => {
@@ -241,6 +261,7 @@ const LotsPage: React.FC = () => {
     }
     const activeChanged =
       editOriginalActive === null ? true : editActive !== editOriginalActive;
+    const rawFields = parseRawFields();
     return {
       price: priceNumber,
       amount: amountNumber,
@@ -249,6 +270,7 @@ const LotsPage: React.FC = () => {
       summary_en: editSummaryEn,
       desc_ru: editDescRu,
       desc_en: editDescEn,
+      raw_fields: rawFields,
     };
   };
 
@@ -476,6 +498,31 @@ const LotsPage: React.FC = () => {
                       onChange={(e) => setEditDescEn(e.target.value)}
                     />
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-800">Все поля лота (JSON)</div>
+                      <div className="text-xs text-neutral-500">
+                        Полный набор полей формы FunPay. Редактируйте аккуратно.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((prev) => !prev)}
+                      className="rounded-lg border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                    >
+                      {showAdvanced ? "Скрыть" : "Показать"}
+                    </button>
+                  </div>
+                  {showAdvanced ? (
+                    <textarea
+                      className="mt-3 min-h-[180px] w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-mono text-neutral-800 outline-none focus:border-neutral-400"
+                      value={editRawFields}
+                      onChange={(e) => setEditRawFields(e.target.value)}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">

@@ -72,6 +72,7 @@ export type LotEditSnapshot = {
   summary_en: string;
   desc_ru: string;
   desc_en: string;
+  raw_fields?: Record<string, unknown>;
 };
 
 export type LotEditPayload = {
@@ -82,6 +83,7 @@ export type LotEditPayload = {
   summary_en?: string | null;
   desc_ru?: string | null;
   desc_en?: string | null;
+  raw_fields?: Record<string, unknown> | null;
 };
 
 export type LotEditPreview = {

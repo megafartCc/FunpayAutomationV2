@@ -71,6 +71,12 @@ def _extract_snapshot(fields: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_snapshot(fields: dict[str, Any]) -> dict[str, Any]:
+    snapshot = _extract_snapshot(fields)
+    snapshot["raw_fields"] = {key: fields.get(key) for key in sorted(fields.keys())}
+    return snapshot
+
+
 def _apply_edit(
     *,
     fields: dict[str, Any],
@@ -85,6 +91,25 @@ def _apply_edit(
             return
         updated[key] = value
         changes.append({"field": key, "from": old, "to": value})
+
+    raw_fields = payload.get("raw_fields")
+    if isinstance(raw_fields, dict):
+        for raw_key, raw_value in raw_fields.items():
+            if raw_key is None:
+                continue
+            key = str(raw_key).strip()
+            if not key:
+                continue
+            existing = updated.get(key)
+            if raw_value is None:
+                value: Any = ""
+            elif isinstance(raw_value, bool):
+                value = "on" if raw_value else ""
+            elif isinstance(raw_value, (int, float)) and isinstance(existing, (int, float)):
+                value = raw_value
+            else:
+                value = str(raw_value)
+            set_field(key, value)
 
     if payload.get("price") is not None:
         set_field("price", str(payload["price"]))
@@ -130,7 +155,7 @@ def _load_lot_fields(
     # Normalize fields to match a real form submission payload.
     lot_fields.renew_fields()
     fields = {k: ("" if v is None else v) for k, v in dict(lot_fields.fields).items()}
-    snapshot = _extract_snapshot(fields)
+    snapshot = _build_snapshot(fields)
     return account, fields, snapshot
 
 
