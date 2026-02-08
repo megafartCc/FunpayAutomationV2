@@ -499,11 +499,21 @@ const FunpayStatsPage: React.FC = () => {
     const totalOrders = ordersInRange.length;
     const refundedOrders = Math.min(refundsInRange.length, totalOrders);
     const refundRate = totalOrders ? (refundedOrders / totalOrders) * 100 : 0;
-    const refundsLoss = ordersInRange
-      .filter((order) => (order.action || "").toLowerCase().includes("refund"))
-      .reduce((sum, order) => sum + (order.price ?? order.amount ?? 0), 0);
+    const refundByOrder = new Map<string, number>();
+    ordersInRange.forEach((order) => {
+      const action = (order.action || "").toLowerCase();
+      if (!action.startsWith("refund")) return;
+      const key = (order.order_id || "").trim();
+      if (!key) return;
+      const base = order.price ?? order.amount ?? 0;
+      const value = Number.isFinite(Number(base)) ? Number(base) : 0;
+      if (!refundByOrder.has(key) || value > (refundByOrder.get(key) || 0)) {
+        refundByOrder.set(key, value);
+      }
+    });
+    const refundsLoss = Array.from(refundByOrder.values()).reduce((sum, value) => sum + value, 0);
     return { totalOrders, refundedOrders, refundRate, refundsLoss };
-  }, [ordersInRange.length, refundsInRange.length, ordersInRange]);
+  }, [ordersInRange, refundsInRange.length]);
 
   const refundPercent = useMemo(() => {
     if (!refundStats.totalOrders) return 0;
