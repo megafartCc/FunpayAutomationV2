@@ -55,6 +55,13 @@ DEFAULT_RESPONSES: dict[str, str] = {
     "pre_rent": "",
 }
 
+LEGACY_BLOCKED_MESSAGE = (
+    "Вы в черном списке.\n"
+    "Оплатите штраф {penalty}, чтобы разблокировать доступ.\n"
+    "Оплачено: {paid}. Осталось: {remaining}.\n"
+    "Если хотите продлить — пожалуйста оплатите этот {lot}."
+)
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "ai_enabled": True,
     "tone": "friendly",
@@ -70,7 +77,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
             "Вы в черном списке.\n"
             "Оплатите штраф {penalty}, чтобы разблокировать доступ.\n"
             "Оплачено: {paid}. Осталось: {remaining}.\n"
-            "Если хотите продлить — пожалуйста оплатите этот {lot}."
+            "Для оплаты штрафа используйте этот {lot}."
         ),
     },
     "ai": {
@@ -97,7 +104,13 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raw = {}
-    return _deep_merge(DEFAULT_SETTINGS, raw)
+    merged = _deep_merge(DEFAULT_SETTINGS, raw)
+    try:
+        if merged.get("blacklist", {}).get("blocked_message") == LEGACY_BLOCKED_MESSAGE:
+            merged["blacklist"]["blocked_message"] = DEFAULT_SETTINGS["blacklist"]["blocked_message"]
+    except Exception:
+        pass
+    return merged
 
 
 def _parse_json(text: str | None) -> dict[str, Any] | None:
