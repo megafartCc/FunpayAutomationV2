@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-python workers/funpay/main.py
+cd /app
+python /app/workers/funpay/main.py
