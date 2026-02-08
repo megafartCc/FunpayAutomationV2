@@ -3,14 +3,14 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import mysql.connector
 from requests import exceptions as requests_exceptions
 from FunPayAPI.account import Account
 
 from .chat_time_utils import _extract_datetime_from_html
-from .db_utils import resolve_workspace_mysql_cfg, table_exists
+from .db_utils import column_exists, resolve_workspace_mysql_cfg, table_exists
 from .notifications_utils import log_notification_event
 from .env_utils import env_bool, env_int
 from .presence_utils import invalidate_chat_cache, should_prefetch_history
@@ -365,6 +365,89 @@ def upsert_chat_summary(
             ),
         )
         conn.commit()
+      finally:
+          conn.close()
+
+
+def set_ai_pause(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+    seconds: int | None = None,
+) -> None:
+    pause_seconds = int(seconds) if seconds is not None else env_int("AI_SNOOZE_SECONDS", 60)
+    if pause_seconds <= 0:
+        return
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "chats"):
+            return
+        if not column_exists(cursor, "chats", "ai_paused_until"):
+            return
+        paused_until = datetime.utcnow() + timedelta(seconds=pause_seconds)
+        cursor.execute(
+            """
+            UPDATE chats
+            SET ai_paused_until = %s
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            """,
+            (
+                paused_until,
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def is_ai_paused(
+    mysql_cfg: dict,
+    *,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+) -> bool:
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        if not table_exists(cursor, "chats"):
+            return False
+        if not column_exists(cursor, "chats", "ai_paused_until"):
+            return False
+        cursor.execute(
+            """
+            SELECT ai_paused_until
+            FROM chats
+            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            LIMIT 1
+            """,
+            (
+                int(user_id),
+                int(workspace_id) if workspace_id is not None else None,
+                int(chat_id),
+            ),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        paused_until = row.get("ai_paused_until")
+        if not paused_until:
+            return False
+        if isinstance(paused_until, datetime):
+            return paused_until > datetime.utcnow()
+        try:
+            parsed = datetime.fromisoformat(str(paused_until))
+        except Exception:
+            return False
+        return parsed > datetime.utcnow()
     finally:
         conn.close()
 
@@ -711,6 +794,12 @@ def process_chat_outbox(
                 last_message_text=text,
                 unread=False,
                 last_message_time=datetime.utcnow(),
+            )
+            set_ai_pause(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=chat_id,
             )
             mark_outbox_sent(mysql_cfg, outbox_id, workspace_id=workspace_id)
         except Exception as exc:

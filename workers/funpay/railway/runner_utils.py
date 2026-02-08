@@ -61,6 +61,8 @@ from .chat_utils import (
 
     is_first_time_chat,
 
+    is_ai_paused,
+
     process_chat_outbox,
 
     send_chat_message,
@@ -2222,6 +2224,17 @@ def log_message(
 
 
     ai_enabled = bool(bot_settings.get("ai_enabled", True))
+    ai_paused = False
+    if mysql_cfg and user_id is not None and chat_id is not None:
+        try:
+            ai_paused = is_ai_paused(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=int(chat_id),
+            )
+        except Exception:
+            ai_paused = False
 
 
 
@@ -2278,6 +2291,10 @@ def log_message(
             return None
 
         if account.username and sender_username and sender_username.lower() == account.username.lower():
+
+            return None
+
+        if ai_paused:
 
             return None
 
@@ -2452,6 +2469,10 @@ def log_message(
             return None
 
         if account.username and sender_username and sender_username.lower() == account.username.lower():
+
+            return None
+
+        if ai_paused:
 
             return None
 
