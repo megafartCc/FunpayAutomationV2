@@ -137,6 +137,8 @@ from .order_utils import (
 
 )
 
+_AI_PAUSE_CACHE: dict[tuple[int | None, int | None, int], float] = {}
+
 from .presence_utils import clear_lot_cache_on_start
 
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
@@ -2225,6 +2227,10 @@ def log_message(
                 admin_sender = True
         if admin_sender:
             try:
+                pause_seconds = env_int("AI_SNOOZE_SECONDS", 300)
+                _AI_PAUSE_CACHE[(int(user_id), int(workspace_id) if workspace_id is not None else None, int(chat_id))] = (
+                    time.time() + pause_seconds
+                )
                 set_ai_pause(
                     mysql_cfg,
                     user_id=int(user_id),
@@ -2245,6 +2251,14 @@ def log_message(
             )
         except Exception:
             ai_paused = False
+    if not ai_paused and chat_id is not None:
+        key = (int(user_id) if user_id is not None else None, int(workspace_id) if workspace_id is not None else None, int(chat_id))
+        until = _AI_PAUSE_CACHE.get(key)
+        if until:
+            if until > time.time():
+                ai_paused = True
+            else:
+                _AI_PAUSE_CACHE.pop(key, None)
 
     ai_active = bool(ai_enabled and not ai_paused)
     bot_flag = bool(getattr(msg, "by_bot", False))
