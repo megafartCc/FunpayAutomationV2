@@ -1060,25 +1060,42 @@ const FunpayStatsPage: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="mt-4 rounded-full bg-neutral-200/60 p-1">
-              <div className="relative h-3 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+              <div className="relative h-24 w-24 shrink-0">
                 <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-rose-500/90 transition-[width] duration-500"
-                  style={{ width: `${refundPercent}%` }}
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: `conic-gradient(#ef4444 0% ${refundPercent}%, #10b981 ${refundPercent}% 100%)`,
+                  }}
                 />
-                <div
-                  className="absolute inset-y-0 right-0 rounded-full bg-emerald-500/90 transition-[width] duration-500"
-                  style={{ width: `${keptPercent}%` }}
-                />
-                <div
-                  className="absolute inset-y-0 w-px bg-white/70"
-                  style={{ left: `calc(${refundPercent}% - 0.5px)` }}
-                />
+                <div className="absolute inset-1.5 rounded-full bg-neutral-50" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-xs text-neutral-500">
+                  <span className="text-lg font-semibold text-neutral-900">
+                    {refundPercent.toFixed(1)}%
+                  </span>
+                  <span>{tr("Refunds", "Возвраты")}</span>
+                </div>
               </div>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-500">
-              <span>{refundPercent.toFixed(1)}% {tr("Refunded", "возвраты")}</span>
-              <span>{keptPercent.toFixed(1)}% {tr("Kept", "без возврата")}</span>
+              <div className="flex-1 space-y-2 text-xs text-neutral-500">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+                    {tr("Refunded", "Возвраты")}
+                  </div>
+                  <span className="font-semibold text-neutral-700">
+                    {refundStats.refundedOrders} ({refundPercent.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    {tr("Kept", "Без возврата")}
+                  </div>
+                  <span className="font-semibold text-neutral-700">
+                    {Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0)} ({keptPercent.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
           <div className="mt-5 rounded-xl bg-neutral-50 p-4">
