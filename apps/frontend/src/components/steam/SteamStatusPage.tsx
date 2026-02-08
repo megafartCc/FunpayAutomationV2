@@ -20,23 +20,62 @@ const formatDateTime = (value?: string | null) => {
 const bridgeStatusMeta = (status?: string) => {
   const normalized = (status || "").toLowerCase();
   if (normalized.includes("online")) {
-    return { label: "Online", className: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+    return {
+      label: "Online",
+      className:
+        "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-500/40",
+    };
   }
   if (normalized.includes("error")) {
-    return { label: "Error", className: "bg-rose-50 text-rose-700 border-rose-200" };
+    return {
+      label: "Error",
+      className:
+        "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-200 dark:border-rose-500/40",
+    };
   }
-  return { label: "Offline", className: "bg-neutral-100 text-neutral-600 border-neutral-200" };
+  return {
+    label: "Offline",
+    className:
+      "bg-neutral-100 text-neutral-600 border-neutral-200 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700",
+  };
 };
 
 const presenceMeta = (status?: string) => {
   const normalized = (status || "").toLowerCase();
-  if (normalized.includes("match")) return { label: "In match", className: "bg-emerald-50 text-emerald-700" };
-  if (normalized.includes("game")) return { label: "In game", className: "bg-amber-50 text-amber-700" };
-  if (normalized.includes("demo")) return { label: "Demo", className: "bg-amber-50 text-amber-700" };
-  if (normalized.includes("bot")) return { label: "Bot match", className: "bg-amber-50 text-amber-700" };
-  if (normalized.includes("custom")) return { label: "Custom", className: "bg-amber-50 text-amber-700" };
-  if (!normalized || normalized.includes("off")) return { label: "Offline", className: "bg-rose-50 text-rose-700" };
-  return { label: status || "Unknown", className: "bg-neutral-100 text-neutral-600" };
+  if (normalized.includes("match"))
+    return {
+      label: "In match",
+      className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200",
+    };
+  if (normalized.includes("game"))
+    return {
+      label: "In game",
+      className: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200",
+    };
+  if (normalized.includes("demo"))
+    return {
+      label: "Demo",
+      className: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200",
+    };
+  if (normalized.includes("bot"))
+    return {
+      label: "Bot match",
+      className: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200",
+    };
+  if (normalized.includes("custom"))
+    return {
+      label: "Custom",
+      className: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200",
+    };
+  if (!normalized || normalized.includes("off"))
+    return {
+      label: "Offline",
+      className: "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-200",
+    };
+  return {
+    label: status || "Unknown",
+    className: "bg-neutral-100 text-neutral-600 dark:bg-slate-800/60 dark:text-slate-200",
+  };
 };
 
 const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
@@ -227,12 +266,12 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70"
+        className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 dark:border-[#273142] dark:bg-[#121826]"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-50 via-white to-sky-50 opacity-70" />
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 opacity-80 dark:from-[#132131] dark:via-[#121826] dark:to-[#0b0f14] dark:opacity-100" />
         <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
               Steam Status Checker
             </div>
             <h2 className="mt-2 text-2xl font-semibold text-neutral-900">
@@ -244,15 +283,15 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
               <div className="text-xs uppercase tracking-wide">Connected</div>
               <div className="text-xl font-semibold">{stats.connected}</div>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
               <div className="text-xs uppercase tracking-wide">In match</div>
               <div className="text-xl font-semibold">{stats.inMatch}</div>
             </div>
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
               <div className="text-xs uppercase tracking-wide">Errors</div>
               <div className="text-xl font-semibold">{stats.errors}</div>
             </div>
@@ -473,12 +512,14 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
             </p>
             <div className="mt-4 space-y-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Good</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                  Good
+                </div>
                 <div className="mt-2 space-y-2">
                   {positives.map((item, idx) => (
                     <div
                       key={`${item.title}-${idx}`}
-                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700"
+                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200"
                     >
                       <div className="font-semibold">{item.title}</div>
                       <div>{item.detail}</div>
@@ -487,20 +528,22 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
                 </div>
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Risks</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
+                  Risks
+                </div>
                 <div className="mt-2 space-y-2">
                   {issues.length ? (
                     issues.map((issue, idx) => (
                       <div
                         key={`${issue.title}-${idx}`}
-                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+                        className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200"
                       >
                         <div className="font-semibold">{issue.title}</div>
                         <div>{issue.detail}</div>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
                       No risks detected right now.
                     </div>
                   )}
