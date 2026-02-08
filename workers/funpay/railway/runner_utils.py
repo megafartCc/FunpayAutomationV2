@@ -202,8 +202,15 @@ COMMAND_SUGGESTIONS = {
 
 }
 
+_ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+_WS_RE = re.compile(r"\s+")
 
 
+def _normalize_for_ai_match(text: str | None) -> str:
+    if not text:
+        return ""
+    cleaned = _ZERO_WIDTH_RE.sub("", text)
+    return _WS_RE.sub(" ", cleaned.strip())
 
 
 def _is_greeting(text: str) -> bool:
@@ -2269,27 +2276,42 @@ def log_message(
         sender_type = "bot"
     elif seller_sender:
         sender_type = "seller"
+    ai_message = False
     if bot_flag and chat_id is not None:
-        key = (
+        base_key = (
             int(user_id) if user_id is not None else None,
             int(workspace_id) if workspace_id is not None else None,
             int(chat_id),
         )
-        last_ai = _AI_LAST_REPLY.get(key)
-        if last_ai:
+        key_variants = [base_key]
+        if user_id is not None:
+            key_variants.append((None, base_key[1], base_key[2]))
+        if workspace_id is not None:
+            key_variants.append((base_key[0], None, base_key[2]))
+        key_variants.append((None, None, base_key[2]))
+        for key in key_variants:
+            last_ai = _AI_LAST_REPLY.get(key)
+            if not last_ai:
+                continue
             last_time, last_text = last_ai
-            if time.time() - last_time <= 600 and (last_text or "").strip() == (message_text or "").strip():
-                sender_type = "ai"
-            elif time.time() - last_time > 600:
+            if time.time() - last_time > 600:
                 _AI_LAST_REPLY.pop(key, None)
+                continue
+            if _normalize_for_ai_match(last_text) == _normalize_for_ai_match(message_text):
+                sender_type = "ai"
+                ai_message = True
+                break
+    if sender_type == "ai":
+        ai_message = True
     logger.info(
-        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s sender=%s url=%s: %s",
+        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s ai_active=%s sender=%s url=%s: %s",
         site_username or "-",
         workspace_id if workspace_id is not None else "-",
         chat_name,
         sender_username,
         is_system,
         bot_flag,
+        ai_message,
         ai_active,
         sender_type,
         chat_url,
