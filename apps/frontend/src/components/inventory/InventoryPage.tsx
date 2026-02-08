@@ -29,6 +29,8 @@ type AccountRow = {
 const INVENTORY_GRID =
   "minmax(0,0.45fr) minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.25fr) minmax(0,0.6fr) minmax(0,0.7fr)";
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const PANEL_MOTION = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } };
+const PANEL_TRANSITION = { duration: 0.35, ease: EASE };
 
 const mapAccount = (item: AccountItem): AccountRow => ({
   id: item.id,
@@ -394,9 +396,11 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     }
   };
 
-  const renderAccountActionsPanel = (title = "Account actions") => {
+  const renderAccountActionsPanel = (title = "Account actions", className = "") => {
     return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+      <div
+        className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-900">{title}</h3>
           <span className="text-xs text-neutral-500">{selectedAccount ? "Готово" : "Выберите аккаунт"}</span>
@@ -606,11 +610,13 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     );
   };
 
-  const renderИнвентарьActionsPanel = () => {
+  const renderИнвентарьActionsPanel = (className = "") => {
     const frozen = !!selectedAccount?.accountFrozen;
     const lowPriority = !!selectedAccount?.lowPriority;
     return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+      <div
+        className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-900">Управление аккаунтом</h3>
           <span className="text-xs text-neutral-500">{selectedAccount ? "Готово" : "Выберите аккаунт"}</span>
@@ -693,9 +699,13 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={PANEL_TRANSITION} className="space-y-6">
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70">
+        <motion.div
+          {...PANEL_MOTION}
+          transition={{ ...PANEL_TRANSITION, delay: 0.05 }}
+          className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70"
+        >
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold text-neutral-900">Инвентарь</h3>
@@ -809,6 +819,8 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
                       }
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0, transition: { duration: 0.25, delay: idx * 0.03, ease: EASE } }}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.99 }}
                       className={`grid items-center gap-3 rounded-xl border px-6 py-4 text-sm shadow-[0_4px_18px_-14px_rgba(0,0,0,0.18)] transition ${
                         isSelected
                           ? "border-neutral-900/20 bg-white ring-2 ring-neutral-900/10"
@@ -883,13 +895,25 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
               </div>
             </div>
           </div>
-        </div>
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          {renderAccountActionsPanel("Account actions")}
-          {renderИнвентарьActionsPanel()}
+        </motion.div>
+        <div className="mt-6 flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start lg:min-h-[calc(100vh-180px)] xl:mt-0">
+          <motion.div
+            {...PANEL_MOTION}
+            transition={{ ...PANEL_TRANSITION, delay: 0.1 }}
+            className="flex-1"
+          >
+            {renderAccountActionsPanel("Account actions", "h-full")}
+          </motion.div>
+          <motion.div
+            {...PANEL_MOTION}
+            transition={{ ...PANEL_TRANSITION, delay: 0.16 }}
+            className="flex-1"
+          >
+            {renderИнвентарьActionsPanel("h-full")}
+          </motion.div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

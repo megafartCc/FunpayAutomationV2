@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -47,6 +48,11 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     location.pathname === "/documentation" ||
     location.pathname === "/plugins";
 
+  const pageKey = useMemo(
+    () => `${location.pathname}${location.search}${location.hash}`,
+    [location.pathname, location.search, location.hash],
+  );
+
   return (
     <WorkspaceProvider>
       <div className="flex h-screen overflow-hidden bg-neutral-50">
@@ -71,7 +77,18 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
             onMenuToggle={() => setSidebarOpen((prev) => !prev)}
           />
           <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-            <Outlet />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={pageKey}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="min-h-[40vh]"
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
           </main>
         </div>
       </div>
