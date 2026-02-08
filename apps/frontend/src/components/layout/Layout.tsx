@@ -49,10 +49,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     location.pathname === "/plugins";
   const isChatRoute = location.pathname.startsWith("/chats");
 
-  const pageKey = useMemo(
-    () => `${location.pathname}${location.search}${location.hash}`,
-    [location.pathname, location.search, location.hash],
-  );
+  const pageKey = useMemo(() => location.pathname, [location.pathname]);
 
   return (
     <WorkspaceProvider>
@@ -82,13 +79,13 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
               isChatRoute ? "overflow-hidden" : "overflow-y-auto"
             }`}
           >
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="sync" initial={false}>
               <motion.div
                 key={pageKey}
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                 className={`min-h-0 ${isChatRoute ? "h-full" : "min-h-[40vh]"}`}
               >
                 <Outlet />

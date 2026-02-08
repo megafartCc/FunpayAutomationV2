@@ -699,12 +699,12 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={PANEL_TRANSITION} className="space-y-6">
-      <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+    <div className="flex min-h-0 flex-col gap-6">
+      <div className="grid min-h-0 flex-1 items-stretch gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <motion.div
           {...PANEL_MOTION}
           transition={{ ...PANEL_TRANSITION, delay: 0.05 }}
-          className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70"
+          className="flex min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70"
         >
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -770,9 +770,9 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
               </button>
             </div>
           </div>
-          <div className="overflow-x-hidden">
-            <div className="min-w-0">
-              <div className="mt-3 list-scroll">
+          <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden">
+            <div className="min-w-0 flex min-h-0 flex-1 flex-col">
+              <div className="mt-3 list-scroll flex-1 min-h-0 max-h-none">
                 <div
                   className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: INVENTORY_GRID }}
@@ -896,7 +896,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
             </div>
           </div>
         </motion.div>
-        <div className="mt-6 grid gap-6 lg:mt-0 lg:self-stretch lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:h-full">
+        <div className="mt-6 grid min-h-0 flex-1 gap-6 lg:mt-0 lg:self-stretch lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:h-full">
           <motion.div
             {...PANEL_MOTION}
             transition={{ ...PANEL_TRANSITION, delay: 0.1 }}
@@ -913,7 +913,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
           </motion.div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
