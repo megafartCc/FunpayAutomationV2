@@ -2236,8 +2236,15 @@ def log_message(
         admin_sender = False
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
             admin_sender = True
-        elif account.username and sender_username and sender_username.lower() == account.username.lower():
-            admin_sender = True
+        else:
+            sender_key = sender_username.lower() if isinstance(sender_username, str) else ""
+            seller_keys: set[str] = set()
+            if account.username:
+                seller_keys.add(account.username.lower())
+            if site_username:
+                seller_keys.add(site_username.lower())
+            if sender_key and sender_key in seller_keys:
+                admin_sender = True
         if admin_sender:
             try:
                 set_ai_pause(
