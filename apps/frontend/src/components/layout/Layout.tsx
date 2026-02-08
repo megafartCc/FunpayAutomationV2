@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -37,6 +37,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const location = useLocation();
   const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [animateReady, setAnimateReady] = useState(false);
   const titleKey =
     titles[location.pathname] ||
     (location.pathname.startsWith("/chats") ? "title.chats" : "title.dashboard");
@@ -48,6 +49,10 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     location.pathname === "/documentation" ||
     location.pathname === "/plugins";
   const isChatRoute = location.pathname.startsWith("/chats");
+
+  useEffect(() => {
+    setAnimateReady(true);
+  }, []);
 
   const pageKey = useMemo(() => location.pathname, [location.pathname]);
 
@@ -79,18 +84,15 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
               isChatRoute ? "overflow-hidden" : "overflow-y-auto"
             }`}
           >
-            <AnimatePresence mode="sync" initial={false}>
-              <motion.div
-                key={pageKey}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-                className={`min-h-0 ${isChatRoute ? "h-full" : "min-h-[40vh]"}`}
-              >
-                <Outlet />
-              </motion.div>
-            </AnimatePresence>
+            <motion.div
+              key={pageKey}
+              initial={animateReady ? { opacity: 0, y: 10 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+              className={`min-h-0 ${isChatRoute ? "h-full" : "min-h-[40vh]"}`}
+            >
+              <Outlet />
+            </motion.div>
           </main>
         </div>
       </div>
