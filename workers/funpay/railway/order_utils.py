@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 import mysql.connector
 from FunPayAPI.account import Account
@@ -746,6 +747,7 @@ def handle_order_purchased(
 
     lot_mapping = fetch_lot_mapping(mysql_cfg, int(user_id), int(lot_number), workspace_id)
     steam_id = steam_id_from_mafile(lot_mapping.get("mafile_json")) if lot_mapping else None
+    override_total_minutes: int | None = None
 
     if is_blacklisted(mysql_cfg, buyer, int(user_id), workspace_id):
         blacklist_status = get_blacklist_status(mysql_cfg, buyer, int(user_id), workspace_id)
@@ -783,32 +785,45 @@ def handle_order_purchased(
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
         unit_minutes = get_unit_minutes(lot_mapping) if lot_mapping else unit_minutes_default
+        if unit_minutes <= 0:
+            unit_minutes = unit_minutes_default if unit_minutes_default > 0 else 60
         paid_minutes = max(0, int(unit_minutes) * int(amount))
-        log_order_history(
-            mysql_cfg,
-            order_id=order_id,
-            owner=buyer,
-            user_id=int(user_id),
-            workspace_id=workspace_id,
-            account_id=lot_mapping.get("id") if lot_mapping else None,
-            account_name=lot_mapping.get("account_name") if lot_mapping else None,
-            steam_id=steam_id,
-            rental_minutes=paid_minutes,
-            lot_number=lot_number,
-            amount=amount,
-            price=price_value,
-            action="blacklist_comp",
-        )
-        log_blacklist_event(
-            mysql_cfg,
-            owner=buyer,
-            action="blacklist_comp",
-            details=f"order={order_id}; lot={lot_number}; amount={amount}",
-            amount=paid_minutes,
-            user_id=int(user_id),
-            workspace_id=workspace_id,
-        )
-        total_paid = get_blacklist_compensation_total(mysql_cfg, buyer, int(user_id), workspace_id)
+        prev_paid = get_blacklist_compensation_total(mysql_cfg, buyer, int(user_id), workspace_id)
+        comp_remaining = max(comp_threshold_minutes - prev_paid, 0)
+        comp_applied = min(paid_minutes, comp_remaining) if comp_remaining > 0 else 0
+        extra_minutes = max(paid_minutes - comp_applied, 0)
+        price_total = price_value
+        price_comp = price_total
+        price_extra = price_total
+        if price_total is not None and paid_minutes > 0:
+            price_comp = float(price_total) * (comp_applied / paid_minutes) if comp_applied > 0 else 0.0
+            price_extra = float(price_total) - float(price_comp or 0.0)
+        if comp_applied > 0:
+            log_order_history(
+                mysql_cfg,
+                order_id=order_id,
+                owner=buyer,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                account_id=lot_mapping.get("id") if lot_mapping else None,
+                account_name=lot_mapping.get("account_name") if lot_mapping else None,
+                steam_id=steam_id,
+                rental_minutes=comp_applied,
+                lot_number=lot_number,
+                amount=amount,
+                price=price_comp,
+                action="blacklist_comp",
+            )
+            log_blacklist_event(
+                mysql_cfg,
+                owner=buyer,
+                action="blacklist_comp",
+                details=f"order={order_id}; lot={lot_number}; amount={amount}",
+                amount=comp_applied,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+        total_paid = prev_paid + comp_applied
         if total_paid >= comp_threshold_minutes:
             removed = remove_blacklist_entry(mysql_cfg, buyer, int(user_id), workspace_id)
             log_blacklist_event(
@@ -826,39 +841,47 @@ def handle_order_purchased(
                     chat_id,
                     f"Оплата штрафа получена ({format_duration_minutes(total_paid)}). Доступ разблокирован.",
                 )
+            if extra_minutes > 0:
+                if price_extra is not None:
+                    price_value = price_extra
+                extra_units = max(1, int(math.ceil(extra_minutes / unit_minutes)))
+                amount = extra_units
+                override_total_minutes = int(extra_minutes)
+            else:
+                mark_order_processed(site_username, site_user_id, workspace_id, order_id)
+                return
+        else:
+            remaining = max(comp_threshold_minutes - total_paid, 0)
+            lot_url = lot_mapping.get("lot_url") if lot_mapping else None
+            lot_label = f"лот №{lot_number}"
+            if lot_url:
+                lot_label = f"лот {lot_url}"
+            blocked_message = render_template(
+                blocked_template,
+                values={
+                    "penalty": format_penalty_label(comp_threshold_minutes),
+                    "paid": format_duration_minutes(total_paid),
+                    "remaining": format_duration_minutes(remaining),
+                    "lot": lot_label,
+                },
+                command_labels=command_labels,
+            )
+            send_chat_message(
+                logger,
+                account,
+                chat_id,
+                blocked_message,
+            )
+            log_blacklist_event(
+                mysql_cfg,
+                owner=buyer,
+                action="blocked_order",
+                details=f"order={order_id}; lot={lot_number}; amount={amount}; paid={total_paid}; remaining={remaining}",
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
             mark_order_processed(site_username, site_user_id, workspace_id, order_id)
             return
-        remaining = max(comp_threshold_minutes - total_paid, 0)
-        lot_url = lot_mapping.get("lot_url") if lot_mapping else None
-        lot_label = f"лот №{lot_number}"
-        if lot_url:
-            lot_label = f"лот {lot_url}"
-        blocked_message = render_template(
-            blocked_template,
-            values={
-                "penalty": format_penalty_label(comp_threshold_minutes),
-                "paid": format_duration_minutes(total_paid),
-                "remaining": format_duration_minutes(remaining),
-                "lot": lot_label,
-            },
-            command_labels=command_labels,
-        )
-        send_chat_message(
-            logger,
-            account,
-            chat_id,
-            blocked_message,
-        )
-        log_blacklist_event(
-            mysql_cfg,
-            owner=buyer,
-            action="blocked_order",
-            details=f"order={order_id}; lot={lot_number}; amount={amount}; paid={total_paid}; remaining={remaining}",
-            user_id=int(user_id),
-            workspace_id=workspace_id,
-        )
-        mark_order_processed(site_username, site_user_id, workspace_id, order_id)
-        return
     mapping = lot_mapping
     if mapping:
         try:
@@ -921,7 +944,7 @@ def handle_order_purchased(
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
-            total_minutes = unit_minutes * amount
+            total_minutes = override_total_minutes if override_total_minutes is not None else unit_minutes * amount
             assign_account_to_buyer(
                 mysql_cfg,
                 account_id=int(replacement["id"]),
@@ -1002,7 +1025,7 @@ def handle_order_purchased(
         )
         if replacement:
             unit_minutes = get_unit_minutes(replacement)
-            total_minutes = unit_minutes * amount
+            total_minutes = override_total_minutes if override_total_minutes is not None else unit_minutes * amount
             assign_account_to_buyer(
                 mysql_cfg,
                 account_id=int(replacement["id"]),
@@ -1068,7 +1091,7 @@ def handle_order_purchased(
         return
 
     unit_minutes = get_unit_minutes(mapping)
-    total_minutes = unit_minutes * amount
+    total_minutes = override_total_minutes if override_total_minutes is not None else unit_minutes * amount
 
     updated_account = mapping
     if not owner_key:
