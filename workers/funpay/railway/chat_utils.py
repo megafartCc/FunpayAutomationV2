@@ -375,6 +375,7 @@ def set_ai_pause(
     user_id: int,
     workspace_id: int | None,
     chat_id: int,
+    chat_name: str | None = None,
     seconds: int | None = None,
 ) -> None:
     pause_seconds = int(seconds) if seconds is not None else env_int("AI_SNOOZE_SECONDS", 300)
@@ -395,15 +396,21 @@ def set_ai_pause(
         paused_until = datetime.utcnow() + timedelta(seconds=pause_seconds)
         cursor.execute(
             """
-            UPDATE chats
-            SET ai_paused_until = %s
-            WHERE user_id = %s AND workspace_id <=> %s AND chat_id = %s
+            INSERT INTO chats (
+                chat_id, name, last_message_text, last_message_time, unread,
+                admin_unread_count, admin_requested, ai_paused_until, user_id, workspace_id
+            )
+            VALUES (%s, %s, NULL, NULL, 0, 0, 0, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                ai_paused_until = VALUES(ai_paused_until),
+                name = COALESCE(VALUES(name), name)
             """,
             (
+                int(chat_id),
+                chat_name.strip() if isinstance(chat_name, str) and chat_name.strip() else None,
                 paused_until,
                 int(user_id),
                 int(workspace_id) if workspace_id is not None else None,
-                int(chat_id),
             ),
         )
         conn.commit()

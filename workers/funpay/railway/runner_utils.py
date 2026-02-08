@@ -2245,6 +2245,7 @@ def log_message(
                     user_id=int(user_id),
                     workspace_id=workspace_id,
                     chat_id=int(chat_id),
+                    chat_name=chat_name,
                 )
             except Exception:
                 pass
