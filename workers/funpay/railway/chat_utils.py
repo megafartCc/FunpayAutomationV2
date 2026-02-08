@@ -365,8 +365,8 @@ def upsert_chat_summary(
             ),
         )
         conn.commit()
-      finally:
-          conn.close()
+    finally:
+        conn.close()
 
 
 def set_ai_pause(
