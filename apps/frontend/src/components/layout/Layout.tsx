@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
@@ -37,7 +37,6 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
   const location = useLocation();
   const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [animateReady, setAnimateReady] = useState(false);
   const titleKey =
     titles[location.pathname] ||
     (location.pathname.startsWith("/chats") ? "title.chats" : "title.dashboard");
@@ -50,11 +49,6 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     location.pathname === "/plugins";
   const isChatRoute = location.pathname.startsWith("/chats");
 
-  useEffect(() => {
-    setAnimateReady(true);
-  }, []);
-
-  const pageKey = useMemo(() => location.pathname, [location.pathname]);
 
   return (
     <WorkspaceProvider>
@@ -85,10 +79,9 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
             }`}
           >
             <motion.div
-              key={pageKey}
-              initial={animateReady ? { opacity: 0, y: 10 } : false}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className={`min-h-0 ${isChatRoute ? "h-full" : "min-h-[40vh]"}`}
             >
               <Outlet />
