@@ -3,9 +3,6 @@ import SteamUser from "steam-user";
 import SteamTotp from "steam-totp";
 
 const {
-  STEAM_BRIDGE_USERNAME,
-  STEAM_BRIDGE_PASSWORD,
-  STEAM_BRIDGE_SHARED_SECRET,
   STEAM_BRIDGE_INTERNAL_TOKEN,
   PRESENCE_DEBUG_TOKEN,
 } = process.env;
@@ -570,7 +567,6 @@ function getSessionFor(userId, bridgeId) {
       if (session.userId === Number(userId)) return session;
     }
   }
-  if (sessions.has("env")) return sessions.get("env");
   return null;
 }
 
@@ -581,23 +577,9 @@ function statusForSession(session) {
   return { status: "offline" };
 }
 
-function maybeStartEnvSession() {
-  if (!STEAM_BRIDGE_USERNAME || !STEAM_BRIDGE_PASSWORD) return;
-  if (sessions.has("env")) return;
-  const session = createSession({
-    bridgeId: "env",
-    userId: 0,
-    login: STEAM_BRIDGE_USERNAME,
-    password: STEAM_BRIDGE_PASSWORD,
-    sharedSecret: STEAM_BRIDGE_SHARED_SECRET,
-    isDefault: true,
-  });
-  sessions.set("env", session);
-}
-
 app.get("/health", (_req, res) => {
-  const session = sessions.get("env");
-  res.json({ status: session?.loggedOn ? "ok" : "down", loggedOn: !!session?.loggedOn });
+  const anyOnline = Array.from(sessions.values()).some((session) => session.loggedOn);
+  res.json({ status: anyOnline ? "ok" : "down", loggedOn: anyOnline });
 });
 
 app.post("/internal/bridge/:bridgeId/connect", (req, res) => {
@@ -761,8 +743,6 @@ app.get("/debug/keys", requireDebugToken, (req, res) => {
     steamids: Array.from(session.presence.keys()).slice(0, 500),
   });
 });
-
-maybeStartEnvSession();
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`[bridge] listening on ${port}`));
