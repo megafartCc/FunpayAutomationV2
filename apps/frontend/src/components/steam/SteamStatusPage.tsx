@@ -414,7 +414,7 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
               </span>
             </div>
 
-            <div className="mt-4 grid gap-2">
+            <div className="mt-4 grid gap-2 max-h-[560px] overflow-y-auto pr-2">
               {presenceAccounts.length ? (
                 presenceAccounts.map((item) => {
                   const meta = presenceMeta(item.status);
