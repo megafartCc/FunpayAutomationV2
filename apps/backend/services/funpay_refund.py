@@ -48,7 +48,7 @@ def refund_order(
     proxy_url: str | None,
     order_id: str,
     user_agent: str | None = None,
-) -> None:
+) -> float | None:
     if not Account:
         raise RuntimeError("FunPayAPI is not available in backend runtime.")
     normalized = _normalize_order_id(order_id)
@@ -57,5 +57,14 @@ def refund_order(
     proxy_cfg = _build_proxy_config(proxy_url)
     account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
     account.get()
+    refund_amount: float | None = None
+    try:
+        order = account.get_order(normalized)
+        if order is not None:
+            order_sum = getattr(order, "sum", None)
+            if order_sum is not None:
+                refund_amount = float(order_sum)
+    except Exception as exc:
+        logger.warning("Failed to fetch order %s before refund: %s", normalized, exc)
     account.refund(normalized)
-
+    return refund_amount

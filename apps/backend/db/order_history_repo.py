@@ -21,6 +21,7 @@ class OrderHistoryItem:
     lot_number: Optional[int]
     amount: Optional[int]
     price: Optional[float]
+    refund_amount: Optional[float]
     action: Optional[str]
     user_id: int
     workspace_id: Optional[int]
@@ -67,7 +68,9 @@ class MySQLOrderHistoryRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            has_refund_amount = self._column_exists(cursor, "refund_amount")
             params: list = [int(user_id), order_key]
+            refund_select = "oh.refund_amount" if has_refund_amount else "NULL AS refund_amount"
             workspace_clause = ""
             if workspace_id is not None:
                 workspace_clause = " AND (workspace_id = %s OR workspace_id IS NULL)"
@@ -75,7 +78,7 @@ class MySQLOrderHistoryRepo:
             cursor.execute(
                 f"""
                 SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
-                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, {refund_select}, oh.action,
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
@@ -97,7 +100,7 @@ class MySQLOrderHistoryRepo:
                 cursor.execute(
                     f"""
                     SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
-                           oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                           oh.rental_minutes, oh.lot_number, oh.amount, oh.price, {refund_select}, oh.action,
                            oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                     FROM order_history oh
                     LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
@@ -123,6 +126,7 @@ class MySQLOrderHistoryRepo:
                 lot_number=row.get("lot_number"),
                 amount=row.get("amount"),
                 price=row.get("price"),
+                refund_amount=row.get("refund_amount"),
                 action=row.get("action"),
                 user_id=int(row.get("user_id") or user_id),
                 workspace_id=row.get("workspace_id"),
@@ -143,6 +147,8 @@ class MySQLOrderHistoryRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            has_refund_amount = self._column_exists(cursor, "refund_amount")
+            refund_select = "oh.refund_amount" if has_refund_amount else "NULL AS refund_amount"
             params: list = [int(user_id)]
             where = ["user_id = %s"]
             if workspace_id is not None:
@@ -182,6 +188,8 @@ class MySQLOrderHistoryRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            has_refund_amount = self._column_exists(cursor, "refund_amount")
+            refund_select = "oh.refund_amount" if has_refund_amount else "NULL AS refund_amount"
             params: list = [int(user_id)]
             where = "WHERE oh.user_id = %s"
             if workspace_id is not None:
@@ -199,7 +207,7 @@ class MySQLOrderHistoryRepo:
             cursor.execute(
                 f"""
                 SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
-                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, {refund_select}, oh.action,
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
@@ -224,6 +232,7 @@ class MySQLOrderHistoryRepo:
                     lot_number=row.get("lot_number"),
                     amount=row.get("amount"),
                     price=row.get("price"),
+                    refund_amount=row.get("refund_amount"),
                     action=row.get("action"),
                     user_id=int(row.get("user_id") or user_id),
                     workspace_id=row.get("workspace_id"),
@@ -249,6 +258,8 @@ class MySQLOrderHistoryRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
+            has_refund_amount = self._column_exists(cursor, "refund_amount")
+            refund_select = "oh.refund_amount" if has_refund_amount else "NULL AS refund_amount"
             params: list = [int(user_id), owner_key]
             where = "WHERE oh.user_id = %s AND LOWER(oh.owner) = %s"
             if workspace_id is not None:
@@ -260,7 +271,7 @@ class MySQLOrderHistoryRepo:
             cursor.execute(
                 f"""
                 SELECT oh.id, oh.order_id, oh.owner, oh.account_name, a.login AS account_login, oh.account_id, oh.steam_id,
-                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, oh.action,
+                       oh.rental_minutes, oh.lot_number, oh.amount, oh.price, {refund_select}, oh.action,
                        oh.user_id, oh.workspace_id, w.name AS workspace_name, oh.created_at
                 FROM order_history oh
                 LEFT JOIN workspaces w ON w.id = oh.workspace_id AND w.user_id = oh.user_id
@@ -286,6 +297,7 @@ class MySQLOrderHistoryRepo:
                 lot_number=row.get("lot_number"),
                 amount=row.get("amount"),
                 price=row.get("price"),
+                refund_amount=row.get("refund_amount"),
                 action=row.get("action"),
                 user_id=int(row.get("user_id") or user_id),
                 workspace_id=row.get("workspace_id"),
@@ -310,6 +322,7 @@ class MySQLOrderHistoryRepo:
         lot_number: int | None = None,
         amount: int | None = None,
         price: float | None = None,
+        refund_amount: float | None = None,
     ) -> None:
         order_key = self._normalize_order_id(order_id)
         owner_key = self._normalize_owner(owner)
@@ -319,53 +332,105 @@ class MySQLOrderHistoryRepo:
         try:
             cursor = conn.cursor()
             has_steam = self._column_exists(cursor, "steam_id")
+            has_refund_amount = self._column_exists(cursor, "refund_amount")
             if has_steam:
-                cursor.execute(
-                    """
-                    INSERT INTO order_history (
-                        order_id, owner, account_name, account_id, steam_id, rental_minutes,
-                        lot_number, amount, price, action, user_id, workspace_id
+                if has_refund_amount:
+                    cursor.execute(
+                        """
+                        INSERT INTO order_history (
+                            order_id, owner, account_name, account_id, steam_id, rental_minutes,
+                            lot_number, amount, price, refund_amount, action, user_id, workspace_id
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            order_key,
+                            owner_key,
+                            account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                            int(account_id) if account_id is not None else None,
+                            steam_id.strip() if isinstance(steam_id, str) and steam_id.strip() else None,
+                            int(rental_minutes) if rental_minutes is not None else None,
+                            int(lot_number) if lot_number is not None else None,
+                            int(amount) if amount is not None else None,
+                            float(price) if price is not None else None,
+                            float(refund_amount) if refund_amount is not None else None,
+                            action,
+                            int(user_id),
+                            int(workspace_id) if workspace_id is not None else None,
+                        ),
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        order_key,
-                        owner_key,
-                        account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
-                        int(account_id) if account_id is not None else None,
-                        steam_id.strip() if isinstance(steam_id, str) and steam_id.strip() else None,
-                        int(rental_minutes) if rental_minutes is not None else None,
-                        int(lot_number) if lot_number is not None else None,
-                        int(amount) if amount is not None else None,
-                        float(price) if price is not None else None,
-                        action,
-                        int(user_id),
-                        int(workspace_id) if workspace_id is not None else None,
-                    ),
-                )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO order_history (
+                            order_id, owner, account_name, account_id, steam_id, rental_minutes,
+                            lot_number, amount, price, action, user_id, workspace_id
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            order_key,
+                            owner_key,
+                            account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                            int(account_id) if account_id is not None else None,
+                            steam_id.strip() if isinstance(steam_id, str) and steam_id.strip() else None,
+                            int(rental_minutes) if rental_minutes is not None else None,
+                            int(lot_number) if lot_number is not None else None,
+                            int(amount) if amount is not None else None,
+                            float(price) if price is not None else None,
+                            action,
+                            int(user_id),
+                            int(workspace_id) if workspace_id is not None else None,
+                        ),
+                    )
             else:
-                cursor.execute(
-                    """
-                    INSERT INTO order_history (
-                        order_id, owner, account_name, account_id, rental_minutes,
-                        lot_number, amount, price, action, user_id, workspace_id
+                if has_refund_amount:
+                    cursor.execute(
+                        """
+                        INSERT INTO order_history (
+                            order_id, owner, account_name, account_id, rental_minutes,
+                            lot_number, amount, price, refund_amount, action, user_id, workspace_id
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            order_key,
+                            owner_key,
+                            account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                            int(account_id) if account_id is not None else None,
+                            int(rental_minutes) if rental_minutes is not None else None,
+                            int(lot_number) if lot_number is not None else None,
+                            int(amount) if amount is not None else None,
+                            float(price) if price is not None else None,
+                            float(refund_amount) if refund_amount is not None else None,
+                            action,
+                            int(user_id),
+                            int(workspace_id) if workspace_id is not None else None,
+                        ),
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        order_key,
-                        owner_key,
-                        account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
-                        int(account_id) if account_id is not None else None,
-                        int(rental_minutes) if rental_minutes is not None else None,
-                        int(lot_number) if lot_number is not None else None,
-                        int(amount) if amount is not None else None,
-                        float(price) if price is not None else None,
-                        action,
-                        int(user_id),
-                        int(workspace_id) if workspace_id is not None else None,
-                    ),
-                )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO order_history (
+                            order_id, owner, account_name, account_id, rental_minutes,
+                            lot_number, amount, price, action, user_id, workspace_id
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            order_key,
+                            owner_key,
+                            account_name.strip() if isinstance(account_name, str) and account_name.strip() else None,
+                            int(account_id) if account_id is not None else None,
+                            int(rental_minutes) if rental_minutes is not None else None,
+                            int(lot_number) if lot_number is not None else None,
+                            int(amount) if amount is not None else None,
+                            float(price) if price is not None else None,
+                            action,
+                            int(user_id),
+                            int(workspace_id) if workspace_id is not None else None,
+                        ),
+                    )
             conn.commit()
         finally:
             conn.close()

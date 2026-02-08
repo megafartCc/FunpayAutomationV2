@@ -44,6 +44,7 @@ class OrderHistoryItem(BaseModel):
     lot_number: int | None = None
     amount: int | None = None
     price: float | None = None
+    refund_amount: float | None = None
     action: str | None = None
     workspace_id: int | None = None
     workspace_name: str | None = None
@@ -150,6 +151,7 @@ def orders_history(
                 lot_number=item.lot_number,
                 amount=item.amount,
                 price=item.price,
+                refund_amount=item.refund_amount,
                 action=item.action,
                 workspace_id=item.workspace_id,
                 workspace_name=item.workspace_name,
@@ -241,8 +243,9 @@ def refund_order_api(
     if not workspace.golden_key:
         raise HTTPException(status_code=400, detail="Workspace credentials missing for refund.")
 
+    refund_amount = None
     try:
-        refund_order(
+        refund_amount = refund_order(
             golden_key=workspace.golden_key,
             proxy_url=workspace.proxy_url,
             order_id=order_record.order_id,
@@ -311,6 +314,7 @@ def refund_order_api(
         lot_number=order_record.lot_number,
         amount=order_record.amount,
         price=order_record.price,
+        refund_amount=refund_amount,
     )
     notifications_repo.log_notification(
         event_type="refund_manual",

@@ -276,6 +276,7 @@ export type OrderHistoryItem = {
   lot_number?: number | null;
   amount?: number | null;
   price?: number | null;
+  refund_amount?: number | null;
   action?: string | null;
   workspace_id?: number | null;
   workspace_name?: string | null;

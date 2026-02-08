@@ -310,6 +310,15 @@ def ensure_schema() -> None:
             cursor.execute("ALTER TABLE order_history ADD COLUMN steam_id VARCHAR(32) NULL")
         cursor.execute(
             """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'order_history' AND column_name = 'refund_amount'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE order_history ADD COLUMN refund_amount DECIMAL(10,2) NULL AFTER price")
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS blacklist (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 owner VARCHAR(255) NOT NULL,

@@ -505,7 +505,7 @@ const FunpayStatsPage: React.FC = () => {
       if (!action.startsWith("refund")) return;
       const key = (order.order_id || "").trim();
       if (!key) return;
-      const base = order.price ?? order.amount ?? 0;
+      const base = order.refund_amount ?? order.price ?? order.amount ?? 0;
       const value = Number.isFinite(Number(base)) ? Number(base) : 0;
       if (!refundByOrder.has(key) || value > (refundByOrder.get(key) || 0)) {
         refundByOrder.set(key, value);
