@@ -574,7 +574,7 @@ function statusForSession(session) {
   if (!session) return { status: "offline" };
   if (session.loggedOn) return { status: "online" };
   if (session.lastError) return { status: "error", last_error: session.lastError };
-  return { status: "offline" };
+  return { status: "connecting" };
 }
 
 app.get("/health", (_req, res) => {

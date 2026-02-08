@@ -25,6 +25,12 @@ const bridgeStatusMeta = (status?: string) => {
       className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
     };
   }
+  if (normalized.includes("connect")) {
+    return {
+      label: "Connecting",
+      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+    };
+  }
   if (normalized.includes("error")) {
     return {
       label: "Error",
