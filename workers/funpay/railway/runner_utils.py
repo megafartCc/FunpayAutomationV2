@@ -2496,7 +2496,7 @@ def log_message(
 
                 pass
 
-    if ai_paused and not is_system and chat_id is not None and not getattr(msg, "by_bot", False):
+    if ai_paused and not command and not is_system and chat_id is not None and not getattr(msg, "by_bot", False):
         return None
 
     if command:
