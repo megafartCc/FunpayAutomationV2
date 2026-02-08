@@ -502,54 +502,14 @@ const FunpayStatsPage: React.FC = () => {
     return { totalOrders, refundedOrders, refundRate };
   }, [ordersInRange.length, refundsInRange.length]);
 
-  const refundBarChart = useMemo(() => {
-    const kept = Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0);
-    return {
-      data: {
-        labels: [tr("Refunds", "Возвраты")],
-        datasets: [
-          {
-            label: tr("Refunded", "Возвраты"),
-            data: [refundStats.refundedOrders],
-            backgroundColor: "rgba(239, 68, 68, 0.9)",
-            borderRadius: 999,
-            borderSkipped: false,
-            barThickness: 18,
-          },
-          {
-            label: tr("Kept", "Без возврата"),
-            data: [kept],
-            backgroundColor: "rgba(16, 185, 129, 0.9)",
-            borderRadius: 999,
-            borderSkipped: false,
-            barThickness: 18,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: "y" as const,
-        scales: {
-          x: { stacked: true, display: false, max: refundStats.totalOrders || 1 },
-          y: { stacked: true, display: false },
-        },
-        layout: { padding: { left: 6, right: 6, top: 4, bottom: 4 } },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (context: { dataset: { label?: string }; parsed: { x: number } }) => {
-                const total = refundStats.totalOrders || 1;
-                const percent = Math.round((context.parsed.x / total) * 100);
-                return `${context.dataset.label ?? ""}: ${context.parsed.x} (${percent}%)`;
-              },
-            },
-          },
-        },
-      },
-    };
-  }, [refundStats, tr]);
+  const refundPercent = useMemo(() => {
+    if (!refundStats.totalOrders) return 0;
+    const value = (refundStats.refundedOrders / refundStats.totalOrders) * 100;
+    return Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0));
+  }, [refundStats.refundedOrders, refundStats.totalOrders]);
+  const keptPercent = Math.max(0, 100 - refundPercent);
+
+
 
   const accountPopularity = useMemo<AccountStat[]>(() => {
     const map = new Map<string, { orders: number; revenue: number; minutes: number }>();
@@ -1089,19 +1049,36 @@ const FunpayStatsPage: React.FC = () => {
                   {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
                 </p>
               </div>
-              <div className="min-w-[160px] text-right text-xs text-neutral-500">
-                <div className="inline-flex items-center gap-2">
+              <div className="min-w-[180px] text-right text-xs text-neutral-500">
+                <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">
                   <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
                   {tr("Refunded", "Возвраты")}: {refundStats.refundedOrders}
                 </div>
-                <div className="mt-1 inline-flex items-center gap-2">
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
                   {tr("Kept", "Без возврата")}: {Math.max(refundStats.totalOrders - refundStats.refundedOrders, 0)}
                 </div>
               </div>
             </div>
-            <div className="mt-3 h-14 w-full">
-              <ChartBar data={refundBarChart.data} options={refundBarChart.options} />
+            <div className="mt-4 rounded-full bg-neutral-200/60 p-1">
+              <div className="relative h-3 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-rose-500/90 transition-[width] duration-500"
+                  style={{ width: `${refundPercent}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 right-0 rounded-full bg-emerald-500/90 transition-[width] duration-500"
+                  style={{ width: `${keptPercent}%` }}
+                />
+                <div
+                  className="absolute inset-y-0 w-px bg-white/70"
+                  style={{ left: `calc(${refundPercent}% - 0.5px)` }}
+                />
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-500">
+              <span>{refundPercent.toFixed(1)}% {tr("Refunded", "возвраты")}</span>
+              <span>{keptPercent.toFixed(1)}% {tr("Kept", "без возврата")}</span>
             </div>
           </div>
           <div className="mt-5 rounded-xl bg-neutral-50 p-4">

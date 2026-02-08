@@ -699,7 +699,10 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
+    <div
+      className="flex min-h-0 flex-col gap-6"
+      style={{ ["--list-max-height" as string]: "calc(100vh - 320px)" }}
+    >
       <div className="grid min-h-0 flex-1 items-stretch gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <motion.div
           {...PANEL_MOTION}
@@ -772,7 +775,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden">
             <div className="min-w-0 flex min-h-0 flex-1 flex-col">
-              <div className="mt-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+              <div className="mt-3 list-scroll flex-1 min-h-0">
                 <div
                   className="sticky top-0 z-10 grid gap-3 bg-white px-6 py-2 text-xs font-semibold text-neutral-500"
                   style={{ gridTemplateColumns: INVENTORY_GRID }}
