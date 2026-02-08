@@ -138,6 +138,7 @@ from .order_utils import (
 )
 
 _AI_PAUSE_CACHE: dict[tuple[int | None, int | None, int], float] = {}
+_AI_LAST_REPLY: dict[tuple[int | None, int | None, int], tuple[float, str]] = {}
 
 from .presence_utils import clear_lot_cache_on_start
 
@@ -2206,16 +2207,10 @@ def log_message(
 
 
     ai_enabled = bool(bot_settings.get("ai_enabled", True))
-    if (
-        mysql_cfg
-        and user_id is not None
-        and chat_id is not None
-        and not is_system
-        and not getattr(msg, "by_bot", False)
-    ):
-        admin_sender = False
+    seller_sender = False
+    if not is_system and not getattr(msg, "by_bot", False):
         if getattr(msg, "author_id", None) == getattr(account, "id", None):
-            admin_sender = True
+            seller_sender = True
         else:
             sender_key = sender_username.lower() if isinstance(sender_username, str) else ""
             seller_keys: set[str] = set()
@@ -2224,22 +2219,29 @@ def log_message(
             if site_username:
                 seller_keys.add(site_username.lower())
             if sender_key and sender_key in seller_keys:
-                admin_sender = True
-        if admin_sender:
-            try:
-                pause_seconds = env_int("AI_SNOOZE_SECONDS", 300)
-                _AI_PAUSE_CACHE[(int(user_id), int(workspace_id) if workspace_id is not None else None, int(chat_id))] = (
-                    time.time() + pause_seconds
-                )
-                set_ai_pause(
-                    mysql_cfg,
-                    user_id=int(user_id),
-                    workspace_id=workspace_id,
-                    chat_id=int(chat_id),
-                    chat_name=chat_name,
-                )
-            except Exception:
-                pass
+                seller_sender = True
+    if (
+        mysql_cfg
+        and user_id is not None
+        and chat_id is not None
+        and not is_system
+        and not getattr(msg, "by_bot", False)
+        and seller_sender
+    ):
+        try:
+            pause_seconds = env_int("AI_SNOOZE_SECONDS", 300)
+            _AI_PAUSE_CACHE[(int(user_id), int(workspace_id) if workspace_id is not None else None, int(chat_id))] = (
+                time.time() + pause_seconds
+            )
+            set_ai_pause(
+                mysql_cfg,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+                chat_id=int(chat_id),
+                chat_name=chat_name,
+            )
+        except Exception:
+            pass
     ai_paused = False
     if mysql_cfg and user_id is not None and chat_id is not None:
         try:
@@ -2262,8 +2264,26 @@ def log_message(
 
     ai_active = bool(ai_enabled and not ai_paused)
     bot_flag = bool(getattr(msg, "by_bot", False))
+    sender_type = "system" if is_system else "buyer"
+    if bot_flag:
+        sender_type = "bot"
+    elif seller_sender:
+        sender_type = "seller"
+    if bot_flag and chat_id is not None:
+        key = (
+            int(user_id) if user_id is not None else None,
+            int(workspace_id) if workspace_id is not None else None,
+            int(chat_id),
+        )
+        last_ai = _AI_LAST_REPLY.get(key)
+        if last_ai:
+            last_time, last_text = last_ai
+            if time.time() - last_time <= 600 and (last_text or "").strip() == (message_text or "").strip():
+                sender_type = "ai"
+            elif time.time() - last_time > 600:
+                _AI_LAST_REPLY.pop(key, None)
     logger.info(
-        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s url=%s: %s",
+        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s sender=%s url=%s: %s",
         site_username or "-",
         workspace_id if workspace_id is not None else "-",
         chat_name,
@@ -2271,6 +2291,7 @@ def log_message(
         is_system,
         bot_flag,
         ai_active,
+        sender_type,
         chat_url,
         message_text,
     )
@@ -3114,6 +3135,13 @@ def log_message(
 
                 return None
 
+            if chat_id is not None:
+                key = (
+                    int(user_id) if user_id is not None else None,
+                    int(workspace_id) if workspace_id is not None else None,
+                    int(chat_id),
+                )
+                _AI_LAST_REPLY[key] = (time.time(), ai_text)
             send_chat_message(logger, account, int(chat_id), ai_text)
 
             if mysql_cfg and user_id is not None and chat_id is not None:
