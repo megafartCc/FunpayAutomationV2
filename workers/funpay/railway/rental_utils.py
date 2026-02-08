@@ -34,6 +34,45 @@ from .text_utils import _calculate_resume_start, _parse_datetime, build_expire_s
 from .user_utils import get_user_id_by_username
 
 
+_BRIDGE_DEFAULT_CACHE: dict[int, tuple[float, int | None]] = {}
+_BRIDGE_DEFAULT_TTL_SECONDS = 300
+
+
+def _get_default_bridge_id(mysql_cfg: dict, user_id: int) -> int | None:
+    now = time.time()
+    cached = _BRIDGE_DEFAULT_CACHE.get(int(user_id))
+    if cached and now - cached[0] < _BRIDGE_DEFAULT_TTL_SECONDS:
+        return cached[1]
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, None)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not table_exists(cursor, "steam_bridge_accounts"):
+            _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, None)
+            return None
+        cursor.execute(
+            "SELECT id FROM steam_bridge_accounts WHERE user_id = %s AND is_default = 1 "
+            "ORDER BY updated_at DESC LIMIT 1",
+            (int(user_id),),
+        )
+        row = cursor.fetchone()
+        bridge_id = int(row[0]) if row and row[0] else None
+        if bridge_id is None:
+            cursor.execute(
+                "SELECT id FROM steam_bridge_accounts WHERE user_id = %s ORDER BY updated_at DESC LIMIT 1",
+                (int(user_id),),
+            )
+            row = cursor.fetchone()
+            bridge_id = int(row[0]) if row and row[0] else None
+        _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, bridge_id)
+        return bridge_id
+    except Exception:
+        _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, None)
+        return None
+    finally:
+        conn.close()
+
+
 def fetch_active_rentals_for_monitor(
     mysql_cfg: dict,
     user_id: int,
@@ -219,7 +258,8 @@ def _should_delay_expire(
         return True
 
     steam_id = steam_id_from_mafile(account_row.get("mafile_json"))
-    presence = fetch_presence(steam_id)
+    bridge_id = _get_default_bridge_id(mysql_cfg, user_id)
+    presence = fetch_presence(steam_id, user_id=user_id, bridge_id=bridge_id)
     in_match = _is_match_active(presence)
     if not in_match:
         _clear_expire_delay_state(state, account_id)

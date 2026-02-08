@@ -406,6 +406,39 @@ def ensure_schema() -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS steam_bridge_accounts (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                label VARCHAR(255) NULL,
+                login_enc TEXT NOT NULL,
+                password_enc TEXT NOT NULL,
+                shared_secret_enc TEXT NULL,
+                is_default TINYINT(1) NOT NULL DEFAULT 0,
+                status VARCHAR(32) NOT NULL DEFAULT 'offline',
+                last_error TEXT NULL,
+                last_seen TIMESTAMP NULL DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_bridge_user (user_id),
+                INDEX idx_bridge_default (user_id, is_default),
+                CONSTRAINT fk_bridge_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """
+        )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'steam_bridge_accounts' AND column_name = 'status'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE steam_bridge_accounts ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'offline'"
+            )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS raise_categories (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT NOT NULL,

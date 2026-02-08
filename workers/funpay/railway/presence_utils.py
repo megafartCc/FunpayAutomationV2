@@ -40,8 +40,10 @@ def clear_lot_cache_on_start() -> None:
             cache.delete(*keys)
 
 
-def presence_cache_key(steam_id: str) -> str:
-    return f"presence:{steam_id}"
+def presence_cache_key(steam_id: str, user_id: int | None, bridge_id: int | None) -> str:
+    user_part = str(int(user_id)) if user_id is not None else "global"
+    bridge_part = str(int(bridge_id)) if bridge_id is not None else "default"
+    return f"presence:{user_part}:{bridge_part}:{steam_id}"
 
 
 def presence_cache_ttl_seconds() -> int:
@@ -102,13 +104,13 @@ def invalidate_chat_cache(user_id: int, workspace_id: int | None, chat_id: int) 
             continue
 
 
-def fetch_presence(steam_id: str | None) -> dict:
+def fetch_presence(steam_id: str | None, *, user_id: int | None = None, bridge_id: int | None = None) -> dict:
     if not steam_id:
         return {}
     cache = get_redis_client()
     if cache:
         try:
-            cached_raw = cache.get(presence_cache_key(steam_id))
+            cached_raw = cache.get(presence_cache_key(steam_id, user_id, bridge_id))
         except Exception:
             cached_raw = None
         if cached_raw is not None:
@@ -122,7 +124,21 @@ def fetch_presence(steam_id: str | None) -> dict:
         return {}
     base = base.rstrip("/")
     try:
-        resp = requests.get(f"{base}/presence/{steam_id}", timeout=10)
+        params = {}
+        if user_id is not None:
+            params["user_id"] = str(int(user_id))
+        if bridge_id is not None:
+            params["bridge_id"] = str(int(bridge_id))
+        headers = {}
+        token = os.getenv("STEAM_BRIDGE_INTERNAL_TOKEN", "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        resp = requests.get(
+            f"{base}/presence/{steam_id}",
+            timeout=10,
+            params=params or None,
+            headers=headers or None,
+        )
         resp.raise_for_status()
         payload = resp.json()
         data = payload if isinstance(payload, dict) else {}
@@ -131,7 +147,7 @@ def fetch_presence(steam_id: str | None) -> dict:
     if cache:
         try:
             ttl = presence_cache_ttl_seconds() if data else presence_cache_empty_ttl_seconds()
-            cache.setex(presence_cache_key(steam_id), ttl, json.dumps(data))
+            cache.setex(presence_cache_key(steam_id, user_id, bridge_id), ttl, json.dumps(data))
         except Exception:
             pass
     return data

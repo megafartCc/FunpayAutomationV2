@@ -85,6 +85,49 @@ export type LotEditSnapshot = {
   raw_fields?: Record<string, unknown>;
 };
 
+export type SteamBridgeAccount = {
+  id: number;
+  label?: string | null;
+  login_masked: string;
+  is_default: boolean;
+  status: string;
+  last_error?: string | null;
+  last_seen?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type SteamBridgeAccountCreatePayload = {
+  label?: string | null;
+  login: string;
+  password: string;
+  shared_secret?: string | null;
+  is_default?: boolean;
+  auto_connect?: boolean;
+};
+
+export type SteamBridgeAccountUpdatePayload = {
+  label?: string | null;
+  login?: string | null;
+  password?: string | null;
+  shared_secret?: string | null;
+  is_default?: boolean | null;
+};
+
+export type SteamPresenceAccount = {
+  account_id: number;
+  account_name: string;
+  workspace_id?: number | null;
+  workspace_name?: string | null;
+  steam_id?: string | null;
+  status: string;
+  hero?: string | null;
+  match_time?: string | null;
+  in_match?: boolean;
+  in_game?: boolean;
+  last_updated?: string | null;
+};
+
 export type LotEditPayload = {
   price?: number | null;
   amount?: number | null;
@@ -818,6 +861,36 @@ export const api = {
     const suffix = params.toString();
     return request<PriceDumperHistoryResponse>(
       `/plugins/price-dumper/history${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
+  listSteamBridgeAccounts: (refresh?: boolean) => {
+    const params = new URLSearchParams();
+    if (refresh) params.set("refresh", "true");
+    const suffix = params.toString();
+    return request<{ items: SteamBridgeAccount[] }>(
+      `/steam-bridge/accounts${suffix ? `?${suffix}` : ""}`,
+      { method: "GET" },
+    );
+  },
+  createSteamBridgeAccount: (payload: SteamBridgeAccountCreatePayload) =>
+    request<SteamBridgeAccount>("/steam-bridge/accounts", { method: "POST", body: payload }),
+  updateSteamBridgeAccount: (bridgeId: number, payload: SteamBridgeAccountUpdatePayload) =>
+    request<SteamBridgeAccount>(`/steam-bridge/accounts/${bridgeId}`, { method: "PATCH", body: payload }),
+  connectSteamBridgeAccount: (bridgeId: number) =>
+    request<SteamBridgeAccount>(`/steam-bridge/accounts/${bridgeId}/connect`, { method: "POST" }),
+  disconnectSteamBridgeAccount: (bridgeId: number) =>
+    request<SteamBridgeAccount>(`/steam-bridge/accounts/${bridgeId}/disconnect`, { method: "POST" }),
+  setDefaultSteamBridgeAccount: (bridgeId: number) =>
+    request<SteamBridgeAccount>(`/steam-bridge/accounts/${bridgeId}/default`, { method: "POST" }),
+  deleteSteamBridgeAccount: (bridgeId: number) =>
+    request<{ ok: boolean }>(`/steam-bridge/accounts/${bridgeId}`, { method: "DELETE" }),
+  listSteamPresenceAccounts: (workspaceId?: number | null) => {
+    const params = new URLSearchParams();
+    if (workspaceId) params.set("workspace_id", String(workspaceId));
+    const suffix = params.toString();
+    return request<{ items: SteamPresenceAccount[] }>(
+      `/steam-bridge/presence${suffix ? `?${suffix}` : ""}`,
       { method: "GET" },
     );
   },

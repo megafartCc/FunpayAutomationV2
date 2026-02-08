@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import SteamUser from "steam-user";
 import SteamTotp from "steam-totp";
 
@@ -6,6 +6,7 @@ const {
   STEAM_BRIDGE_USERNAME,
   STEAM_BRIDGE_PASSWORD,
   STEAM_BRIDGE_SHARED_SECRET,
+  STEAM_BRIDGE_INTERNAL_TOKEN,
   PRESENCE_DEBUG_TOKEN,
 } = process.env;
 
@@ -15,78 +16,40 @@ const app = express();
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Bridge-Token");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 app.use(express.json());
 
-const client = new SteamUser();
-const presence = new Map();
-const matchStart = new Map();
-let loggedOn = false;
 const MATCH_GRACE_MS = 5 * 60 * 1000;
 const BOT_PATTERN = /\bbot\b|\bbots\b|bot[_\s-]?match/;
 
-client.on("loggedOn", () => {
-  loggedOn = true;
-  console.log("[bridge] Logged into Steam");
-  client.setPersona(SteamUser.EPersonaState.Online);
-});
-
-client.on("error", (err) => {
-  loggedOn = false;
-  console.error("[bridge] Steam error", err);
-});
-
-client.on("disconnected", () => {
-  loggedOn = false;
-  console.warn("[bridge] Steam disconnected");
-});
-
-client.on("friendsList", () => {
-  for (const steamid of Object.keys(client.myFriends || {})) {
-    client.getPersonas([steamid]);
-  }
-});
-
-// Periodically refresh personas so presence stays current
-setInterval(() => {
-  if (!loggedOn) return;
-  const ids = Object.keys(client.myFriends || {});
-  if (ids.length) {
-    client.getPersonas(ids);
-  }
-}, 30000);
-
-client.on("user", (sid, user) => {
-  const id64 = sid.getSteamID64();
-  const previous = presence.get(id64);
-
-  let rpRaw = user.rich_presence || {};
-  // Some updates come as empty array; keep last known raw if we have it
-  if (Array.isArray(rpRaw) && rpRaw.length === 0 && previous) {
-    rpRaw = previous.rich_presence_raw || rpRaw;
-  }
-
-  const rp = Array.isArray(rpRaw)
-    ? Object.fromEntries(rpRaw.map((entry) => [entry.key, entry.value]))
-    : rpRaw;
-
-  presence.set(id64, {
-    steamid64: id64,
-    persona_state: user.persona_state,
-    appid: user.gameid || null,
-    in_game: !!user.gameid,
-    rich_presence: rp,
-    rich_presence_raw: rpRaw,
-    last_updated: Date.now(),
-  });
-});
+const sessions = new Map(); // bridgeId -> session
+const defaultBridgeByUser = new Map(); // userId -> bridgeId
 
 function normalizeKey(key) {
   return String(key || "").toLowerCase();
 }
+
+function getAuthToken(req) {
+  const header = req.headers["authorization"] || "";
+  if (header.toLowerCase().startsWith("bearer ")) {
+    return header.slice(7).trim();
+  }
+  return req.headers["x-bridge-token"] || "";
+}
+
+app.use((req, res, next) => {
+  if (req.path === "/health") return next();
+  const token = (STEAM_BRIDGE_INTERNAL_TOKEN || "").trim();
+  if (!token) return res.status(500).json({ error: "bridge_token_missing" });
+  const provided = String(getAuthToken(req) || "").trim();
+  if (!provided || provided !== token) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  next();
+});
 
 function getRichPresenceValue(rp, rpRaw, key) {
   const target = normalizeKey(key);
@@ -292,7 +255,7 @@ function extractMatchId(rp, rpRaw) {
   return null;
 }
 
-function updateMatchStart(id64, inMatch, matchId, heroKey) {
+function updateMatchStart(matchStart, id64, inMatch, matchId, heroKey) {
   const now = Date.now();
   const entry = matchStart.get(id64);
 
@@ -332,7 +295,7 @@ function updateMatchStart(id64, inMatch, matchId, heroKey) {
   return { entry, reset: false };
 }
 
-function derivePresence(data) {
+function derivePresence(data, matchStart) {
   const rp = data.rich_presence || {};
   const rpRaw = data.rich_presence_raw || [];
 
@@ -359,12 +322,10 @@ function derivePresence(data) {
 
   const matchId = extractMatchId(rp, rpRaw);
 
-  // NEW: Demo Hero detection (from your dump)
   const demo = isDotaDemo(rp, rpRaw);
 
   const inBotMatch = !demo && isBotMatch(rp, rpRaw);
 
-  // NEW: If demo, force inMatch false (demo can look like match because RP says "playing as")
   const inMatch =
     !demo &&
     !isCustomGame &&
@@ -383,7 +344,7 @@ function derivePresence(data) {
   const heroToken = extractHeroToken(rp, rpRaw);
   const heroKey = normalizeKey(heroToken);
 
-  const update = updateMatchStart(data.steamid64, inMatch, matchId, heroKey || null);
+  const update = updateMatchStart(matchStart, data.steamid64, inMatch, matchId, heroKey || null);
 
   const heroName = toHeroDisplay(heroToken);
   const heroLevel = null;
@@ -437,7 +398,6 @@ function derivePresence(data) {
 }
 
 function requireDebugToken(req, res, next) {
-  // If you set PRESENCE_DEBUG_TOKEN, endpoint is protected
   if (PRESENCE_DEBUG_TOKEN) {
     const token = req.query.token || req.headers["x-debug-token"];
     if (token !== PRESENCE_DEBUG_TOKEN) {
@@ -447,8 +407,8 @@ function requireDebugToken(req, res, next) {
   next();
 }
 
-function buildDebugView(data) {
-  const derived = derivePresence(data);
+function buildDebugView(data, matchStart) {
+  const derived = derivePresence(data, matchStart);
 
   const rawPairs = Array.isArray(derived.rpRaw)
     ? derived.rpRaw.map((e) => ({ key: e.key, value: e.value }))
@@ -495,33 +455,231 @@ function buildDebugView(data) {
   };
 }
 
-function logOn() {
-  if (!STEAM_BRIDGE_USERNAME || !STEAM_BRIDGE_PASSWORD) {
-    console.error("[bridge] Missing STEAM_BRIDGE_USERNAME/STEAM_BRIDGE_PASSWORD");
-    return;
-  }
-  const details = {
-    accountName: STEAM_BRIDGE_USERNAME,
-    password: STEAM_BRIDGE_PASSWORD,
+function createSession({ bridgeId, userId, login, password, sharedSecret, isDefault }) {
+  const client = new SteamUser();
+  const presence = new Map();
+  const matchStart = new Map();
+
+  const session = {
+    bridgeId: String(bridgeId),
+    userId: Number(userId),
+    client,
+    presence,
+    matchStart,
+    loggedOn: false,
+    lastError: null,
+    lastSeen: null,
+    refreshTimer: null,
   };
-  if (STEAM_BRIDGE_SHARED_SECRET) {
-    details.twoFactorCode = SteamTotp.getAuthCode(STEAM_BRIDGE_SHARED_SECRET);
+
+  client.on("loggedOn", () => {
+    session.loggedOn = true;
+    session.lastError = null;
+    session.lastSeen = Date.now();
+    console.log(`[bridge] Logged into Steam (bridge=${session.bridgeId}, user=${session.userId})`);
+    client.setPersona(SteamUser.EPersonaState.Online);
+  });
+
+  client.on("error", (err) => {
+    session.loggedOn = false;
+    session.lastError = String(err?.message || err);
+    console.error(`[bridge] Steam error (bridge=${session.bridgeId})`, err);
+  });
+
+  client.on("disconnected", () => {
+    session.loggedOn = false;
+    console.warn(`[bridge] Steam disconnected (bridge=${session.bridgeId})`);
+  });
+
+  client.on("friendsList", () => {
+    for (const steamid of Object.keys(client.myFriends || {})) {
+      client.getPersonas([steamid]);
+    }
+  });
+
+  client.on("user", (sid, user) => {
+    const id64 = sid.getSteamID64();
+    const previous = presence.get(id64);
+
+    let rpRaw = user.rich_presence || {};
+    if (Array.isArray(rpRaw) && rpRaw.length === 0 && previous) {
+      rpRaw = previous.rich_presence_raw || rpRaw;
+    }
+
+    const rp = Array.isArray(rpRaw)
+      ? Object.fromEntries(rpRaw.map((entry) => [entry.key, entry.value]))
+      : rpRaw;
+
+    presence.set(id64, {
+      steamid64: id64,
+      persona_state: user.persona_state,
+      appid: user.gameid || null,
+      in_game: !!user.gameid,
+      rich_presence: rp,
+      rich_presence_raw: rpRaw,
+      last_updated: Date.now(),
+    });
+    session.lastSeen = Date.now();
+  });
+
+  session.refreshTimer = setInterval(() => {
+    if (!session.loggedOn) return;
+    const ids = Object.keys(client.myFriends || {});
+    if (ids.length) {
+      client.getPersonas(ids);
+    }
+  }, 30000);
+
+  const details = { accountName: login, password: password };
+  if (sharedSecret) {
+    details.twoFactorCode = SteamTotp.getAuthCode(sharedSecret);
   }
   client.logOn(details);
+
+  if (isDefault) {
+    defaultBridgeByUser.set(String(userId), String(bridgeId));
+  }
+
+  return session;
 }
 
-logOn();
+function stopSession(bridgeId) {
+  const key = String(bridgeId);
+  const session = sessions.get(key);
+  if (!session) return;
+  if (session.refreshTimer) clearInterval(session.refreshTimer);
+  try {
+    session.client.removeAllListeners();
+    session.client.logOff();
+  } catch (_) {
+    // ignore
+  }
+  sessions.delete(key);
+}
+
+function getSessionFor(userId, bridgeId) {
+  if (bridgeId && sessions.has(String(bridgeId))) {
+    return sessions.get(String(bridgeId));
+  }
+  if (userId !== undefined && userId !== null) {
+    const defaultId = defaultBridgeByUser.get(String(userId));
+    if (defaultId && sessions.has(defaultId)) {
+      return sessions.get(defaultId);
+    }
+    for (const session of sessions.values()) {
+      if (session.userId === Number(userId)) return session;
+    }
+  }
+  if (sessions.has("env")) return sessions.get("env");
+  return null;
+}
+
+function statusForSession(session) {
+  if (!session) return { status: "offline" };
+  if (session.loggedOn) return { status: "online" };
+  if (session.lastError) return { status: "error", last_error: session.lastError };
+  return { status: "offline" };
+}
+
+function maybeStartEnvSession() {
+  if (!STEAM_BRIDGE_USERNAME || !STEAM_BRIDGE_PASSWORD) return;
+  if (sessions.has("env")) return;
+  const session = createSession({
+    bridgeId: "env",
+    userId: 0,
+    login: STEAM_BRIDGE_USERNAME,
+    password: STEAM_BRIDGE_PASSWORD,
+    sharedSecret: STEAM_BRIDGE_SHARED_SECRET,
+    isDefault: true,
+  });
+  sessions.set("env", session);
+}
 
 app.get("/health", (_req, res) => {
-  res.json({ status: loggedOn ? "ok" : "down", loggedOn });
+  const session = sessions.get("env");
+  res.json({ status: session?.loggedOn ? "ok" : "down", loggedOn: !!session?.loggedOn });
+});
+
+app.post("/internal/bridge/:bridgeId/connect", (req, res) => {
+  const bridgeId = req.params.bridgeId;
+  const { user_id, login, password, shared_secret, is_default } = req.body || {};
+  if (!user_id || !login || !password) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  stopSession(bridgeId);
+  const session = createSession({
+    bridgeId,
+    userId: Number(user_id),
+    login,
+    password,
+    sharedSecret: shared_secret || null,
+    isDefault: Boolean(is_default),
+  });
+  sessions.set(String(bridgeId), session);
+  res.json({
+    ok: true,
+    bridge_id: String(bridgeId),
+    user_id: Number(user_id),
+    ...statusForSession(session),
+  });
+});
+
+app.post("/internal/bridge/:bridgeId/disconnect", (req, res) => {
+  const bridgeId = req.params.bridgeId;
+  const { user_id } = req.body || {};
+  stopSession(bridgeId);
+  if (user_id !== undefined && user_id !== null) {
+    const defaultId = defaultBridgeByUser.get(String(user_id));
+    if (defaultId === String(bridgeId)) {
+      defaultBridgeByUser.delete(String(user_id));
+    }
+  }
+  res.json({ ok: true, bridge_id: String(bridgeId) });
+});
+
+app.get("/internal/bridge/:bridgeId/status", (req, res) => {
+  const bridgeId = req.params.bridgeId;
+  const session = sessions.get(String(bridgeId));
+  if (!session) return res.status(404).json({ error: "bridge_not_found" });
+  const status = statusForSession(session);
+  res.json({
+    bridge_id: String(bridgeId),
+    user_id: session.userId,
+    logged_on: !!session.loggedOn,
+    last_error: session.lastError,
+    last_seen: session.lastSeen,
+    ...status,
+  });
+});
+
+app.get("/internal/bridge/user/:userId", (req, res) => {
+  const userId = Number(req.params.userId);
+  const items = [];
+  for (const session of sessions.values()) {
+    if (session.userId !== userId) continue;
+    const status = statusForSession(session);
+    items.push({
+      bridge_id: session.bridgeId,
+      user_id: session.userId,
+      logged_on: !!session.loggedOn,
+      last_error: session.lastError,
+      last_seen: session.lastSeen,
+      ...status,
+    });
+  }
+  res.json({ items });
 });
 
 app.get("/presence/:steamid", (req, res) => {
   const sid = req.params.steamid;
-  const data = presence.get(sid);
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
+  const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
+  const session = getSessionFor(userId, bridgeId);
+  if (!session) return res.status(404).json({ error: "bridge_not_found" });
+  const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
 
-  const derived = derivePresence(data);
+  const derived = derivePresence(data, session.matchStart);
 
   res.json({
     in_game: derived.inGame,
@@ -537,19 +695,28 @@ app.get("/presence/:steamid", (req, res) => {
     hero_level: derived.heroLevel ?? null,
     match_seconds: derived.matchSeconds ?? null,
     match_time: derived.matchTime ?? null,
+    last_updated: data.last_updated,
+    derived: {
+      in_game: derived.inGame,
+      in_match: derived.inMatch,
+      in_demo: derived.demo,
+      in_bot_match: derived.inBotMatch,
+      in_custom_game: derived.inCustomGame,
+    },
   });
 });
 
 app.get("/presencefull/:steamid", (req, res) => {
-  if (PRESENCE_DEBUG_TOKEN && req.query.token !== PRESENCE_DEBUG_TOKEN) {
-    return res.status(403).json({ error: "forbidden" });
-  }
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
+  const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
+  const session = getSessionFor(userId, bridgeId);
+  if (!session) return res.status(404).json({ error: "bridge_not_found" });
 
   const sid = req.params.steamid;
-  const data = presence.get(sid);
+  const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
 
-  const derived = derivePresence(data);
+  const derived = derivePresence(data, session.matchStart);
 
   res.json({
     ...data,
@@ -572,32 +739,30 @@ app.get("/presencefull/:steamid", (req, res) => {
   });
 });
 
-/**
- * Debug endpoint (shows everything in a clean, readable way).
- * Protected by PRESENCE_DEBUG_TOKEN if set.
- *
- * Usage:
- *   /debug/presence/STEAMID64?token=YOUR_TOKEN
- * or:
- *   curl -H "x-debug-token: YOUR_TOKEN" https://.../debug/presence/STEAMID64
- */
 app.get("/debug/presence/:steamid", requireDebugToken, (req, res) => {
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
+  const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
+  const session = getSessionFor(userId, bridgeId);
+  if (!session) return res.status(404).json({ error: "bridge_not_found" });
   const sid = req.params.steamid;
-  const data = presence.get(sid);
+  const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
 
-  res.json(buildDebugView(data));
+  res.json(buildDebugView(data, session.matchStart));
 });
 
-/**
- * Optional: list cached steamid64 keys (debug only).
- */
-app.get("/debug/keys", requireDebugToken, (_req, res) => {
+app.get("/debug/keys", requireDebugToken, (req, res) => {
+  const userId = req.query.user_id ? Number(req.query.user_id) : null;
+  const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
+  const session = getSessionFor(userId, bridgeId);
+  if (!session) return res.status(404).json({ error: "bridge_not_found" });
   res.json({
-    count: presence.size,
-    steamids: Array.from(presence.keys()).slice(0, 500),
+    count: session.presence.size,
+    steamids: Array.from(session.presence.keys()).slice(0, 500),
   });
 });
+
+maybeStartEnvSession();
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`[bridge] listening on ${port}`));

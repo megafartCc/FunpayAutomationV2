@@ -194,7 +194,7 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
             continue
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
         steam_id = _steam_id_from_mafile(record.mafile_json)
-        presence = fetch_presence(steam_id)
+        presence = fetch_presence(steam_id, user_id=user_id)
         status = "Frozen" if int(getattr(record, "rental_frozen", 0) or 0) else presence_status_label(presence)
         hero = ""
         match_time = ""

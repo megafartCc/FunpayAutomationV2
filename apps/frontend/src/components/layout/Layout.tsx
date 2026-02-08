@@ -30,6 +30,7 @@ const titles: Record<string, TranslationKey> = {
   "/notifications": "title.notifications",
   "/documentation": "title.documentation",
   "/plugins": "title.plugins",
+  "/steam-status": "title.steamStatus",
   "/settings": "title.settings",
 };
 

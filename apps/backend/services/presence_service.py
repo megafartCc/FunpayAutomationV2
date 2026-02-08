@@ -7,7 +7,10 @@ from typing import Any, Optional
 import redis
 import requests
 
+from db.steam_bridge_repo import MySQLSteamBridgeRepo
+
 _redis_client: Optional[redis.Redis] = None
+_bridge_repo = MySQLSteamBridgeRepo()
 
 
 def _get_redis() -> Optional[redis.Redis]:
@@ -29,8 +32,10 @@ def _presence_base_url() -> str:
     return base.rstrip("/")
 
 
-def _cache_key(steam_id: str) -> str:
-    return f"presence:{steam_id}"
+def _cache_key(steam_id: str, user_id: int | None, bridge_id: int | None) -> str:
+    user_part = str(int(user_id)) if user_id is not None else "global"
+    bridge_part = str(int(bridge_id)) if bridge_id is not None else "default"
+    return f"presence:{user_part}:{bridge_part}:{steam_id}"
 
 
 def _cache_ttl_seconds() -> int:
@@ -41,13 +46,19 @@ def _cache_empty_ttl_seconds() -> int:
     return int(os.getenv("PRESENCE_CACHE_EMPTY_TTL_SECONDS", "5"))
 
 
-def fetch_presence(steam_id: str | None, timeout: int = 5) -> dict[str, Any] | None:
+def fetch_presence(
+    steam_id: str | None,
+    *,
+    user_id: int | None = None,
+    bridge_id: int | None = None,
+    timeout: int = 5,
+) -> dict[str, Any] | None:
     if not steam_id:
         return None
     cache = _get_redis()
     if cache:
         try:
-            cached_raw = cache.get(_cache_key(steam_id))
+            cached_raw = cache.get(_cache_key(steam_id, user_id, bridge_id))
         except Exception:
             cached_raw = None
         if cached_raw is not None:
@@ -60,18 +71,32 @@ def fetch_presence(steam_id: str | None, timeout: int = 5) -> dict[str, Any] | N
     if not base:
         return None
     base = base.rstrip("/")
+    if bridge_id is None and user_id is not None:
+        try:
+            bridge_id = _bridge_repo.get_default_id(int(user_id))
+        except Exception:
+            bridge_id = None
     if base.endswith("/presence"):
         url = f"{base}/{steam_id}"
     else:
         url = f"{base}/presence/{steam_id}"
+    params = {}
+    if user_id is not None:
+        params["user_id"] = str(int(user_id))
+    if bridge_id is not None:
+        params["bridge_id"] = str(int(bridge_id))
+    headers = {}
+    token = os.getenv("STEAM_BRIDGE_INTERNAL_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        resp = requests.get(url, timeout=timeout)
+        resp = requests.get(url, timeout=timeout, params=params or None, headers=headers or None)
     except requests.RequestException:
         return None
     if not resp.ok:
         if cache:
             try:
-                cache.set(_cache_key(steam_id), "null", ex=_cache_empty_ttl_seconds())
+                cache.set(_cache_key(steam_id, user_id, bridge_id), "null", ex=_cache_empty_ttl_seconds())
             except Exception:
                 pass
         return None
@@ -80,20 +105,28 @@ def fetch_presence(steam_id: str | None, timeout: int = 5) -> dict[str, Any] | N
     except Exception:
         if cache:
             try:
-                cache.set(_cache_key(steam_id), "null", ex=_cache_empty_ttl_seconds())
+                cache.set(
+                    _cache_key(steam_id, user_id, bridge_id),
+                    "null",
+                    ex=_cache_empty_ttl_seconds(),
+                )
             except Exception:
                 pass
         return None
     if not isinstance(data, dict):
         if cache:
             try:
-                cache.set(_cache_key(steam_id), "null", ex=_cache_empty_ttl_seconds())
+                cache.set(_cache_key(steam_id, user_id, bridge_id), "null", ex=_cache_empty_ttl_seconds())
             except Exception:
                 pass
         return None
     if cache:
         try:
-            cache.set(_cache_key(steam_id), json.dumps(data, ensure_ascii=False), ex=_cache_ttl_seconds())
+            cache.set(
+                _cache_key(steam_id, user_id, bridge_id),
+                json.dumps(data, ensure_ascii=False),
+                ex=_cache_ttl_seconds(),
+            )
         except Exception:
             pass
     return data

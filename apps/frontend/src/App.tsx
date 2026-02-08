@@ -21,6 +21,7 @@ import LowPriorityAccountsPage from "./components/lowPriority/LowPriorityAccount
 import NotificationsPage from "./components/notifications/NotificationsPage";
 import PluginsPage from "./components/plugins/PluginsPage";
 import BotCustomizationPage from "./components/botCustomization/BotCustomizationPage";
+import SteamStatusPage from "./components/steam/SteamStatusPage";
 import { PreferencesProvider } from "./context/PreferencesContext";
 import { useI18n } from "./i18n/useI18n";
 
@@ -188,6 +189,7 @@ const AppRoutes: React.FC = () => {
           <Route path="notifications" element={<NotificationsPage onToast={showToast} />} />
           <Route path="plugins" element={<PluginsPage onToast={showToast} />} />
           <Route path="bot-customization" element={<BotCustomizationPage onToast={showToast} />} />
+          <Route path="steam-status" element={<SteamStatusPage onToast={showToast} />} />
           <Route path="settings" element={<SettingsPage onToast={showToast} />} />
         </Route>
       </Routes>
