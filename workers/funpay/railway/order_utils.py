@@ -847,6 +847,15 @@ def handle_order_purchased(
                 extra_units = max(1, int(math.ceil(extra_minutes / unit_minutes)))
                 amount = extra_units
                 override_total_minutes = int(extra_minutes)
+                send_chat_message(
+                    logger,
+                    account,
+                    chat_id,
+                    (
+                        f"Остаток оплаты засчитан в аренду: {format_duration_minutes(extra_minutes)}.\n"
+                        "Аренда начнётся после !код."
+                    ),
+                )
             else:
                 mark_order_processed(site_username, site_user_id, workspace_id, order_id)
                 return
