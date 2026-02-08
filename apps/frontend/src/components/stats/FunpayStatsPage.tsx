@@ -499,8 +499,11 @@ const FunpayStatsPage: React.FC = () => {
     const totalOrders = ordersInRange.length;
     const refundedOrders = Math.min(refundsInRange.length, totalOrders);
     const refundRate = totalOrders ? (refundedOrders / totalOrders) * 100 : 0;
-    return { totalOrders, refundedOrders, refundRate };
-  }, [ordersInRange.length, refundsInRange.length]);
+    const refundsLoss = ordersInRange
+      .filter((order) => (order.action || "").toLowerCase().includes("refund"))
+      .reduce((sum, order) => sum + (order.price ?? order.amount ?? 0), 0);
+    return { totalOrders, refundedOrders, refundRate, refundsLoss };
+  }, [ordersInRange.length, refundsInRange.length, ordersInRange]);
 
   const refundPercent = useMemo(() => {
     if (!refundStats.totalOrders) return 0;
@@ -1047,6 +1050,12 @@ const FunpayStatsPage: React.FC = () => {
                 </p>
                 <p className="text-xs text-neutral-500">
                   {refundStats.refundedOrders} / {refundStats.totalOrders} {tr("orders", "заказов")}
+                </p>
+                <p className="mt-2 text-xs font-semibold text-rose-600">
+                  {tr("Refund loss", "Потери на возвратах")}:
+                  <span className="ml-1 text-neutral-800">
+                    {refundStats.refundsLoss ? formatCurrency(refundStats.refundsLoss) : "-"}
+                  </span>
                 </p>
               </div>
               <div className="min-w-[180px] text-right text-xs text-neutral-500">
