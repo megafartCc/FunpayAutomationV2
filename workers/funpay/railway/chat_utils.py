@@ -377,7 +377,7 @@ def set_ai_pause(
     chat_id: int,
     seconds: int | None = None,
 ) -> None:
-    pause_seconds = int(seconds) if seconds is not None else env_int("AI_SNOOZE_SECONDS", 60)
+    pause_seconds = int(seconds) if seconds is not None else env_int("AI_SNOOZE_SECONDS", 300)
     if pause_seconds <= 0:
         return
     cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
@@ -387,7 +387,11 @@ def set_ai_pause(
         if not table_exists(cursor, "chats"):
             return
         if not column_exists(cursor, "chats", "ai_paused_until"):
-            return
+            try:
+                cursor.execute("ALTER TABLE chats ADD COLUMN ai_paused_until TIMESTAMP NULL")
+                conn.commit()
+            except Exception:
+                return
         paused_until = datetime.utcnow() + timedelta(seconds=pause_seconds)
         cursor.execute(
             """
