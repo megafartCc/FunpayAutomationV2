@@ -2165,28 +2165,6 @@ def log_message(
 
     chat_name = msg.chat_name or msg.author or "-"
 
-    logger.info(
-
-        "user=%s workspace=%s chat=%s author=%s system=%s url=%s: %s",
-
-        site_username or "-",
-
-        workspace_id if workspace_id is not None else "-",
-
-        chat_name,
-
-        sender_username,
-
-        is_system,
-
-        chat_url,
-
-        message_text,
-
-    )
-
-
-
     user_id = site_user_id
 
     try:
@@ -2267,6 +2245,21 @@ def log_message(
             )
         except Exception:
             ai_paused = False
+
+    ai_active = bool(ai_enabled and not ai_paused)
+    bot_flag = bool(getattr(msg, "by_bot", False))
+    logger.info(
+        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s url=%s: %s",
+        site_username or "-",
+        workspace_id if workspace_id is not None else "-",
+        chat_name,
+        sender_username,
+        is_system,
+        bot_flag,
+        ai_active,
+        chat_url,
+        message_text,
+    )
 
 
 
