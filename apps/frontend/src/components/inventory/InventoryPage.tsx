@@ -399,7 +399,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
   const renderAccountActionsPanel = (title = "Account actions", className = "") => {
     return (
       <div
-        className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
+        className={`flex h-full flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-900">{title}</h3>
@@ -602,7 +602,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
             );
           })()
         ) : (
-          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
             Выберите аккаунт, чтобы открыть действия.
           </div>
         )}
@@ -615,7 +615,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
     const lowPriority = !!selectedAccount?.lowPriority;
     return (
       <div
-        className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
+        className={`flex h-full flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm shadow-neutral-200/70 transition-shadow duration-200 hover:shadow-neutral-300/70 ${className}`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-neutral-900">Управление аккаунтом</h3>
@@ -690,7 +690,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
             Выберите аккаунт, чтобы управлять заморозкой и удалением.
           </div>
         )}
@@ -700,7 +700,7 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={PANEL_TRANSITION} className="space-y-6">
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <motion.div
           {...PANEL_MOTION}
           transition={{ ...PANEL_TRANSITION, delay: 0.05 }}
@@ -896,18 +896,18 @@ const ИнвентарьPage: React.FC<ИнвентарьPageProps> = ({ onToast
             </div>
           </div>
         </motion.div>
-        <div className="mt-6 flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start lg:min-h-[calc(100vh-180px)] xl:mt-0">
+        <div className="mt-6 grid gap-6 lg:mt-0 lg:self-stretch lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:h-full">
           <motion.div
             {...PANEL_MOTION}
             transition={{ ...PANEL_TRANSITION, delay: 0.1 }}
-            className="flex-1"
+            className="h-full"
           >
             {renderAccountActionsPanel("Account actions", "h-full")}
           </motion.div>
           <motion.div
             {...PANEL_MOTION}
             transition={{ ...PANEL_TRANSITION, delay: 0.16 }}
-            className="flex-1"
+            className="h-full"
           >
             {renderИнвентарьActionsPanel("h-full")}
           </motion.div>

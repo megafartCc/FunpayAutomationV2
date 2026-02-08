@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import { api, AuthResponse } from "./services/api";
@@ -202,9 +203,14 @@ const AppRoutes: React.FC = () => {
 const App: React.FC = () => {
   return (
     <PreferencesProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <MotionConfig
+        reducedMotion="user"
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </MotionConfig>
     </PreferencesProvider>
   );
 };

@@ -47,6 +47,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
     location.pathname === "/blacklist" ||
     location.pathname === "/documentation" ||
     location.pathname === "/plugins";
+  const isChatRoute = location.pathname.startsWith("/chats");
 
   const pageKey = useMemo(
     () => `${location.pathname}${location.search}${location.hash}`,
@@ -76,7 +77,11 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
             hideWorkspaceControls={hideWorkspaceControls}
             onMenuToggle={() => setSidebarOpen((prev) => !prev)}
           />
-          <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <main
+            className={`flex-1 min-h-0 px-4 py-6 sm:px-6 lg:px-8 ${
+              isChatRoute ? "overflow-hidden" : "overflow-y-auto"
+            }`}
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={pageKey}
@@ -84,7 +89,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                className="min-h-[40vh]"
+                className={`min-h-0 ${isChatRoute ? "h-full" : "min-h-[40vh]"}`}
               >
                 <Outlet />
               </motion.div>

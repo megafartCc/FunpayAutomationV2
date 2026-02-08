@@ -752,7 +752,7 @@ const ChatsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm shadow-neutral-200/70 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
