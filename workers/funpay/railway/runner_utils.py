@@ -2303,8 +2303,9 @@ def log_message(
                 break
     if sender_type == "ai":
         ai_message = True
+    human_flag = sender_type in ("seller", "buyer")
     logger.info(
-        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s ai_active=%s sender=%s url=%s: %s",
+        "user=%s workspace=%s chat=%s author=%s system=%s bot=%s ai=%s ai_active=%s human=%s sender=%s url=%s: %s",
         site_username or "-",
         workspace_id if workspace_id is not None else "-",
         chat_name,
@@ -2313,6 +2314,7 @@ def log_message(
         bot_flag,
         ai_message,
         ai_active,
+        human_flag,
         sender_type,
         chat_url,
         message_text,
@@ -2493,6 +2495,9 @@ def log_message(
             except Exception:
 
                 pass
+
+    if ai_paused and not is_system and chat_id is not None and not getattr(msg, "by_bot", False):
+        return None
 
     if command:
 
