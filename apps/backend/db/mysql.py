@@ -22,7 +22,7 @@ class MySQLPool:
 
         self._pool = pooling.MySQLConnectionPool(
             pool_name="funpay_pool",
-            pool_size=int(os.getenv("MYSQL_POOL_SIZE", "30")),
+            pool_size=int(os.getenv("MYSQL_POOL_SIZE", "20")),
             host=settings["host"],
             port=int(settings["port"]),
             user=settings["user"],

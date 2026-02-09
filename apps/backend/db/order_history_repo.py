@@ -6,6 +6,10 @@ from typing import Optional
 import mysql.connector
 
 from db.mysql import get_base_connection
+from services.query_cache import QueryCache
+
+
+_cache = QueryCache()
 
 
 @dataclass
@@ -30,6 +34,16 @@ class OrderHistoryItem:
 
 
 class MySQLOrderHistoryRepo:
+    @staticmethod
+    def _history_cache_key(user_id: int, workspace_id: int | None, query: str | None, limit: int) -> str:
+        ws = "all" if workspace_id is None else str(int(workspace_id))
+        q = (query or "").strip().lower() or "_"
+        return f"orders:history:{int(user_id)}:{ws}:{int(limit)}:{q}"
+
+    @staticmethod
+    def _history_cache_pattern(user_id: int) -> str:
+        return f"orders:history:{int(user_id)}:*"
+
     def _get_conn(self) -> mysql.connector.MySQLConnection:
         return get_base_connection()
 
@@ -185,6 +199,15 @@ class MySQLOrderHistoryRepo:
         query: str | None = None,
         limit: int = 200,
     ) -> list[OrderHistoryItem]:
+        safe_limit = int(max(1, min(limit, 500)))
+        query_value = query.strip() if isinstance(query, str) else None
+        use_cache = not query_value
+        cache_key = self._history_cache_key(user_id, workspace_id, query_value, safe_limit)
+        if use_cache:
+            cached = _cache.get_json(cache_key)
+            if isinstance(cached, list):
+                return [OrderHistoryItem(**item) for item in cached if isinstance(item, dict)]
+
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
@@ -195,8 +218,8 @@ class MySQLOrderHistoryRepo:
             if workspace_id is not None:
                 where += " AND (oh.workspace_id = %s OR oh.workspace_id IS NULL)"
                 params.append(int(workspace_id))
-            if query:
-                q = query.strip().lower()
+            if query_value:
+                q = query_value.lower()
                 like = f"%{q}%"
                 where += (
                     " AND (LOWER(oh.order_id) LIKE %s OR LOWER(oh.owner) LIKE %s OR "
@@ -216,10 +239,10 @@ class MySQLOrderHistoryRepo:
                 ORDER BY oh.id DESC
                 LIMIT %s
                 """,
-                tuple(params + [int(max(1, min(limit, 500)))]),
+                tuple(params + [safe_limit]),
             )
             rows = cursor.fetchall() or []
-            return [
+            items = [
                 OrderHistoryItem(
                     id=int(row["id"]),
                     order_id=str(row.get("order_id") or ""),
@@ -241,6 +264,9 @@ class MySQLOrderHistoryRepo:
                 )
                 for row in rows
             ]
+            if use_cache:
+                _cache.set_json(cache_key, [item.__dict__ for item in items], ttl_seconds=20)
+            return items
         finally:
             conn.close()
 
@@ -432,5 +458,6 @@ class MySQLOrderHistoryRepo:
                         ),
                     )
             conn.commit()
+            _cache.delete_pattern(self._history_cache_pattern(user_id))
         finally:
             conn.close()

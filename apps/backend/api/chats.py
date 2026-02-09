@@ -53,6 +53,11 @@ class ChatSendRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
 
 
+class ChatBadgesResponse(BaseModel):
+    unread: int = 0
+    admin_unread_count: int = 0
+
+
 def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
     if workspace_id is None:
         raise HTTPException(status_code=400, detail="Select a workspace for chats.")
@@ -83,6 +88,18 @@ def _parse_since(raw: str | None) -> datetime | None:
         ts = ts / 1000.0
     return datetime.utcfromtimestamp(ts)
 
+
+
+
+@router.get("/chats/badges", response_model=ChatBadgesResponse)
+def chat_badges(
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> ChatBadgesResponse:
+    user_id = int(user.id)
+    _ensure_workspace(workspace_id, user_id)
+    badges = chat_repo.get_badges(user_id, int(workspace_id))
+    return ChatBadgesResponse(unread=badges.unread, admin_unread_count=badges.admin_unread_count)
 
 @router.get("/chats", response_model=ChatListResponse)
 def list_chats(
