@@ -43,6 +43,9 @@ const ADMIN_REPLACE_LABEL = "Заменить аккаунт (админ)";
 const CHAT_CACHE_VERSION = "v1";
 const CHAT_LIST_CACHE_TTL_MS = 30_000;
 const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
+const CHATS_FETCH_LIMIT = 150;
+const HISTORY_FETCH_LIMIT = 150;
+const HISTORY_INCREMENTAL_LIMIT = 100;
 
 type CacheEnvelope<T> = {
   ts: number;
@@ -177,6 +180,8 @@ const ChatsPage: React.FC = () => {
   const [extendMinutes, setExtendMinutes] = useState("");
   const [rentalActionBusy, setRentalActionBusy] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "actions">("list");
+  const [isTabVisible, setIsTabVisible] = useState(() => (typeof document === "undefined" ? true : !document.hidden));
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const messagesRef = useRef<ChatMessageItem[]>([]);
   const listSinceRef = useRef<string | null>(null);
   const hasLoadedChatsRef = useRef(false);
@@ -228,6 +233,24 @@ const ChatsPage: React.FC = () => {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsTabVisible(!document.hidden);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  const isPageActive = isTabVisible && isOnline;
 
   const ensureSelection = useCallback((items: ChatItem[]) => {
     setSelectedChatId((current) => {
@@ -300,7 +323,7 @@ const ChatsPage: React.FC = () => {
       }
       try {
         const since = canIncremental ? listSinceRef.current || undefined : undefined;
-        const res = await api.listChats(workspaceId, trimmedQuery || undefined, 300, since);
+        const res = await api.listChats(workspaceId, trimmedQuery || undefined, CHATS_FETCH_LIMIT, since);
         const items = res.items || [];
         if (canIncremental) {
           if (items.length) {
@@ -396,7 +419,7 @@ const ChatsPage: React.FC = () => {
           cached ?? historyCacheRef.current.get(chatId) ?? (shouldUpdateView ? messagesRef.current : []);
         const lastServerId = getLastServerMessageId(baseItems);
         if ((options?.incremental || cached) && lastServerId > 0) {
-          const res = await api.getChatHistory(chatId, workspaceId, 200, lastServerId);
+          const res = await api.getChatHistory(chatId, workspaceId, HISTORY_INCREMENTAL_LIMIT, lastServerId);
           const incoming = res.items || [];
           if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
           if (incoming.length) {
@@ -419,7 +442,7 @@ const ChatsPage: React.FC = () => {
           }
           return;
         }
-        const res = await api.getChatHistory(chatId, workspaceId, 300);
+        const res = await api.getChatHistory(chatId, workspaceId, HISTORY_FETCH_LIMIT);
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
         persistHistoryCache(chatId, items);
@@ -468,51 +491,55 @@ const ChatsPage: React.FC = () => {
   );
 
   useEffect(() => {
+    if (!isPageActive) return;
     void loadRentals();
-  }, [loadRentals]);
+  }, [isPageActive, loadRentals]);
 
   useEffect(() => {
+    if (!isPageActive) return;
     void loadChats(chatSearch);
-  }, [loadChats, workspaceId]);
+  }, [isPageActive, loadChats, workspaceId]);
 
   useEffect(() => {
+    if (!isPageActive) return undefined;
     const handle = window.setTimeout(() => {
       void loadChats(chatSearch);
     }, 350);
     return () => window.clearTimeout(handle);
-  }, [chatSearch, loadChats]);
+  }, [isPageActive, chatSearch, loadChats]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
+    if (!isPageActive || !workspaceId) return undefined;
     if (chatSearch.trim()) return undefined;
     const handle = window.setInterval(() => {
       void loadChats(chatSearch, { silent: true, incremental: true });
     }, 12_000);
     return () => window.clearInterval(handle);
-  }, [workspaceId, chatSearch, loadChats]);
+  }, [isPageActive, workspaceId, chatSearch, loadChats]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
+    if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
       void loadRentals(true);
     }, 15_000);
     return () => window.clearInterval(handle);
-  }, [workspaceId, loadRentals]);
+  }, [isPageActive, workspaceId, loadRentals]);
 
   useEffect(() => {
+    if (!isPageActive) return;
     void loadHistory(selectedChatId);
-  }, [selectedChatId, loadHistory]);
+  }, [isPageActive, selectedChatId, loadHistory]);
 
   useEffect(() => {
-    if (!workspaceId || !selectedChatId) return undefined;
+    if (!isPageActive || !workspaceId || !selectedChatId) return undefined;
     const handle = window.setInterval(() => {
       void loadHistory(selectedChatId, { silent: true, incremental: true });
     }, 6_000);
     return () => window.clearInterval(handle);
-  }, [workspaceId, selectedChatId, loadHistory]);
+  }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
+    if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
       const cachedIds = Array.from(historyCacheRef.current.keys());
       if (!cachedIds.length) return;
@@ -522,7 +549,7 @@ const ChatsPage: React.FC = () => {
       });
     }, 10_000);
     return () => window.clearInterval(handle);
-  }, [workspaceId, selectedChatId, loadHistory]);
+  }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
 
   useEffect(() => {
     if (!selectedChatId) return;
