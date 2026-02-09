@@ -513,7 +513,7 @@ const ChatsPage: React.FC = () => {
     if (chatSearch.trim()) return undefined;
     const handle = window.setInterval(() => {
       void loadChats(chatSearch, { silent: true, incremental: true });
-    }, 12_000);
+    }, 20_000);
     return () => window.clearInterval(handle);
   }, [isPageActive, workspaceId, chatSearch, loadChats]);
 
@@ -521,7 +521,7 @@ const ChatsPage: React.FC = () => {
     if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
       void loadRentals(true);
-    }, 15_000);
+    }, 20_000);
     return () => window.clearInterval(handle);
   }, [isPageActive, workspaceId, loadRentals]);
 
@@ -534,7 +534,7 @@ const ChatsPage: React.FC = () => {
     if (!isPageActive || !workspaceId || !selectedChatId) return undefined;
     const handle = window.setInterval(() => {
       void loadHistory(selectedChatId, { silent: true, incremental: true });
-    }, 6_000);
+    }, 20_000);
     return () => window.clearInterval(handle);
   }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
 
@@ -547,7 +547,7 @@ const ChatsPage: React.FC = () => {
         if (chatId === selectedChatId) return;
         void loadHistory(chatId, { silent: true, incremental: true, updateView: false });
       });
-    }, 10_000);
+    }, 20_000);
     return () => window.clearInterval(handle);
   }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
 
