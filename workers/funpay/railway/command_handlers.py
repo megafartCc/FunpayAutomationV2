@@ -738,6 +738,8 @@ def handle_low_priority_replace_command(
     if rental_units <= 0 and rental_minutes > 0:
         rental_units = max(1, (rental_minutes + 59) // 60)
 
+    rental_start = _parse_datetime(selected.get("rental_start")) or datetime.utcnow()
+
     ok = replace_rental_account(
         mysql_cfg,
         old_account_id=int(selected["id"]),

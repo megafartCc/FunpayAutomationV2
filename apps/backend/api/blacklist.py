@@ -44,6 +44,10 @@ class BlacklistLogsResponse(BaseModel):
     items: list[BlacklistLogItem]
 
 
+class BlacklistPendingCountResponse(BaseModel):
+    pending: int
+
+
 class BlacklistCreate(BaseModel):
     owner: str | None = Field(None, min_length=1, max_length=255)
     reason: str | None = Field(None, max_length=500)
@@ -67,6 +71,18 @@ def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
     workspace = workspace_repo.get_by_id(int(workspace_id), int(user_id))
     if not workspace:
         raise HTTPException(status_code=400, detail="Select a workspace for blacklist.")
+
+
+@router.get("/blacklist/pending-count", response_model=BlacklistPendingCountResponse)
+def blacklist_pending_count(
+    workspace_id: int | None = None,
+    user=Depends(get_current_user),
+) -> BlacklistPendingCountResponse:
+    user_id = int(user.id)
+    if workspace_id is not None:
+        _ensure_workspace(workspace_id, user_id)
+    pending = blacklist_repo.count_blacklist_pending(user_id, workspace_id)
+    return BlacklistPendingCountResponse(pending=pending)
 
 
 @router.get("/blacklist", response_model=BlacklistListResponse)

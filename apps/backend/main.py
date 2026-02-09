@@ -1,3 +1,4 @@
+import os
 import logging
 
 from fastapi import FastAPI
@@ -29,8 +30,14 @@ app = FastAPI(title="FunpayAutomationV2 API")
 logger = logging.getLogger("uvicorn.error")
 
 
+def _ensure_required_prod_env() -> None:
+    app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", os.getenv("RAILWAY_ENVIRONMENT", ""))).strip().lower()
+    if app_env in {"prod", "production"} and not os.getenv("REDIS_URL", "").strip():
+        raise RuntimeError("REDIS_URL is required in production.")
+
 @app.on_event("startup")
 def _startup() -> None:
+    _ensure_required_prod_env()
     ensure_schema()
     start_price_dumper_scheduler()
     start_cleanup_scheduler()

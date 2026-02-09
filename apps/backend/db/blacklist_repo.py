@@ -125,6 +125,37 @@ class MySQLBlacklistRepo:
         finally:
             conn.close()
 
+    def count_blacklist_pending(
+        self,
+        user_id: int,
+        workspace_id: int | None = None,
+    ) -> int:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor()
+            if not self._table_exists(cursor, "blacklist"):
+                return 0
+            columns = self._get_table_columns(cursor, "blacklist")
+            has_workspace_id = "workspace_id" in columns
+            has_status = "status" in columns
+            if not has_status:
+                return 0
+
+            params: list[object] = [int(user_id)]
+            where = "WHERE user_id = %s AND status = 'pending'"
+            if workspace_id is not None and has_workspace_id:
+                where += " AND (workspace_id = %s OR workspace_id IS NULL)"
+                params.append(int(workspace_id))
+
+            cursor.execute(
+                f"SELECT COUNT(*) FROM blacklist {where}",
+                tuple(params),
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+        finally:
+            conn.close()
+
     def list_blacklist_logs(
         self,
         user_id: int,

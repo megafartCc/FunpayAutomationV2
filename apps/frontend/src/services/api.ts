@@ -411,6 +411,12 @@ export type ChatMessageItem = {
   workspace_id?: number | null;
 };
 
+export type ChatBadgesResponse = {
+  unread: number;
+  admin_unread_count: number;
+};
+
+
 export type PriceDumperResponse = {
   url: string;
   title?: string | null;
@@ -790,6 +796,8 @@ export const api = {
     request<{ removed: number }>(withWorkspace("/blacklist/remove", workspaceId), { method: "POST", body: { owners } }),
   clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
+  blacklistPendingCount: (workspaceId?: number | null) =>
+    request<{ pending: number }>(withWorkspace("/blacklist/pending-count", workspaceId), { method: "GET" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
   listWorkspaceStatuses: (workspaceId?: number | null, platform?: string) => {
     const params = new URLSearchParams();
@@ -811,6 +819,9 @@ export const api = {
     request<{ ok: boolean }>(`/workspaces/${workspaceId}`, { method: "DELETE" }),
   checkWorkspaceProxy: (workspaceId: number) =>
     request<WorkspaceProxyCheck>(`/workspaces/${workspaceId}/proxy-check`, { method: "POST" }),
+
+  chatBadges: (workspaceId?: number | null) =>
+    request<ChatBadgesResponse>(withWorkspace("/chats/badges", workspaceId), { method: "GET" }),
   listChats: (workspaceId?: number | null, query?: string, limit?: number, since?: string) => {
     const params = new URLSearchParams();
     if (query) params.set("query", query);
