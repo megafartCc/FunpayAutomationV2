@@ -36,6 +36,11 @@ class ChatMessage:
     user_id: int
     workspace_id: Optional[int]
 
+@dataclass
+class ChatBadges:
+    unread: int
+    admin_unread_count: int
+
 
 class MySQLChatRepo:
     def _get_conn(self) -> mysql.connector.MySQLConnection:
@@ -153,6 +158,29 @@ class MySQLChatRepo:
                 )
                 for row in rows
             ]
+        finally:
+            conn.close()
+
+
+    def get_badges(self, user_id: int, workspace_id: int) -> ChatBadges:
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(SUM(unread), 0) AS unread,
+                    COALESCE(SUM(admin_unread_count), 0) AS admin_unread_count
+                FROM chats
+                WHERE user_id = %s AND workspace_id = %s
+                """,
+                (int(user_id), int(workspace_id)),
+            )
+            row = cursor.fetchone() or {}
+            return ChatBadges(
+                unread=int(row.get("unread") or 0),
+                admin_unread_count=int(row.get("admin_unread_count") or 0),
+            )
         finally:
             conn.close()
 

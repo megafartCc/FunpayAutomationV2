@@ -5,6 +5,10 @@ from dataclasses import dataclass
 import mysql.connector
 
 from db.mysql import get_base_connection
+from services.query_cache import QueryCache
+
+
+_cache = QueryCache()
 
 
 @dataclass
@@ -25,12 +29,27 @@ class NotificationLog:
 
 
 class MySQLNotificationsRepo:
+    @staticmethod
+    def _list_cache_key(user_id: int, workspace_id: int | None, limit: int) -> str:
+        ws = "all" if workspace_id is None else str(int(workspace_id))
+        return f"notifications:list:{int(user_id)}:{ws}:{int(limit)}"
+
+    @staticmethod
+    def _list_cache_pattern(user_id: int) -> str:
+        return f"notifications:list:{int(user_id)}:*"
+
     def list_notifications(
         self,
         user_id: int,
         workspace_id: int | None,
         limit: int = 200,
     ) -> list[NotificationLog]:
+        safe_limit = int(max(1, min(limit, 500)))
+        cache_key = self._list_cache_key(user_id, workspace_id, safe_limit)
+        cached = _cache.get_json(cache_key)
+        if isinstance(cached, list):
+            return [NotificationLog(**item) for item in cached if isinstance(item, dict)]
+
         conn = get_base_connection()
         try:
             cursor = conn.cursor(dictionary=True)
@@ -50,10 +69,10 @@ class MySQLNotificationsRepo:
                 ORDER BY n.created_at DESC
                 LIMIT %s
                 """,
-                (*params, int(limit)),
+                (*params, safe_limit),
             )
             rows = cursor.fetchall() or []
-            return [
+            items = [
                 NotificationLog(
                     id=int(row["id"]),
                     event_type=row["event_type"],
@@ -71,6 +90,8 @@ class MySQLNotificationsRepo:
                 )
                 for row in rows
             ]
+            _cache.set_json(cache_key, [item.__dict__ for item in items], ttl_seconds=20)
+            return items
         finally:
             conn.close()
 
@@ -113,5 +134,6 @@ class MySQLNotificationsRepo:
                 ),
             )
             conn.commit()
+            _cache.delete_pattern(self._list_cache_pattern(user_id))
         finally:
             conn.close()

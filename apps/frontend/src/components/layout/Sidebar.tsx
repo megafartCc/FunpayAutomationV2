@@ -340,8 +340,26 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [chatAdminCount, setChatAdminCount] = useState(0);
   const [pendingBlacklistCount, setPendingBlacklistCount] = useState(0);
+  const [isTabVisible, setIsTabVisible] = useState(() => (typeof document === "undefined" ? true : !document.hidden));
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const workspaceId = selectedId === "all" ? null : (selectedId as number);
   const totalBlacklisted = pendingBlacklistCount;
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsTabVisible(!document.hidden);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -354,13 +372,10 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
         return;
       }
       try {
-        const res = await api.listChats(workspaceId, undefined, 200);
+        const res = await api.chatBadges(workspaceId);
         if (!isMounted) return;
-        const items = res.items || [];
-        const unread = items.reduce((total, item) => total + Number(item.unread || 0), 0);
-        const admin = items.reduce((total, item) => total + Number(item.admin_unread_count || 0), 0);
-        setChatUnreadCount(unread);
-        setChatAdminCount(admin);
+        setChatUnreadCount(Number(res.unread || 0));
+        setChatAdminCount(Number(res.admin_unread_count || 0));
       } catch {
         if (isMounted) {
           setChatUnreadCount(0);
@@ -368,13 +383,20 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
         }
       }
     };
-    void loadChatBadges();
-    const handle = window.setInterval(loadChatBadges, 12_000);
+    if (isTabVisible && isOnline) {
+      void loadChatBadges();
+    }
+    if (!isTabVisible || !isOnline) {
+      return () => {
+        isMounted = false;
+      };
+    }
+    const handle = window.setInterval(loadChatBadges, 20_000);
     return () => {
       isMounted = false;
       window.clearInterval(handle);
     };
-  }, [workspaceId]);
+  }, [workspaceId, isTabVisible, isOnline]);
 
   useEffect(() => {
     let isMounted = true;
@@ -389,13 +411,20 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
         }
       }
     };
-    void loadBlacklistBadge();
+    if (isTabVisible && isOnline) {
+      void loadBlacklistBadge();
+    }
+    if (!isTabVisible || !isOnline) {
+      return () => {
+        isMounted = false;
+      };
+    }
     const handle = window.setInterval(loadBlacklistBadge, 20_000);
     return () => {
       isMounted = false;
       window.clearInterval(handle);
     };
-  }, []);
+  }, [isTabVisible, isOnline]);
 
   const handleNavigate = (nextPath: string) => {
     navigate(nextPath, { replace: false });
