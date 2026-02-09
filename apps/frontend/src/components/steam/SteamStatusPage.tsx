@@ -22,25 +22,28 @@ const bridgeStatusMeta = (status?: string) => {
   if (normalized.includes("online")) {
     return {
       label: "Online",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200",
     };
   }
   if (normalized.includes("connect")) {
     return {
       label: "Connecting",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200",
     };
   }
   if (normalized.includes("error")) {
     return {
       label: "Error",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200",
     };
   }
   return {
     label: "Offline",
     className:
-      "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200",
   };
 };
 
@@ -49,36 +52,43 @@ const presenceMeta = (status?: string) => {
   if (normalized.includes("match"))
     return {
       label: "In match",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200",
     };
   if (normalized.includes("game"))
     return {
       label: "In game",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200",
     };
   if (normalized.includes("demo"))
     return {
       label: "Demo",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200",
     };
   if (normalized.includes("bot"))
     return {
       label: "Bot match",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200",
     };
   if (normalized.includes("custom"))
     return {
       label: "Custom",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200",
     };
   if (!normalized || normalized.includes("off"))
     return {
       label: "Offline",
-      className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+      className:
+        "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200",
     };
   return {
     label: status || "Unknown",
-    className: "border border-neutral-200 bg-neutral-100 text-neutral-700",
+    className:
+      "border border-neutral-200 bg-neutral-100 text-neutral-700 dark:border-neutral-500/40 dark:bg-neutral-500/10 dark:text-neutral-200",
   };
 };
 
@@ -96,6 +106,7 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
   const [formSecret, setFormSecret] = useState("");
   const [formDefault, setFormDefault] = useState(false);
   const [formAutoConnect, setFormAutoConnect] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [actionBusyId, setActionBusyId] = useState<number | null>(null);
 
   const stats = useMemo(() => {
@@ -134,24 +145,47 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
     setFormSecret("");
     setFormDefault(false);
     setFormAutoConnect(true);
+    setEditingId(null);
   };
 
-  const handleCreate = async () => {
-    if (!formLogin.trim() || !formPassword.trim()) {
+  const handleSave = async () => {
+    const isEditing = editingId !== null;
+    if (!isEditing && (!formLogin.trim() || !formPassword.trim())) {
       onToast?.("Steam login and password are required.", true);
       return;
     }
     setSaving(true);
     try {
-      await api.createSteamBridgeAccount({
-        label: formLabel.trim() || null,
-        login: formLogin.trim(),
-        password: formPassword,
-        shared_secret: formSecret.trim() || null,
-        is_default: formDefault,
-        auto_connect: formAutoConnect,
-      });
-      onToast?.("Steam bridge account saved.");
+      if (isEditing) {
+        const payload: {
+          label?: string | null;
+          login?: string | null;
+          password?: string | null;
+          shared_secret?: string | null;
+          is_default?: boolean | null;
+        } = {
+          label: formLabel.trim() || null,
+          is_default: formDefault,
+        };
+        if (formLogin.trim()) payload.login = formLogin.trim();
+        if (formPassword.trim()) payload.password = formPassword;
+        if (formSecret.trim()) payload.shared_secret = formSecret.trim();
+        await api.updateSteamBridgeAccount(editingId, payload);
+        if (formAutoConnect) {
+          await api.connectSteamBridgeAccount(editingId);
+        }
+        onToast?.("Steam bridge account updated.");
+      } else {
+        await api.createSteamBridgeAccount({
+          label: formLabel.trim() || null,
+          login: formLogin.trim(),
+          password: formPassword,
+          shared_secret: formSecret.trim() || null,
+          is_default: formDefault,
+          auto_connect: formAutoConnect,
+        });
+        onToast?.("Steam bridge account saved.");
+      }
       resetForm();
       await loadData(true);
     } catch (err) {
@@ -159,6 +193,16 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEdit = (item: SteamBridgeAccount) => {
+    setEditingId(item.id);
+    setFormLabel(item.label || "");
+    setFormLogin("");
+    setFormPassword("");
+    setFormSecret("");
+    setFormDefault(!!item.is_default);
+    setFormAutoConnect(false);
   };
 
   const handleConnect = async (bridgeId: number) => {
@@ -371,6 +415,14 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
                           >
                             Disconnect
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(item)}
+                            disabled={busy}
+                            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 disabled:opacity-60"
+                          >
+                            Edit
+                          </button>
                           {!item.is_default ? (
                             <button
                               type="button"
@@ -453,8 +505,17 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
 
         <div className="space-y-6">
           <div className="panel">
-            <h3 className="text-lg font-semibold text-neutral-900">Add bridge account</h3>
-            <p className="text-xs text-neutral-500">Credentials are encrypted at rest. Shared secret enables 2FA.</p>
+            <h3 className="text-lg font-semibold text-neutral-900">
+              {editingId ? "Edit bridge account" : "Add bridge account"}
+            </h3>
+            <p className="text-xs text-neutral-500">
+              Credentials are encrypted at rest. Shared secret enables 2FA.
+            </p>
+            {editingId ? (
+              <div className="mt-2 text-[11px] text-neutral-500">
+                Leave login/password/secret blank to keep the current values.
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-3">
               <input
                 value={formLabel}
@@ -465,20 +526,20 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
               <input
                 value={formLogin}
                 onChange={(e) => setFormLogin(e.target.value)}
-                placeholder="Steam login"
+                placeholder={editingId ? "Steam login (leave blank to keep)" : "Steam login"}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <input
                 value={formPassword}
                 onChange={(e) => setFormPassword(e.target.value)}
-                placeholder="Steam password"
+                placeholder={editingId ? "Steam password (leave blank to keep)" : "Steam password"}
                 type="password"
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <input
                 value={formSecret}
                 onChange={(e) => setFormSecret(e.target.value)}
-                placeholder="Shared secret (optional)"
+                placeholder={editingId ? "Shared secret (leave blank to keep)" : "Shared secret (optional)"}
                 className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 outline-none placeholder:text-neutral-400"
               />
               <label className="flex items-center gap-2 text-xs text-neutral-600">
@@ -499,12 +560,21 @@ const SteamStatusPage: React.FC<SteamStatusPageProps> = ({ onToast }) => {
               </label>
               <button
                 type="button"
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
               >
-                {saving ? t("common.saving") : "Save bridge"}
+                {saving ? t("common.saving") : editingId ? "Save changes" : "Save bridge"}
               </button>
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-lg border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600"
+                >
+                  Cancel edit
+                </button>
+              ) : null}
             </div>
           </div>
 
