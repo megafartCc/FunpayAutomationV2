@@ -402,9 +402,9 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
     let isMounted = true;
     const loadBlacklistBadge = async () => {
       try {
-        const res = await api.listBlacklist(undefined, undefined, "pending");
+        const res = await api.blacklistPendingCount(workspaceId);
         if (!isMounted) return;
-        setPendingBlacklistCount(res.items?.length || 0);
+        setPendingBlacklistCount(Number(res.pending || 0));
       } catch {
         if (isMounted) {
           setPendingBlacklistCount(0);
@@ -424,7 +424,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
       isMounted = false;
       window.clearInterval(handle);
     };
-  }, [isTabVisible, isOnline]);
+  }, [workspaceId, isTabVisible, isOnline]);
 
   const handleNavigate = (nextPath: string) => {
     navigate(nextPath, { replace: false });

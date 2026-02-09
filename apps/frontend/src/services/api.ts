@@ -796,6 +796,8 @@ export const api = {
     request<{ removed: number }>(withWorkspace("/blacklist/remove", workspaceId), { method: "POST", body: { owners } }),
   clearBlacklist: (workspaceId?: number | null) =>
     request<{ removed: number }>(withWorkspace("/blacklist/clear", workspaceId), { method: "POST" }),
+  blacklistPendingCount: (workspaceId?: number | null) =>
+    request<{ pending: number }>(withWorkspace("/blacklist/pending-count", workspaceId), { method: "GET" }),
   listWorkspaces: () => request<{ items: WorkspaceItem[] }>("/workspaces", { method: "GET" }),
   listWorkspaceStatuses: (workspaceId?: number | null, platform?: string) => {
     const params = new URLSearchParams();
