@@ -925,7 +925,8 @@ def ensure_schema() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_chat_user_ws (user_id, workspace_id, chat_id),
-                INDEX idx_chats_user_ws (user_id, workspace_id)
+                INDEX idx_chats_user_ws (user_id, workspace_id),
+                INDEX idx_chats_user_ws_time (user_id, workspace_id, last_message_time, id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
@@ -944,7 +945,8 @@ def ensure_schema() -> None:
                 workspace_id BIGINT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_chat_message (user_id, workspace_id, chat_id, message_id),
-                INDEX idx_chat_messages_chat (chat_id, user_id, workspace_id)
+                INDEX idx_chat_messages_chat (chat_id, user_id, workspace_id),
+                INDEX idx_chat_messages_user_ws_chat_id (user_id, workspace_id, chat_id, id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
@@ -988,10 +990,43 @@ def ensure_schema() -> None:
                 workspace_id BIGINT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 sent_at TIMESTAMP NULL,
-                INDEX idx_outbox_status (status, user_id, workspace_id)
+                INDEX idx_outbox_status (status, user_id, workspace_id),
+                INDEX idx_outbox_status_id (status, user_id, workspace_id, id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """
         )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'chats'
+              AND index_name = 'idx_chats_user_ws_time'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE chats ADD INDEX idx_chats_user_ws_time (user_id, workspace_id, last_message_time, id)")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'chat_messages'
+              AND index_name = 'idx_chat_messages_user_ws_chat_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE chat_messages ADD INDEX idx_chat_messages_user_ws_chat_id (user_id, workspace_id, chat_id, id)"
+            )
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'chat_outbox'
+              AND index_name = 'idx_outbox_status_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE chat_outbox ADD INDEX idx_outbox_status_id (status, user_id, workspace_id, id)")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_ai_memory (
