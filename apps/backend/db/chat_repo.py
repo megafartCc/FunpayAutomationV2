@@ -58,18 +58,8 @@ class MySQLChatRepo:
         conn = self._get_conn()
         try:
             cursor = conn.cursor(dictionary=True)
-            join_params: list = [int(user_id), int(workspace_id)]
             params: list = [int(user_id), int(workspace_id)]
             time_expr = "c.last_message_time"
-            join_sql = """
-                LEFT JOIN (
-                    SELECT chat_id, MAX(sent_time) AS last_sent_time
-                    FROM chat_messages
-                    WHERE user_id = %s AND workspace_id = %s
-                    GROUP BY chat_id
-                ) m ON m.chat_id = c.chat_id
-            """
-            time_expr = "COALESCE(m.last_sent_time, c.last_message_time)"
             where = "WHERE c.user_id = %s AND c.workspace_id = %s"
             if query:
                 q = f"%{query.strip().lower()}%"
@@ -83,13 +73,12 @@ class MySQLChatRepo:
                 SELECT c.id, c.chat_id, c.name, c.last_message_text, {time_expr} AS last_message_time,
                        c.unread, c.admin_unread_count, c.admin_requested, c.user_id, c.workspace_id
                 FROM chats c
-                {join_sql}
                 {where}
                 ORDER BY (c.admin_requested IS NULL), c.admin_requested DESC,
                          (c.unread IS NULL), c.unread DESC, {time_expr} DESC, c.id DESC
                 LIMIT %s
                 """,
-                tuple(join_params + params + [int(max(1, min(limit, 500)))]),
+                tuple(params + [int(max(1, min(limit, 500)))]),
             )
             rows = cursor.fetchall() or []
             return [

@@ -46,6 +46,7 @@ const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
 const CHATS_FETCH_LIMIT = 150;
 const HISTORY_FETCH_LIMIT = 150;
 const HISTORY_INCREMENTAL_LIMIT = 100;
+const CHAT_BACKGROUND_REFRESH_WINDOW_MS = 5 * 60_000;
 
 type CacheEnvelope<T> = {
   ts: number;
@@ -113,6 +114,29 @@ const dedupeMessages = (items: ChatMessageItem[]) => {
   return result;
 };
 
+const sameMessageList = (a: ChatMessageItem[], b: ChatMessageItem[]) => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (!left || !right) return false;
+    if ((left.message_id || 0) !== (right.message_id || 0)) return false;
+    if ((left.id || 0) !== (right.id || 0)) return false;
+    if ((left.text || "") !== (right.text || "")) return false;
+  }
+  return true;
+};
+
+const applyOpenChatState = (items: ChatItem[], openChatId: number | null) => {
+  if (!openChatId) return items;
+  return items.map((chat) =>
+    chat.chat_id === openChatId
+      ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+      : chat,
+  );
+};
+
 const parseChatTime = (value?: string | null) => {
   const dt = parseUtcTimestamp(value);
   return dt ? dt.getTime() : 0;
@@ -147,6 +171,20 @@ const mergeChatUpdates = (prev: ChatItem[], incoming: ChatItem[]) => {
     .sort((a, b) => parseChatTime(b.last_message_time) - parseChatTime(a.last_message_time));
   const remaining = prev.filter((chat) => !updatedIds.has(chat.chat_id));
   return [...updated, ...remaining];
+};
+
+const emitChatBadgeSync = (workspaceId: number, chats: ChatItem[]) => {
+  const unread = chats.reduce((sum, chat) => sum + Number(chat.unread || 0), 0);
+  const adminUnread = chats.reduce((sum, chat) => sum + Number(chat.admin_unread_count || 0), 0);
+  window.dispatchEvent(
+    new CustomEvent("chat:badges:sync", {
+      detail: {
+        workspaceId,
+        unread,
+        admin_unread_count: adminUnread,
+      },
+    }),
+  );
 };
 
 const ChatsPage: React.FC = () => {
@@ -188,6 +226,7 @@ const ChatsPage: React.FC = () => {
   const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
   const historyCacheRef = useRef<Map<number, ChatMessageItem[]>>(new Map());
   const historyCacheTimeRef = useRef<Map<number, number>>(new Map());
+  const openedChatAtRef = useRef<Map<number, number>>(new Map());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const keepScrollPinnedRef = useRef(true);
@@ -223,7 +262,13 @@ const ChatsPage: React.FC = () => {
     hasLoadedChatsRef.current = false;
     historyCacheRef.current.clear();
     historyCacheTimeRef.current.clear();
+    openedChatAtRef.current.clear();
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    emitChatBadgeSync(workspaceId, chats);
+  }, [workspaceId, chats]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -280,6 +325,8 @@ const ChatsPage: React.FC = () => {
                 last_message_text: last.text || chat.last_message_text,
                 last_message_time: last.sent_time || chat.last_message_time,
                 unread: 0,
+                admin_unread_count: 0,
+                admin_requested: 0,
               }
             : chat,
         );
@@ -307,9 +354,10 @@ const ChatsPage: React.FC = () => {
       const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
-        setChats(cached);
+        const hydrated = applyOpenChatState(cached, selectedChatId);
+        setChats(hydrated);
         setStatus(null);
-        ensureSelection(cached);
+        ensureSelection(hydrated);
         hasLoadedChatsRef.current = true;
         const cachedMax = getMaxChatTime(cached);
         if (cachedMax > 0) {
@@ -328,7 +376,7 @@ const ChatsPage: React.FC = () => {
         if (canIncremental) {
           if (items.length) {
             setChats((prev) => {
-              const merged = mergeChatUpdates(prev, items);
+              const merged = applyOpenChatState(mergeChatUpdates(prev, items), selectedChatId);
               if (cacheKey) {
                 writeCache(cacheKey, merged);
               }
@@ -344,16 +392,17 @@ const ChatsPage: React.FC = () => {
           }
           return;
         }
-        setChats(items);
+        const normalizedItems = applyOpenChatState(items, selectedChatId);
+        setChats(normalizedItems);
         setStatus(null);
-        ensureSelection(items);
+        ensureSelection(normalizedItems);
         hasLoadedChatsRef.current = true;
         const maxTs = getMaxChatTime(items);
         if (maxTs > 0) {
           listSinceRef.current = new Date(maxTs).toISOString();
         }
         if (cacheKey) {
-          writeCache(cacheKey, items);
+          writeCache(cacheKey, normalizedItems);
         }
       } catch (err) {
         if (!silent) {
@@ -366,7 +415,7 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId, ensureSelection],
+    [workspaceId, ensureSelection, selectedChatId],
   );
 
   const persistHistoryCache = useCallback(
@@ -401,6 +450,9 @@ const ChatsPage: React.FC = () => {
       const cached =
         memoryCached ?? (options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS));
       const shouldUpdateView = options?.updateView !== false;
+      if (shouldUpdateView) {
+        openedChatAtRef.current.set(chatId, Date.now());
+      }
       if (cached) {
         persistHistoryCache(chatId, cached);
         if (shouldUpdateView) {
@@ -425,9 +477,12 @@ const ChatsPage: React.FC = () => {
           if (incoming.length) {
             const cleaned = stripPendingIfConfirmed(baseItems, incoming);
             const merged = dedupeMessages([...cleaned, ...incoming]);
+            const shouldReplaceView = !sameMessageList(baseItems, merged);
             persistHistoryCache(chatId, merged);
             if (shouldUpdateView) {
-              setMessages(merged);
+              if (shouldReplaceView) {
+                setMessages(merged);
+              }
               updateChatPreview(chatId, merged);
             }
           }
@@ -445,9 +500,12 @@ const ChatsPage: React.FC = () => {
         const res = await api.getChatHistory(chatId, workspaceId, HISTORY_FETCH_LIMIT);
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
+        const shouldReplaceView = !sameMessageList(baseItems, items);
         persistHistoryCache(chatId, items);
         if (shouldUpdateView) {
-          setMessages(items);
+          if (shouldReplaceView) {
+            setMessages(items);
+          }
           updateChatPreview(chatId, items);
           setChats((prev) =>
             prev.map((chat) =>
@@ -541,15 +599,33 @@ const ChatsPage: React.FC = () => {
   useEffect(() => {
     if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
-      const cachedIds = Array.from(historyCacheRef.current.keys());
-      if (!cachedIds.length) return;
-      cachedIds.forEach((chatId) => {
+      const now = Date.now();
+      const candidates = new Set<number>();
+      chats.forEach((chat) => {
+        const unread = Number(chat.unread || 0) > 0 || Number(chat.admin_unread_count || 0) > 0;
+        const openedAt = openedChatAtRef.current.get(chat.chat_id) || 0;
+        const recentlyOpened = now - openedAt <= CHAT_BACKGROUND_REFRESH_WINDOW_MS;
+        if (unread || recentlyOpened) {
+          candidates.add(chat.chat_id);
+        }
+      });
+      Array.from(openedChatAtRef.current.entries()).forEach(([chatId, openedAt]) => {
+        if (now - openedAt > CHAT_BACKGROUND_REFRESH_WINDOW_MS) {
+          openedChatAtRef.current.delete(chatId);
+          return;
+        }
+        candidates.add(chatId);
+      });
+      if (!candidates.size) return;
+      Array.from(candidates)
+        .slice(0, 12)
+        .forEach((chatId) => {
         if (chatId === selectedChatId) return;
         void loadHistory(chatId, { silent: true, incremental: true, updateView: false });
       });
     }, 20_000);
     return () => window.clearInterval(handle);
-  }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
+  }, [isPageActive, workspaceId, selectedChatId, loadHistory, chats]);
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -601,6 +677,7 @@ const ChatsPage: React.FC = () => {
   }, [rentalsForBuyer, selectedRentalId]);
 
   const handleSelectChat = (chatId: number) => {
+    openedChatAtRef.current.set(chatId, Date.now());
     setSelectedChatId(chatId);
     setMobileView("chat");
     pendingScrollRef.current = true;
