@@ -46,7 +46,7 @@ const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
 const CHATS_FETCH_LIMIT = 150;
 const HISTORY_FETCH_LIMIT = 150;
 const HISTORY_INCREMENTAL_LIMIT = 100;
-const CHAT_BACKGROUND_REFRESH_WINDOW_MS = 5 * 60_000;
+const CHAT_SYNC_INTERVAL_MS = 7_000;
 
 type CacheEnvelope<T> = {
   ts: number;
@@ -456,7 +456,10 @@ const ChatsPage: React.FC = () => {
       if (cached) {
         persistHistoryCache(chatId, cached);
         if (shouldUpdateView) {
-          setMessages(cached);
+          const current = historyCacheRef.current.get(chatId) ?? messagesRef.current;
+          if (!sameMessageList(current, cached)) {
+            setMessages(cached);
+          }
           updateChatPreview(chatId, cached);
         }
       } else if (!options?.incremental && shouldUpdateView) {
@@ -568,15 +571,6 @@ const ChatsPage: React.FC = () => {
 
   useEffect(() => {
     if (!isPageActive || !workspaceId) return undefined;
-    if (chatSearch.trim()) return undefined;
-    const handle = window.setInterval(() => {
-      void loadChats(chatSearch, { silent: true, incremental: true });
-    }, 20_000);
-    return () => window.clearInterval(handle);
-  }, [isPageActive, workspaceId, chatSearch, loadChats]);
-
-  useEffect(() => {
-    if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
       void loadRentals(true);
     }, 20_000);
@@ -589,43 +583,86 @@ const ChatsPage: React.FC = () => {
   }, [isPageActive, selectedChatId, loadHistory]);
 
   useEffect(() => {
-    if (!isPageActive || !workspaceId || !selectedChatId) return undefined;
-    const handle = window.setInterval(() => {
-      void loadHistory(selectedChatId, { silent: true, incremental: true });
-    }, 20_000);
-    return () => window.clearInterval(handle);
-  }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
-
-  useEffect(() => {
     if (!isPageActive || !workspaceId) return undefined;
+    if (chatSearch.trim()) return undefined;
+
+    const syncTick = async () => {
+      const selectedId = selectedChatId || null;
+      const selectedItems = selectedId ? (historyCacheRef.current.get(selectedId) ?? messagesRef.current) : [];
+      const selectedAfterId = selectedId ? getLastServerMessageId(selectedItems) : null;
+      try {
+        const res = await api.chatSync(workspaceId, {
+          since: listSinceRef.current || undefined,
+          selectedChatId: selectedId,
+          selectedAfterId,
+          chatsLimit: CHATS_FETCH_LIMIT,
+          messagesLimit: HISTORY_INCREMENTAL_LIMIT,
+        });
+
+        const incomingChats = res.chats || [];
+        if (incomingChats.length) {
+          setChats((prev) => {
+            const merged = applyOpenChatState(mergeChatUpdates(prev, incomingChats), selectedChatId);
+            if (workspaceId && !chatSearch.trim()) {
+              writeCache(chatListCacheKey(workspaceId), merged);
+            }
+            ensureSelection(merged);
+            return merged;
+          });
+          const nextMax = getMaxChatTime(incomingChats);
+          if (nextMax > 0) {
+            const currentMax = listSinceRef.current ? Date.parse(listSinceRef.current) : 0;
+            listSinceRef.current = new Date(Math.max(currentMax, nextMax)).toISOString();
+          }
+        }
+
+        if (selectedId && (res.messages || []).length) {
+          const base = selectedItems;
+          const mergedMessages = dedupeMessages([...base, ...(res.messages || [])]);
+          if (!sameMessageList(base, mergedMessages)) {
+            persistHistoryCache(selectedId, mergedMessages);
+            setMessages(mergedMessages);
+            updateChatPreview(selectedId, mergedMessages);
+          }
+          setChats((prev) =>
+            prev.map((chat) =>
+              chat.chat_id === selectedId
+                ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+                : chat,
+            ),
+          );
+        }
+
+        if (res.badges) {
+          window.dispatchEvent(
+            new CustomEvent("chat:badges:sync", {
+              detail: {
+                workspaceId,
+                unread: Number(res.badges.unread || 0),
+                admin_unread_count: Number(res.badges.admin_unread_count || 0),
+              },
+            }),
+          );
+        }
+      } catch {
+        // background sync is best-effort
+      }
+    };
+
+    void syncTick();
     const handle = window.setInterval(() => {
-      const now = Date.now();
-      const candidates = new Set<number>();
-      chats.forEach((chat) => {
-        const unread = Number(chat.unread || 0) > 0 || Number(chat.admin_unread_count || 0) > 0;
-        const openedAt = openedChatAtRef.current.get(chat.chat_id) || 0;
-        const recentlyOpened = now - openedAt <= CHAT_BACKGROUND_REFRESH_WINDOW_MS;
-        if (unread || recentlyOpened) {
-          candidates.add(chat.chat_id);
-        }
-      });
-      Array.from(openedChatAtRef.current.entries()).forEach(([chatId, openedAt]) => {
-        if (now - openedAt > CHAT_BACKGROUND_REFRESH_WINDOW_MS) {
-          openedChatAtRef.current.delete(chatId);
-          return;
-        }
-        candidates.add(chatId);
-      });
-      if (!candidates.size) return;
-      Array.from(candidates)
-        .slice(0, 12)
-        .forEach((chatId) => {
-        if (chatId === selectedChatId) return;
-        void loadHistory(chatId, { silent: true, incremental: true, updateView: false });
-      });
-    }, 20_000);
+      void syncTick();
+    }, CHAT_SYNC_INTERVAL_MS);
     return () => window.clearInterval(handle);
-  }, [isPageActive, workspaceId, selectedChatId, loadHistory, chats]);
+  }, [
+    isPageActive,
+    workspaceId,
+    chatSearch,
+    selectedChatId,
+    ensureSelection,
+    persistHistoryCache,
+    updateChatPreview,
+  ]);
 
   useEffect(() => {
     if (!selectedChatId) return;
