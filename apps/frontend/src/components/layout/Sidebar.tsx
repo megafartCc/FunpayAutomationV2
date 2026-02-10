@@ -362,6 +362,20 @@ const Sidebar: React.FC<SidebarProps> = ({ className, onClose, onNavigate, isMob
   }, []);
 
   useEffect(() => {
+    const handleChatBadgeSync = (event: Event) => {
+      const custom = event as CustomEvent<{ workspaceId?: number; unread?: number; admin_unread_count?: number }>;
+      const detail = custom.detail || {};
+      if (!workspaceId || Number(detail.workspaceId || 0) !== Number(workspaceId)) return;
+      setChatUnreadCount(Number(detail.unread || 0));
+      setChatAdminCount(Number(detail.admin_unread_count || 0));
+    };
+    window.addEventListener("chat:badges:sync", handleChatBadgeSync as EventListener);
+    return () => {
+      window.removeEventListener("chat:badges:sync", handleChatBadgeSync as EventListener);
+    };
+  }, [workspaceId]);
+
+  useEffect(() => {
     let isMounted = true;
     const loadChatBadges = async () => {
       if (!workspaceId) {
