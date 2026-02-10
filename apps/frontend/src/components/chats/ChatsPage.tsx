@@ -46,6 +46,7 @@ const CHAT_HISTORY_CACHE_TTL_MS = 90_000;
 const CHATS_FETCH_LIMIT = 150;
 const HISTORY_FETCH_LIMIT = 150;
 const HISTORY_INCREMENTAL_LIMIT = 100;
+const CHAT_BACKGROUND_REFRESH_WINDOW_MS = 5 * 60_000;
 
 type CacheEnvelope<T> = {
   ts: number;
@@ -149,6 +150,20 @@ const mergeChatUpdates = (prev: ChatItem[], incoming: ChatItem[]) => {
   return [...updated, ...remaining];
 };
 
+const emitChatBadgeSync = (workspaceId: number, chats: ChatItem[]) => {
+  const unread = chats.reduce((sum, chat) => sum + Number(chat.unread || 0), 0);
+  const adminUnread = chats.reduce((sum, chat) => sum + Number(chat.admin_unread_count || 0), 0);
+  window.dispatchEvent(
+    new CustomEvent("chat:badges:sync", {
+      detail: {
+        workspaceId,
+        unread,
+        admin_unread_count: adminUnread,
+      },
+    }),
+  );
+};
+
 const ChatsPage: React.FC = () => {
   const { chatId: chatIdParam } = useParams();
   const navigate = useNavigate();
@@ -188,6 +203,7 @@ const ChatsPage: React.FC = () => {
   const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
   const historyCacheRef = useRef<Map<number, ChatMessageItem[]>>(new Map());
   const historyCacheTimeRef = useRef<Map<number, number>>(new Map());
+  const openedChatAtRef = useRef<Map<number, number>>(new Map());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const keepScrollPinnedRef = useRef(true);
@@ -223,7 +239,13 @@ const ChatsPage: React.FC = () => {
     hasLoadedChatsRef.current = false;
     historyCacheRef.current.clear();
     historyCacheTimeRef.current.clear();
+    openedChatAtRef.current.clear();
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    emitChatBadgeSync(workspaceId, chats);
+  }, [workspaceId, chats]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -401,6 +423,9 @@ const ChatsPage: React.FC = () => {
       const cached =
         memoryCached ?? (options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS));
       const shouldUpdateView = options?.updateView !== false;
+      if (shouldUpdateView) {
+        openedChatAtRef.current.set(chatId, Date.now());
+      }
       if (cached) {
         persistHistoryCache(chatId, cached);
         if (shouldUpdateView) {
@@ -541,15 +566,33 @@ const ChatsPage: React.FC = () => {
   useEffect(() => {
     if (!isPageActive || !workspaceId) return undefined;
     const handle = window.setInterval(() => {
-      const cachedIds = Array.from(historyCacheRef.current.keys());
-      if (!cachedIds.length) return;
-      cachedIds.forEach((chatId) => {
+      const now = Date.now();
+      const candidates = new Set<number>();
+      chats.forEach((chat) => {
+        const unread = Number(chat.unread || 0) > 0 || Number(chat.admin_unread_count || 0) > 0;
+        const openedAt = openedChatAtRef.current.get(chat.chat_id) || 0;
+        const recentlyOpened = now - openedAt <= CHAT_BACKGROUND_REFRESH_WINDOW_MS;
+        if (unread || recentlyOpened) {
+          candidates.add(chat.chat_id);
+        }
+      });
+      Array.from(openedChatAtRef.current.entries()).forEach(([chatId, openedAt]) => {
+        if (now - openedAt > CHAT_BACKGROUND_REFRESH_WINDOW_MS) {
+          openedChatAtRef.current.delete(chatId);
+          return;
+        }
+        candidates.add(chatId);
+      });
+      if (!candidates.size) return;
+      Array.from(candidates)
+        .slice(0, 12)
+        .forEach((chatId) => {
         if (chatId === selectedChatId) return;
         void loadHistory(chatId, { silent: true, incremental: true, updateView: false });
       });
     }, 20_000);
     return () => window.clearInterval(handle);
-  }, [isPageActive, workspaceId, selectedChatId, loadHistory]);
+  }, [isPageActive, workspaceId, selectedChatId, loadHistory, chats]);
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -601,6 +644,7 @@ const ChatsPage: React.FC = () => {
   }, [rentalsForBuyer, selectedRentalId]);
 
   const handleSelectChat = (chatId: number) => {
+    openedChatAtRef.current.set(chatId, Date.now());
     setSelectedChatId(chatId);
     setMobileView("chat");
     pendingScrollRef.current = true;
