@@ -114,6 +114,29 @@ const dedupeMessages = (items: ChatMessageItem[]) => {
   return result;
 };
 
+const sameMessageList = (a: ChatMessageItem[], b: ChatMessageItem[]) => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (!left || !right) return false;
+    if ((left.message_id || 0) !== (right.message_id || 0)) return false;
+    if ((left.id || 0) !== (right.id || 0)) return false;
+    if ((left.text || "") !== (right.text || "")) return false;
+  }
+  return true;
+};
+
+const applyOpenChatState = (items: ChatItem[], openChatId: number | null) => {
+  if (!openChatId) return items;
+  return items.map((chat) =>
+    chat.chat_id === openChatId
+      ? { ...chat, unread: 0, admin_unread_count: 0, admin_requested: 0 }
+      : chat,
+  );
+};
+
 const parseChatTime = (value?: string | null) => {
   const dt = parseUtcTimestamp(value);
   return dt ? dt.getTime() : 0;
@@ -302,6 +325,8 @@ const ChatsPage: React.FC = () => {
                 last_message_text: last.text || chat.last_message_text,
                 last_message_time: last.sent_time || chat.last_message_time,
                 unread: 0,
+                admin_unread_count: 0,
+                admin_requested: 0,
               }
             : chat,
         );
@@ -329,9 +354,10 @@ const ChatsPage: React.FC = () => {
       const cacheKey = trimmedQuery ? null : chatListCacheKey(workspaceId);
       const cached = cacheKey ? readCache<ChatItem>(cacheKey, CHAT_LIST_CACHE_TTL_MS) : null;
       if (cached && !hasLoadedChatsRef.current) {
-        setChats(cached);
+        const hydrated = applyOpenChatState(cached, selectedChatId);
+        setChats(hydrated);
         setStatus(null);
-        ensureSelection(cached);
+        ensureSelection(hydrated);
         hasLoadedChatsRef.current = true;
         const cachedMax = getMaxChatTime(cached);
         if (cachedMax > 0) {
@@ -350,7 +376,7 @@ const ChatsPage: React.FC = () => {
         if (canIncremental) {
           if (items.length) {
             setChats((prev) => {
-              const merged = mergeChatUpdates(prev, items);
+              const merged = applyOpenChatState(mergeChatUpdates(prev, items), selectedChatId);
               if (cacheKey) {
                 writeCache(cacheKey, merged);
               }
@@ -366,16 +392,17 @@ const ChatsPage: React.FC = () => {
           }
           return;
         }
-        setChats(items);
+        const normalizedItems = applyOpenChatState(items, selectedChatId);
+        setChats(normalizedItems);
         setStatus(null);
-        ensureSelection(items);
+        ensureSelection(normalizedItems);
         hasLoadedChatsRef.current = true;
         const maxTs = getMaxChatTime(items);
         if (maxTs > 0) {
           listSinceRef.current = new Date(maxTs).toISOString();
         }
         if (cacheKey) {
-          writeCache(cacheKey, items);
+          writeCache(cacheKey, normalizedItems);
         }
       } catch (err) {
         if (!silent) {
@@ -388,7 +415,7 @@ const ChatsPage: React.FC = () => {
         }
       }
     },
-    [workspaceId, ensureSelection],
+    [workspaceId, ensureSelection, selectedChatId],
   );
 
   const persistHistoryCache = useCallback(
@@ -450,9 +477,12 @@ const ChatsPage: React.FC = () => {
           if (incoming.length) {
             const cleaned = stripPendingIfConfirmed(baseItems, incoming);
             const merged = dedupeMessages([...cleaned, ...incoming]);
+            const shouldReplaceView = !sameMessageList(baseItems, merged);
             persistHistoryCache(chatId, merged);
             if (shouldUpdateView) {
-              setMessages(merged);
+              if (shouldReplaceView) {
+                setMessages(merged);
+              }
               updateChatPreview(chatId, merged);
             }
           }
@@ -470,9 +500,12 @@ const ChatsPage: React.FC = () => {
         const res = await api.getChatHistory(chatId, workspaceId, HISTORY_FETCH_LIMIT);
         const items = res.items || [];
         if (historyRequestRef.current.seq !== seq || historyRequestRef.current.chatId !== chatId) return;
+        const shouldReplaceView = !sameMessageList(baseItems, items);
         persistHistoryCache(chatId, items);
         if (shouldUpdateView) {
-          setMessages(items);
+          if (shouldReplaceView) {
+            setMessages(items);
+          }
           updateChatPreview(chatId, items);
           setChats((prev) =>
             prev.map((chat) =>
