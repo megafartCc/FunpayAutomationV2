@@ -3397,7 +3397,7 @@ def run_single_user(logger: logging.Logger) -> None:
 
     state = RentalMonitorState()
 
-    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
+    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 120)
 
     chat_sync_last = 0.0
 
@@ -3493,7 +3493,7 @@ def workspace_worker_loop(
 
     state = RentalMonitorState()
 
-    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 30)
+    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 120)
 
     chat_sync_last = 0.0
 

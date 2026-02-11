@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import time
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -40,6 +41,26 @@ def _get_env(name: str, default: str | None = None) -> str | None:
     return value.strip()
 
 
+def _get_env_int(name: str, default: int) -> int:
+    raw = _get_env(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _get_env_float(name: str, default: float) -> float:
+    raw = _get_env(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _load_mysql_settings() -> dict[str, str | int]:
     url = _get_env("MYSQL_URL", "") or ""
     host = _get_env("MYSQLHOST", "") or ""
@@ -72,7 +93,24 @@ def _load_mysql_settings() -> dict[str, str | int]:
 
 def get_base_connection() -> mysql.connector.MySQLConnection:
     settings = _load_mysql_settings()
-    return mysql.connector.connect(**settings)
+    timeout = _get_env_float("MYSQL_CONNECT_TIMEOUT", 5.0)
+    attempts = _get_env_int("MYSQL_CONNECT_RETRY_ATTEMPTS", 3)
+    delay = _get_env_float("MYSQL_CONNECT_RETRY_DELAY", 0.5)
+    backoff = _get_env_float("MYSQL_CONNECT_RETRY_BACKOFF", 2.0)
+    last_error: Exception | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return mysql.connector.connect(connection_timeout=timeout, **settings)
+        except mysql.connector.Error as exc:
+            last_error = exc
+            if attempt + 1 >= attempts:
+                raise
+            sleep_for = delay * (backoff**attempt)
+            logger.warning("MySQL connection failed (%s). Retrying in %.2fs...", exc, sleep_for)
+            time.sleep(sleep_for)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("MySQL connection failed unexpectedly.")
 
 
 def _hash_token(token: str) -> str:
@@ -372,7 +410,11 @@ def _mark_notification_sent(notification_id: int, chat_id: int) -> None:
 async def poll_notifications(context: ContextTypes.DEFAULT_TYPE) -> None:
     if context.bot is None:
         return
-    pending = _fetch_pending_notifications()
+    try:
+        pending = _fetch_pending_notifications()
+    except mysql.connector.Error:
+        logger.exception("Failed to fetch notifications from MySQL.")
+        return
     if not pending:
         return
     for item in pending:

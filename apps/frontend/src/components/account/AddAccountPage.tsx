@@ -3,6 +3,23 @@ import { api } from "../../services/api";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { useI18n } from "../../i18n/useI18n";
 
+type BulkMafileEntry = {
+  json: string;
+  source: string;
+};
+
+type BulkCredentialEntry = {
+  login: string;
+  password: string;
+  accountName: string;
+  lineNumber: number;
+};
+
+type BulkParseResult = {
+  entries: BulkCredentialEntry[];
+  invalidLines: number[];
+};
+
 const AddIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path
@@ -25,7 +42,7 @@ const AddAccountPage: React.FC = () => {
   const [bulkCredentials, setBulkCredentials] = useState("");
   const [bulkStatus, setBulkStatus] = useState<{ message: string; isError?: boolean } | null>(null);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkMafileMap, setBulkMafileMap] = useState<Record<string, string>>({});
+  const [bulkMafileMap, setBulkMafileMap] = useState<Record<string, BulkMafileEntry>>({});
   const [bulkMafileErrors, setBulkMafileErrors] = useState<string[]>([]);
   const { visibleWorkspaces, selectedId } = useWorkspace();
   const { tr } = useI18n();
@@ -73,7 +90,7 @@ const AddAccountPage: React.FC = () => {
   const handleBulkMafileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
-    const map: Record<string, string> = {};
+    const map: Record<string, BulkMafileEntry> = {};
     const errors: string[] = [];
     for (const file of files) {
       try {
@@ -84,7 +101,7 @@ const AddAccountPage: React.FC = () => {
           errors.push(`${file.name}: ${tr("login not found", "логин не найден")}`);
           continue;
         }
-        map[loginKey.toLowerCase()] = text;
+        map[loginKey.toLowerCase()] = { json: text, source: file.name };
       } catch {
         errors.push(`${file.name}: ${tr("failed to read", "не удалось прочитать")}`);
       }
@@ -160,22 +177,28 @@ const AddAccountPage: React.FC = () => {
     }
   };
 
-  const parseCredentials = (raw: string) => {
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"));
-    const parsed: { login: string; password: string; accountName: string }[] = [];
-    for (const line of lines) {
-      const match = line.match(/^([^:;|\t]+)[:;|\t](.+)$/);
-      if (!match) continue;
+  const parseCredentials = (raw: string): BulkParseResult => {
+    const lines = raw.split(/\r?\n/);
+    const parsed: BulkCredentialEntry[] = [];
+    const invalidLines: number[] = [];
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const match = trimmed.match(/^([^:;|\t]+)[:;|\t](.+)$/);
+      if (!match) {
+        invalidLines.push(index + 1);
+        return;
+      }
       const loginValue = match[1].trim();
       const rest = match[2].trim();
-      if (!loginValue || !rest) continue;
+      if (!loginValue || !rest) {
+        invalidLines.push(index + 1);
+        return;
+      }
       const accountName = loginValue;
-      parsed.push({ login: loginValue, password: rest, accountName });
-    }
-    return parsed;
+      parsed.push({ login: loginValue, password: rest, accountName, lineNumber: index + 1 });
+    });
+    return { entries: parsed, invalidLines };
   };
 
   const handleBulkSubmit = async () => {
@@ -187,7 +210,7 @@ const AddAccountPage: React.FC = () => {
       });
       return;
     }
-    const entries = parseCredentials(bulkCredentials);
+    const { entries, invalidLines } = parseCredentials(bulkCredentials);
     if (!entries.length) {
       setBulkStatus({
         message: tr(
@@ -206,15 +229,15 @@ const AddAccountPage: React.FC = () => {
       return;
     }
 
-    const toCreate: typeof entries = [];
-    const missing: string[] = [];
+    const toCreate: { entry: BulkCredentialEntry; mafile: BulkMafileEntry }[] = [];
+    const missing: BulkCredentialEntry[] = [];
     for (const entry of entries) {
       const mafile = bulkMafileMap[entry.login.toLowerCase()];
       if (!mafile) {
-        missing.push(entry.login);
+        missing.push(entry);
         continue;
       }
-      toCreate.push(entry);
+      toCreate.push({ entry, mafile });
     }
     if (!toCreate.length) {
       setBulkStatus({
@@ -227,33 +250,55 @@ const AddAccountPage: React.FC = () => {
     setBulkSubmitting(true);
     let created = 0;
     let failed = 0;
-    for (const entry of toCreate) {
+    const failedDetails: string[] = [];
+    for (const item of toCreate) {
+      const entry = item.entry;
+      const mafile = item.mafile;
       try {
         await api.createAccount({
           workspace_id: workspaceId,
           account_name: entry.accountName,
           login: entry.login,
           password: entry.password,
-          mafile_json: bulkMafileMap[entry.login.toLowerCase()],
+          mafile_json: mafile.json,
           mmr: undefined,
           rental_duration: 1,
           rental_minutes: 0,
         });
         created += 1;
-      } catch {
+      } catch (err) {
         failed += 1;
+        const message =
+          (err as { message?: string })?.message ||
+          tr("Failed to create account.", "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ð·Ð´Ð°Ñ‚ÑŒ Ð°ÐºÐºÐ°ÑƒÐ½Ñ‚.");
+        const labelParts = [
+          entry.login,
+          `${tr("line", "ÑÑ‚Ñ€Ð¾ÐºÐ°")} ${entry.lineNumber}`,
+          mafile.source ? `${tr("file", "Ñ„Ð°Ð¹Ð»")} ${mafile.source}` : "",
+        ].filter(Boolean);
+        failedDetails.push(`${labelParts.join(", ")}: ${message}`);
       }
     }
-
-    const missingLabel = missing.length ? ` ${tr("Missing maFiles:", "Нет maFile:")} ${missing.join(", ")}` : "";
+    const missingLabel = missing.length
+      ? `\n${tr("Missing maFiles:", "?????? maFile:")} ${missing
+          .map((entry) => `${entry.login} (${tr("line", "????????????")} ${entry.lineNumber})`)
+          .join(", ")}`
+      : "";
+    const invalidLabel = invalidLines.length
+      ? `\n${tr("Invalid lines:", "???????????????? ????????????:")} ${invalidLines.join(", ")}`
+      : "";
+    const failedLabel = failedDetails.length
+      ? `\n${tr("Failure details:", "?????????????????????? ????????????:")}\n- ${failedDetails.join("\n- ")}`
+      : "";
     setBulkStatus({
       message: tr(
-        `Created ${created}, failed ${failed}.${missingLabel}`,
-        `Создано ${created}, ошибок ${failed}.${missingLabel}`,
+        `Created ${created}, failed ${failed}.${missingLabel}${invalidLabel}${failedLabel}`,
+        `?????????????? ${created}, ???????????? ${failed}.${missingLabel}${invalidLabel}${failedLabel}`,
       ),
-      isError: failed > 0,
+      isError: failed > 0 || missing.length > 0 || invalidLines.length > 0,
     });
     setBulkSubmitting(false);
+
   };
 
   return (
@@ -403,7 +448,7 @@ const AddAccountPage: React.FC = () => {
                 bulkStatus.isError
                   ? "border-red-200 bg-red-50 text-red-700"
                   : "border-emerald-200 bg-emerald-50 text-emerald-700"
-              }`}
+              } whitespace-pre-wrap`}
             >
               {bulkStatus.message}
             </div>

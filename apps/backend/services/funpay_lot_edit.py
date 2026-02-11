@@ -96,8 +96,8 @@ def _build_snapshot(fields: dict[str, Any]) -> dict[str, Any]:
 _NUMERIC_FIELD_PATTERNS = (
     re.compile(r"^price$", re.IGNORECASE),
     re.compile(r"^amount$", re.IGNORECASE),
-    re.compile(r"^fields\\[(decency|politeness|solommr|time|hours|days)\\]$", re.IGNORECASE),
-    re.compile(r"^fields\\[[^\\]]*mmr\\]$", re.IGNORECASE),
+    re.compile(r"^fields\[(decency|politeness|solommr|time|hours|days)\]$", re.IGNORECASE),
+    re.compile(r"^fields\[[^\]]*mmr\]$", re.IGNORECASE),
 )
 
 _PROTECTED_RAW_KEYS = {
