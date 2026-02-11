@@ -57,6 +57,11 @@ class ChatBadgesResponse(BaseModel):
     unread: int = 0
     admin_unread_count: int = 0
 
+class ChatSyncResponse(BaseModel):
+    chats: list[ChatItem] = []
+    messages: list[ChatMessageItem] = []
+    badges: ChatBadgesResponse = ChatBadgesResponse()
+
 
 def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
     if workspace_id is None:
@@ -149,6 +154,77 @@ def list_chats(
         )
     return ChatListResponse(
         items=response_items
+    )
+
+
+@router.get("/chats/sync", response_model=ChatSyncResponse)
+def chat_sync(
+    workspace_id: int | None = None,
+    since: str | None = None,
+    selected_chat_id: int | None = None,
+    selected_after_id: int | None = None,
+    chats_limit: int = 200,
+    messages_limit: int = 100,
+    user=Depends(get_current_user),
+) -> ChatSyncResponse:
+    user_id = int(user.id)
+    _ensure_workspace(workspace_id, user_id)
+    since_dt = _parse_since(since)
+    chat_items = chat_repo.list_chats(
+        user_id,
+        int(workspace_id),
+        since=since_dt,
+        limit=chats_limit,
+    )
+    response_chats = [
+        ChatItem(
+            id=item.id,
+            chat_id=item.chat_id,
+            name=item.name,
+            last_message_text=item.last_message_text,
+            last_message_time=item.last_message_time,
+            unread=item.unread,
+            admin_unread_count=item.admin_unread_count,
+            admin_requested=item.admin_requested,
+            workspace_id=item.workspace_id,
+        )
+        for item in chat_items
+    ]
+
+    response_messages: list[ChatMessageItem] = []
+    if selected_chat_id is not None and int(selected_chat_id) > 0:
+        after_value = int(selected_after_id) if selected_after_id is not None and int(selected_after_id) > 0 else None
+        messages = chat_repo.list_messages(
+            user_id,
+            int(workspace_id),
+            int(selected_chat_id),
+            limit=int(max(1, min(messages_limit, 200))),
+            after_id=after_value,
+        )
+        if after_value is None:
+            chat_repo.mark_chat_read(user_id, int(workspace_id), int(selected_chat_id))
+        elif messages:
+            chat_repo.mark_chat_read(user_id, int(workspace_id), int(selected_chat_id))
+        response_messages = [
+            ChatMessageItem(
+                id=item.id,
+                message_id=item.message_id,
+                chat_id=item.chat_id,
+                author=item.author,
+                text=item.text,
+                sent_time=item.sent_time,
+                by_bot=item.by_bot,
+                message_type=item.message_type,
+                workspace_id=item.workspace_id,
+            )
+            for item in messages
+        ]
+
+    badges = chat_repo.get_badges(user_id, int(workspace_id))
+    return ChatSyncResponse(
+        chats=response_chats,
+        messages=response_messages,
+        badges=ChatBadgesResponse(unread=badges.unread, admin_unread_count=badges.admin_unread_count),
     )
 
 
