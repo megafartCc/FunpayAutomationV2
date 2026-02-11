@@ -416,6 +416,12 @@ export type ChatBadgesResponse = {
   admin_unread_count: number;
 };
 
+export type ChatSyncResponse = {
+  chats: ChatItem[];
+  messages: ChatMessageItem[];
+  badges: ChatBadgesResponse;
+};
+
 
 export type PriceDumperResponse = {
   url: string;
@@ -822,6 +828,22 @@ export const api = {
 
   chatBadges: (workspaceId?: number | null) =>
     request<ChatBadgesResponse>(withWorkspace("/chats/badges", workspaceId), { method: "GET" }),
+  chatSync: (
+    workspaceId?: number | null,
+    params?: { since?: string; selectedChatId?: number | null; selectedAfterId?: number | null; chatsLimit?: number; messagesLimit?: number },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.since) query.set("since", params.since);
+    if (params?.selectedChatId) query.set("selected_chat_id", String(params.selectedChatId));
+    if (params?.selectedAfterId) query.set("selected_after_id", String(params.selectedAfterId));
+    if (params?.chatsLimit) query.set("chats_limit", String(params.chatsLimit));
+    if (params?.messagesLimit) query.set("messages_limit", String(params.messagesLimit));
+    const suffix = query.toString();
+    return request<ChatSyncResponse>(
+      withWorkspace(`/chats/sync${suffix ? `?${suffix}` : ""}`, workspaceId),
+      { method: "GET" },
+    );
+  },
   listChats: (workspaceId?: number | null, query?: string, limit?: number, since?: string) => {
     const params = new URLSearchParams();
     if (query) params.set("query", query);

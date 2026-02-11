@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import time
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -20,6 +21,10 @@ from telegram.ext import (
 
 
 logger = logging.getLogger("telegram-bot")
+
+_DB_CONNECT_RETRIES = max(1, int(os.getenv("MYSQL_CONNECT_RETRIES", "3") or "3"))
+_DB_CONNECT_BACKOFF = max(0.2, float(os.getenv("MYSQL_CONNECT_BACKOFF_SECONDS", "1.0") or "1.0"))
+_DB_CONNECT_TIMEOUT = max(2, int(os.getenv("MYSQL_CONNECT_TIMEOUT_SECONDS", "5") or "5"))
 
 LOGIN_USERNAME, LOGIN_PASSWORD = range(2)
 
@@ -67,12 +72,31 @@ def _load_mysql_settings() -> dict[str, str | int]:
         "user": user,
         "password": password,
         "database": database,
+        "connection_timeout": _DB_CONNECT_TIMEOUT,
     }
 
 
 def get_base_connection() -> mysql.connector.MySQLConnection:
     settings = _load_mysql_settings()
-    return mysql.connector.connect(**settings)
+    last_error: Exception | None = None
+    for attempt in range(1, _DB_CONNECT_RETRIES + 1):
+        try:
+            return mysql.connector.connect(**settings)
+        except mysql.connector.Error as exc:
+            last_error = exc
+            if attempt >= _DB_CONNECT_RETRIES:
+                break
+            delay = _DB_CONNECT_BACKOFF * attempt
+            logger.warning(
+                "MySQL connection failed (%s/%s): %s. Retrying in %.1fs...",
+                attempt,
+                _DB_CONNECT_RETRIES,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 def _hash_token(token: str) -> str:
@@ -270,12 +294,22 @@ async def login_password_handler(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
     username = context.user_data.get("login_username", "")
     password = update.message.text or ""
-    user_id = authenticate_user(username, password)
+    try:
+        user_id = authenticate_user(username, password)
+    except mysql.connector.Error:
+        logger.exception("Login failed due to MySQL outage.")
+        await update.message.reply_text("Database is temporarily unavailable. Please try again in a minute.")
+        return ConversationHandler.END
     context.user_data.pop("login_username", None)
     if not user_id:
         await update.message.reply_text("Login failed. Check your credentials.", reply_markup=MENU_KEYBOARD)
         return ConversationHandler.END
-    link_chat_to_user(user_id, int(update.effective_chat.id))
+    try:
+        link_chat_to_user(user_id, int(update.effective_chat.id))
+    except mysql.connector.Error:
+        logger.exception("Failed linking Telegram chat due to MySQL outage.")
+        await update.message.reply_text("Database is temporarily unavailable. Please try again in a minute.")
+        return ConversationHandler.END
     await update.message.reply_text("✅ Logged in. Telegram linked to your account.", reply_markup=MENU_KEYBOARD)
     return ConversationHandler.END
 
@@ -295,11 +329,21 @@ async def workspaces_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> No
         chat = update.callback_query.message.chat if update.callback_query.message else update.effective_chat
     if not chat or not message:
         return
-    user_id = get_user_id_by_chat(int(chat.id))
+    try:
+        user_id = get_user_id_by_chat(int(chat.id))
+    except mysql.connector.Error:
+        logger.exception("Failed to fetch Telegram-linked user due to MySQL outage.")
+        await message.reply_text("Database is temporarily unavailable. Please try again in a minute.")
+        return
     if not user_id:
         await message.reply_text("Please /login first to see your workspaces.", reply_markup=MENU_KEYBOARD)
         return
-    rows = list_workspaces(user_id)
+    try:
+        rows = list_workspaces(user_id)
+    except mysql.connector.Error:
+        logger.exception("Failed to list workspaces due to MySQL outage.")
+        await message.reply_text("Database is temporarily unavailable. Please try again in a minute.")
+        return
     if not rows:
         await message.reply_text("No workspaces found for your account.", reply_markup=MENU_KEYBOARD)
         return
@@ -372,7 +416,11 @@ def _mark_notification_sent(notification_id: int, chat_id: int) -> None:
 async def poll_notifications(context: ContextTypes.DEFAULT_TYPE) -> None:
     if context.bot is None:
         return
-    pending = _fetch_pending_notifications()
+    try:
+        pending = _fetch_pending_notifications()
+    except mysql.connector.Error:
+        logger.warning("Skipping notification poll: MySQL is unavailable.")
+        return
     if not pending:
         return
     for item in pending:
@@ -392,9 +440,16 @@ async def poll_notifications(context: ContextTypes.DEFAULT_TYPE) -> None:
             payload = f"{payload}\n\nReceived: {timestamp}"
         try:
             await context.bot.send_message(chat_id=int(chat_id), text=payload)
-            _mark_notification_sent(int(item["id"]), int(chat_id))
+            try:
+                _mark_notification_sent(int(item["id"]), int(chat_id))
+            except mysql.connector.Error:
+                logger.warning("Notification sent but failed to mark as sent due to MySQL outage.")
         except Exception:
             logger.exception("Failed to send Telegram notification.")
+
+
+async def _telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.exception("Unhandled Telegram error: %s", context.error)
 
 
 def main() -> None:
@@ -402,8 +457,12 @@ def main() -> None:
     token = _get_env("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required.")
-    ensure_telegram_outbox()
+    try:
+        ensure_telegram_outbox()
+    except mysql.connector.Error:
+        logger.warning("MySQL unavailable during startup; will retry on next DB access.")
     app = Application.builder().token(token).build()
+    app.add_error_handler(_telegram_error_handler)
     app.add_handler(CommandHandler("start", start_handler))
     login_flow = ConversationHandler(
         entry_points=[
