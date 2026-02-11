@@ -226,6 +226,7 @@ const ChatsPage: React.FC = () => {
   const historyRequestRef = useRef<{ seq: number; chatId: number | null }>({ seq: 0, chatId: null });
   const historyCacheRef = useRef<Map<number, ChatMessageItem[]>>(new Map());
   const historyCacheTimeRef = useRef<Map<number, number>>(new Map());
+  const openedChatAtRef = useRef<Map<number, number>>(new Map());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const keepScrollPinnedRef = useRef(true);
@@ -261,6 +262,7 @@ const ChatsPage: React.FC = () => {
     hasLoadedChatsRef.current = false;
     historyCacheRef.current.clear();
     historyCacheTimeRef.current.clear();
+    openedChatAtRef.current.clear();
   }, [workspaceId]);
 
   useEffect(() => {
@@ -448,6 +450,9 @@ const ChatsPage: React.FC = () => {
       const cached =
         memoryCached ?? (options?.incremental ? null : readCache<ChatMessageItem>(cacheKey, CHAT_HISTORY_CACHE_TTL_MS));
       const shouldUpdateView = options?.updateView !== false;
+      if (shouldUpdateView) {
+        openedChatAtRef.current.set(chatId, Date.now());
+      }
       if (cached) {
         persistHistoryCache(chatId, cached);
         if (shouldUpdateView) {
@@ -709,6 +714,7 @@ const ChatsPage: React.FC = () => {
   }, [rentalsForBuyer, selectedRentalId]);
 
   const handleSelectChat = (chatId: number) => {
+    openedChatAtRef.current.set(chatId, Date.now());
     setSelectedChatId(chatId);
     setMobileView("chat");
     pendingScrollRef.current = true;

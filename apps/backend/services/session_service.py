@@ -59,6 +59,8 @@ class SessionService:
             return int(value)
         except (redis.RedisError, ValueError, TypeError):
             return None
+        self._memory_store[key] = (user_id, now + self._ttl_seconds)
+        return int(user_id)
 
     def delete_session(self, session_id: str) -> None:
         # Stateless tokens are invalidated by cookie deletion + TTL expiry.
