@@ -26,6 +26,7 @@ from FunPayAPI.common import exceptions as fp_exceptions
 
 from FunPayAPI.common.enums import EventTypes, MessageTypes
 from FunPayAPI.updater.events import NewMessageEvent
+from FunPayAPI.updater.runner import Runner
 
 from bs4 import BeautifulSoup
 
@@ -132,6 +133,30 @@ from .order_utils import (
 
 _AI_PAUSE_CACHE: dict[tuple[int | None, int | None, int], float] = {}
 _AI_LAST_REPLY: dict[tuple[int | None, int | None, int], tuple[float, str]] = {}
+_AI_CACHE_MAX_ENTRIES = max(100, env_int("AI_CACHE_MAX_ENTRIES", 5000))
+
+
+def _prune_ai_caches(now: float | None = None) -> None:
+    ts = now or time.time()
+
+    expired_pause = [key for key, until in _AI_PAUSE_CACHE.items() if until <= ts]
+    for key in expired_pause:
+        _AI_PAUSE_CACHE.pop(key, None)
+
+    expired_reply = [key for key, value in _AI_LAST_REPLY.items() if ts - value[0] > 600]
+    for key in expired_reply:
+        _AI_LAST_REPLY.pop(key, None)
+
+    if len(_AI_PAUSE_CACHE) > _AI_CACHE_MAX_ENTRIES:
+        overflow = len(_AI_PAUSE_CACHE) - _AI_CACHE_MAX_ENTRIES
+        for key, _ in sorted(_AI_PAUSE_CACHE.items(), key=lambda item: item[1])[:overflow]:
+            _AI_PAUSE_CACHE.pop(key, None)
+
+    if len(_AI_LAST_REPLY) > _AI_CACHE_MAX_ENTRIES:
+        overflow = len(_AI_LAST_REPLY) - _AI_CACHE_MAX_ENTRIES
+        for key, _ in sorted(_AI_LAST_REPLY.items(), key=lambda item: item[1][0])[:overflow]:
+            _AI_LAST_REPLY.pop(key, None)
+
 
 from .presence_utils import clear_lot_cache_on_start
 
@@ -2265,6 +2290,7 @@ def log_message(
             _AI_PAUSE_CACHE[(int(user_id), int(workspace_id) if workspace_id is not None else None, int(chat_id))] = (
                 time.time() + pause_seconds
             )
+            _prune_ai_caches()
             set_ai_pause(
                 mysql_cfg,
                 user_id=int(user_id),
@@ -3194,6 +3220,7 @@ def log_message(
                     int(chat_id),
                 )
                 _AI_LAST_REPLY[key] = (time.time(), ai_text)
+                _prune_ai_caches()
             send_chat_message(logger, account, int(chat_id), ai_text)
 
             if mysql_cfg and user_id is not None and chat_id is not None:
@@ -3386,8 +3413,9 @@ def run_single_user(logger: logging.Logger) -> None:
     mysql_cfg_last_refresh = time.time()
     user_id_last_refresh = time.time()
 
-    logger.info("Chat polling is disabled; running control loops only.")
+    logger.info("Chat polling is enabled; running control loops and message handling.")
 
+    runner = Runner(account, disable_message_requests=False)
     state = RentalMonitorState()
     auto_raise_state = auto_raise_init_state(mysql_cfg=mysql_cfg, user_id=user_id, workspace_id=None)
     rental_interval = max(5, env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30))
@@ -3397,6 +3425,8 @@ def run_single_user(logger: logging.Logger) -> None:
     next_raise_sync = 0.0
     next_session_refresh = time.time() + 3600
     next_auto_raise_run = 0.0
+    next_ai_cache_prune = 0.0
+    next_chat_poll = 0.0
 
     while True:
 
@@ -3465,6 +3495,21 @@ def run_single_user(logger: logging.Logger) -> None:
             )
             next_auto_raise_run = now + max(1.0, float(delay))
 
+        if now >= next_ai_cache_prune:
+            _prune_ai_caches(now)
+            next_ai_cache_prune = now + 60
+
+        if now >= next_chat_poll:
+            try:
+                updates = runner.get_updates()
+                events = runner.parse_updates(updates)
+                for event in events:
+                    if isinstance(event, NewMessageEvent):
+                        log_message(logger, account, account.username, user_id, None, event)
+            except Exception:
+                logger.debug("Chat poll failed.", exc_info=True)
+            next_chat_poll = now + max(1.0, float(poll_seconds))
+
         next_due = min(
             next_mysql_cfg_refresh,
             next_user_id_refresh,
@@ -3472,6 +3517,8 @@ def run_single_user(logger: logging.Logger) -> None:
             next_raise_sync,
             next_session_refresh,
             next_auto_raise_run,
+            next_ai_cache_prune,
+            next_chat_poll,
         )
         sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
         time.sleep(sleep_for)
@@ -3589,6 +3636,7 @@ def workspace_worker_loop(
             account = Account(golden_key, user_agent=user_agent, proxy=proxy_cfg)
 
             account.get()
+            runner = Runner(account, disable_message_requests=False)
 
             logger.info("Bot started for %s (%s).", site_username, workspace_name)
 
@@ -3644,6 +3692,8 @@ def workspace_worker_loop(
             next_status_ping = 0.0
             next_session_refresh = time.time() + 3600
             next_auto_raise_run = 0.0
+            next_ai_cache_prune = 0.0
+            next_chat_poll = 0.0
 
             while not stop_event.is_set():
 
@@ -3732,6 +3782,23 @@ def workspace_worker_loop(
                     )
                     next_auto_raise_run = now + max(1.0, float(delay))
 
+                if now >= next_ai_cache_prune:
+                    _prune_ai_caches(now)
+                    next_ai_cache_prune = now + 60
+
+                if now >= next_chat_poll:
+                    try:
+                        updates = runner.get_updates()
+                        events = runner.parse_updates(updates)
+                        for event in events:
+                            if stop_event.is_set():
+                                break
+                            if isinstance(event, NewMessageEvent):
+                                log_message(logger, account, site_username, user_id, workspace_id, event)
+                    except Exception:
+                        logger.debug("%s Chat poll failed.", label, exc_info=True)
+                    next_chat_poll = now + max(1.0, float(poll_seconds))
+
                 next_due = min(
                     next_mysql_cfg_refresh,
                     next_rental_check,
@@ -3739,6 +3806,8 @@ def workspace_worker_loop(
                     next_status_ping,
                     next_session_refresh,
                     next_auto_raise_run,
+                    next_ai_cache_prune,
+                    next_chat_poll,
                 )
                 sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
                 stop_event.wait(sleep_for)

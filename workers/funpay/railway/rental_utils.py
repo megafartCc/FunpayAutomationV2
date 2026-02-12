@@ -36,6 +36,15 @@ from .user_utils import get_user_id_by_username
 
 _BRIDGE_DEFAULT_CACHE: dict[int, tuple[float, int | None]] = {}
 _BRIDGE_DEFAULT_TTL_SECONDS = 300
+_BRIDGE_DEFAULT_MAX_ENTRIES = 2000
+
+
+def _prune_bridge_cache(now: float) -> None:
+    if len(_BRIDGE_DEFAULT_CACHE) <= _BRIDGE_DEFAULT_MAX_ENTRIES:
+        return
+    overflow = len(_BRIDGE_DEFAULT_CACHE) - _BRIDGE_DEFAULT_MAX_ENTRIES
+    for key, _ in sorted(_BRIDGE_DEFAULT_CACHE.items(), key=lambda item: item[1][0])[: max(overflow, 0)]:
+        _BRIDGE_DEFAULT_CACHE.pop(key, None)
 
 
 def _get_default_bridge_id(mysql_cfg: dict, user_id: int) -> int | None:
@@ -49,6 +58,7 @@ def _get_default_bridge_id(mysql_cfg: dict, user_id: int) -> int | None:
         cursor = conn.cursor()
         if not table_exists(cursor, "steam_bridge_accounts"):
             _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, None)
+            _prune_bridge_cache(now)
             return None
         cursor.execute(
             "SELECT id FROM steam_bridge_accounts WHERE user_id = %s AND is_default = 1 "
@@ -65,9 +75,11 @@ def _get_default_bridge_id(mysql_cfg: dict, user_id: int) -> int | None:
             row = cursor.fetchone()
             bridge_id = int(row[0]) if row and row[0] else None
         _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, bridge_id)
+        _prune_bridge_cache(now)
         return bridge_id
     except Exception:
         _BRIDGE_DEFAULT_CACHE[int(user_id)] = (now, None)
+        _prune_bridge_cache(now)
         return None
     finally:
         conn.close()
