@@ -25,10 +25,7 @@ from FunPayAPI.account import Account
 from FunPayAPI.common import exceptions as fp_exceptions
 
 from FunPayAPI.common.enums import EventTypes, MessageTypes
-
 from FunPayAPI.updater.events import NewMessageEvent
-
-from FunPayAPI.updater.runner import Runner
 
 from bs4 import BeautifulSoup
 
@@ -65,13 +62,9 @@ from .chat_utils import (
 
     set_ai_pause,
 
-    process_chat_outbox,
-
     send_chat_message,
 
     send_message_by_owner,
-
-    sync_chats_list,
 
     upsert_chat_summary,
 
@@ -204,6 +197,38 @@ COMMAND_SUGGESTIONS = {
 
 _ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _WS_RE = re.compile(r"\s+")
+
+
+def _maybe_refresh_mysql_cfg(
+    current_cfg: dict | None,
+    last_refresh_ts: float,
+    refresh_seconds: int,
+) -> tuple[dict | None, float]:
+    now = time.time()
+    if current_cfg is not None and now - last_refresh_ts < max(5, int(refresh_seconds)):
+        return current_cfg, last_refresh_ts
+    try:
+        return get_mysql_config(), now
+    except RuntimeError:
+        return None, now
+
+
+def _maybe_refresh_user_id(
+    mysql_cfg: dict | None,
+    username: str | None,
+    current_user_id: int | None,
+    last_refresh_ts: float,
+    refresh_seconds: int,
+) -> tuple[int | None, float]:
+    now = time.time()
+    if not mysql_cfg or not username:
+        return None, now
+    if current_user_id is not None and now - last_refresh_ts < max(5, int(refresh_seconds)):
+        return current_user_id, last_refresh_ts
+    try:
+        return get_user_id_by_username(mysql_cfg, username), now
+    except Exception:
+        return None, now
 
 
 def _normalize_for_ai_match(text: str | None) -> str:
@@ -3322,8 +3347,8 @@ def run_single_user(logger: logging.Logger) -> None:
     auto_raise_enabled = lambda: True
 
     raise_sync_last = 0.0
-
-
+    mysql_cfg_refresh_seconds = env_int("FUNPAY_DB_CONFIG_REFRESH_SECONDS", 300)
+    user_id_refresh_seconds = env_int("FUNPAY_USER_ID_REFRESH_SECONDS", 300)
 
     logger.info("Initializing FunPay account...")
 
@@ -3359,6 +3384,9 @@ def run_single_user(logger: logging.Logger) -> None:
 
             user_id = None
 
+    mysql_cfg_last_refresh = time.time()
+    user_id_last_refresh = time.time()
+
     threading.Thread(target=refresh_session_loop, args=(account, 3600, None), daemon=True).start()
 
     threading.Thread(
@@ -3391,69 +3419,48 @@ def run_single_user(logger: logging.Logger) -> None:
 
 
 
-    runner = Runner(account, disable_message_requests=False)
-
-    logger.info("Listening for new messages...")
+    logger.info("Chat polling is disabled; running control loops only.")
 
     state = RentalMonitorState()
 
-    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 120)
-
-    chat_sync_last = 0.0
-
     while True:
 
-        updates = runner.get_updates()
+        mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+            mysql_cfg,
+            mysql_cfg_last_refresh,
+            mysql_cfg_refresh_seconds,
+        )
+        user_id, user_id_last_refresh = _maybe_refresh_user_id(
+            mysql_cfg,
+            account.username,
+            user_id,
+            user_id_last_refresh,
+            user_id_refresh_seconds,
+        )
 
-        events = runner.parse_updates(updates)
+        process_rental_monitor(
+            logger,
+            account,
+            account.username,
+            user_id,
+            None,
+            state,
+            mysql_cfg=mysql_cfg,
+        )
 
-        for event in events:
+        if mysql_cfg and user_id is not None:
 
-            if isinstance(event, NewMessageEvent):
+            if time.time() - raise_sync_last >= raise_sync_interval:
 
-                log_message(logger, account, account.username, None, None, event)
+                try:
 
-        process_rental_monitor(logger, account, account.username, None, None, state)
+                    sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
 
-        try:
+                except Exception:
 
-            mysql_cfg = get_mysql_config()
+                    logger.debug("Raise categories sync failed.", exc_info=True)
 
-        except RuntimeError:
-
-            mysql_cfg = None
-
-        if mysql_cfg:
-
-            if time.time() - chat_sync_last >= chat_sync_interval:
-
-                user_id = get_user_id_by_username(mysql_cfg, account.username) if account.username else None
-
-                if user_id is not None:
-
-                    sync_chats_list(mysql_cfg, account, user_id=user_id, workspace_id=None)
-
-                    chat_sync_last = time.time()
-
-            if account.username:
-
-                user_id = get_user_id_by_username(mysql_cfg, account.username)
-
-                if user_id is not None:
-
-                    process_chat_outbox(logger, mysql_cfg, account, user_id=user_id, workspace_id=None)
-
-                    if time.time() - raise_sync_last >= raise_sync_interval:
-
-                        try:
-
-                            sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
-
-                        except Exception:
-
-                            logger.debug("Raise categories sync failed.", exc_info=True)
-
-                        raise_sync_last = time.time()
+                raise_sync_last = time.time()
 
         time.sleep(poll_seconds)
 
@@ -3493,10 +3500,6 @@ def workspace_worker_loop(
 
     state = RentalMonitorState()
 
-    chat_sync_interval = env_int("CHAT_SYNC_SECONDS", 120)
-
-    chat_sync_last = 0.0
-
     raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
 
     raise_sync_last = 0.0
@@ -3509,6 +3512,7 @@ def workspace_worker_loop(
 
         mysql_cfg = None
 
+    mysql_cfg_last_refresh = time.time()
     last_status_ping = 0.0
 
     status_platform = (workspace.get("platform") or "funpay").lower()
@@ -3516,6 +3520,7 @@ def workspace_worker_loop(
     auto_raise_enabled = lambda: True
 
     raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
+    mysql_cfg_refresh_seconds = env_int("FUNPAY_DB_CONFIG_REFRESH_SECONDS", 300)
 
     while not stop_event.is_set():
 
@@ -3661,35 +3666,25 @@ def workspace_worker_loop(
 
 
 
-            runner = Runner(account, disable_message_requests=False)
-
             while not stop_event.is_set():
 
-                updates = runner.get_updates()
+                mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+                    mysql_cfg,
+                    mysql_cfg_last_refresh,
+                    mysql_cfg_refresh_seconds,
+                )
 
-                events = runner.parse_updates(updates)
-
-                for event in events:
-
-                    if stop_event.is_set():
-
-                        break
-
-                    if isinstance(event, NewMessageEvent):
-
-                        log_message(logger, account, site_username, user_id, workspace_id, event)
-
-                process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
+                process_rental_monitor(
+                    logger,
+                    account,
+                    site_username,
+                    user_id,
+                    workspace_id,
+                    state,
+                    mysql_cfg=mysql_cfg,
+                )
 
                 if mysql_cfg and user_id is not None:
-
-                    if time.time() - chat_sync_last >= chat_sync_interval:
-
-                        sync_chats_list(mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
-
-                        chat_sync_last = time.time()
-
-                    process_chat_outbox(logger, mysql_cfg, account, user_id=int(user_id), workspace_id=workspace_id)
 
                     if time.time() - raise_sync_last >= raise_sync_interval:
 
@@ -3794,6 +3789,7 @@ def run_multi_user(logger: logging.Logger) -> None:
     sync_seconds = env_int("FUNPAY_USER_SYNC_SECONDS", 60)
 
     max_users = env_int("FUNPAY_MAX_USERS", 0)
+    max_worker_threads = env_int("FUNPAY_MAX_WORKER_THREADS", 0)
 
     user_agent = os.getenv("FUNPAY_USER_AGENT")
 
@@ -3806,8 +3802,7 @@ def run_multi_user(logger: logging.Logger) -> None:
 
 
     workers: dict[int, dict] = {}
-
-
+    warned_worker_cap = False
 
     while True:
 
@@ -3830,6 +3825,21 @@ def run_multi_user(logger: logging.Logger) -> None:
                 if ws.get("workspace_id") is not None
 
             }
+
+            if max_worker_threads > 0 and len(desired) > max_worker_threads:
+                if not warned_worker_cap:
+                    logger.warning(
+                        "Workspace count (%s) exceeds FUNPAY_MAX_WORKER_THREADS=%s; limiting active workers.",
+                        len(desired),
+                        max_worker_threads,
+                    )
+                    warned_worker_cap = True
+                desired = {
+                    workspace_id: desired[workspace_id]
+                    for workspace_id in sorted(desired.keys())[:max_worker_threads]
+                }
+            elif warned_worker_cap:
+                warned_worker_cap = False
 
 
 
@@ -3962,4 +3972,3 @@ def main() -> None:
 if __name__ == "__main__":
 
     main()
-
