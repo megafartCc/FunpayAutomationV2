@@ -275,7 +275,7 @@ def _should_delay_expire(
         _clear_expire_delay_state(state, account_id)
         return False
 
-    state.expire_delay_next_check[account_id] = now + timedelta(minutes=1)
+    state.expire_delay_next_check[account_id] = now + timedelta(seconds=60)
     if account_id not in state.expire_delay_notified:
         extra = ""
         display = presence.get("presence_display") or presence.get("presence_state")
