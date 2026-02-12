@@ -199,6 +199,38 @@ _ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 _WS_RE = re.compile(r"\s+")
 
 
+def _maybe_refresh_mysql_cfg(
+    current_cfg: dict | None,
+    last_refresh_ts: float,
+    refresh_seconds: int,
+) -> tuple[dict | None, float]:
+    now = time.time()
+    if current_cfg is not None and now - last_refresh_ts < max(5, int(refresh_seconds)):
+        return current_cfg, last_refresh_ts
+    try:
+        return get_mysql_config(), now
+    except RuntimeError:
+        return None, now
+
+
+def _maybe_refresh_user_id(
+    mysql_cfg: dict | None,
+    username: str | None,
+    current_user_id: int | None,
+    last_refresh_ts: float,
+    refresh_seconds: int,
+) -> tuple[int | None, float]:
+    now = time.time()
+    if not mysql_cfg or not username:
+        return None, now
+    if current_user_id is not None and now - last_refresh_ts < max(5, int(refresh_seconds)):
+        return current_user_id, last_refresh_ts
+    try:
+        return get_user_id_by_username(mysql_cfg, username), now
+    except Exception:
+        return None, now
+
+
 def _normalize_for_ai_match(text: str | None) -> str:
     if not text:
         return ""
@@ -3315,8 +3347,8 @@ def run_single_user(logger: logging.Logger) -> None:
     auto_raise_enabled = lambda: True
 
     raise_sync_last = 0.0
-
-
+    mysql_cfg_refresh_seconds = env_int("FUNPAY_DB_CONFIG_REFRESH_SECONDS", 300)
+    user_id_refresh_seconds = env_int("FUNPAY_USER_ID_REFRESH_SECONDS", 300)
 
     logger.info("Initializing FunPay account...")
 
@@ -3351,6 +3383,9 @@ def run_single_user(logger: logging.Logger) -> None:
         except Exception:
 
             user_id = None
+
+    mysql_cfg_last_refresh = time.time()
+    user_id_last_refresh = time.time()
 
     threading.Thread(target=refresh_session_loop, args=(account, 3600, None), daemon=True).start()
 
@@ -3390,35 +3425,42 @@ def run_single_user(logger: logging.Logger) -> None:
 
     while True:
 
-        process_rental_monitor(logger, account, account.username, None, None, state)
+        mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+            mysql_cfg,
+            mysql_cfg_last_refresh,
+            mysql_cfg_refresh_seconds,
+        )
+        user_id, user_id_last_refresh = _maybe_refresh_user_id(
+            mysql_cfg,
+            account.username,
+            user_id,
+            user_id_last_refresh,
+            user_id_refresh_seconds,
+        )
 
-        try:
+        process_rental_monitor(
+            logger,
+            account,
+            account.username,
+            user_id,
+            None,
+            state,
+            mysql_cfg=mysql_cfg,
+        )
 
-            mysql_cfg = get_mysql_config()
+        if mysql_cfg and user_id is not None:
 
-        except RuntimeError:
+            if time.time() - raise_sync_last >= raise_sync_interval:
 
-            mysql_cfg = None
+                try:
 
-        if mysql_cfg:
+                    sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
 
-            if account.username:
+                except Exception:
 
-                user_id = get_user_id_by_username(mysql_cfg, account.username)
+                    logger.debug("Raise categories sync failed.", exc_info=True)
 
-                if user_id is not None:
-
-                    if time.time() - raise_sync_last >= raise_sync_interval:
-
-                        try:
-
-                            sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
-
-                        except Exception:
-
-                            logger.debug("Raise categories sync failed.", exc_info=True)
-
-                        raise_sync_last = time.time()
+                raise_sync_last = time.time()
 
         time.sleep(poll_seconds)
 
@@ -3470,6 +3512,7 @@ def workspace_worker_loop(
 
         mysql_cfg = None
 
+    mysql_cfg_last_refresh = time.time()
     last_status_ping = 0.0
 
     status_platform = (workspace.get("platform") or "funpay").lower()
@@ -3477,6 +3520,7 @@ def workspace_worker_loop(
     auto_raise_enabled = lambda: True
 
     raise_profile_sync = env_int("RAISE_PROFILE_SYNC_SECONDS", 3600)
+    mysql_cfg_refresh_seconds = env_int("FUNPAY_DB_CONFIG_REFRESH_SECONDS", 300)
 
     while not stop_event.is_set():
 
@@ -3624,7 +3668,21 @@ def workspace_worker_loop(
 
             while not stop_event.is_set():
 
-                process_rental_monitor(logger, account, site_username, user_id, workspace_id, state)
+                mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+                    mysql_cfg,
+                    mysql_cfg_last_refresh,
+                    mysql_cfg_refresh_seconds,
+                )
+
+                process_rental_monitor(
+                    logger,
+                    account,
+                    site_username,
+                    user_id,
+                    workspace_id,
+                    state,
+                    mysql_cfg=mysql_cfg,
+                )
 
                 if mysql_cfg and user_id is not None:
 
@@ -3731,6 +3789,7 @@ def run_multi_user(logger: logging.Logger) -> None:
     sync_seconds = env_int("FUNPAY_USER_SYNC_SECONDS", 60)
 
     max_users = env_int("FUNPAY_MAX_USERS", 0)
+    max_worker_threads = env_int("FUNPAY_MAX_WORKER_THREADS", 0)
 
     user_agent = os.getenv("FUNPAY_USER_AGENT")
 
@@ -3743,8 +3802,7 @@ def run_multi_user(logger: logging.Logger) -> None:
 
 
     workers: dict[int, dict] = {}
-
-
+    warned_worker_cap = False
 
     while True:
 
@@ -3767,6 +3825,21 @@ def run_multi_user(logger: logging.Logger) -> None:
                 if ws.get("workspace_id") is not None
 
             }
+
+            if max_worker_threads > 0 and len(desired) > max_worker_threads:
+                if not warned_worker_cap:
+                    logger.warning(
+                        "Workspace count (%s) exceeds FUNPAY_MAX_WORKER_THREADS=%s; limiting active workers.",
+                        len(desired),
+                        max_worker_threads,
+                    )
+                    warned_worker_cap = True
+                desired = {
+                    workspace_id: desired[workspace_id]
+                    for workspace_id in sorted(desired.keys())[:max_worker_threads]
+                }
+            elif warned_worker_cap:
+                warned_worker_cap = False
 
 
 
