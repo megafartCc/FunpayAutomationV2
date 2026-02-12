@@ -640,6 +640,146 @@ def process_manual_raise_requests(
     return True
 
 
+
+
+def auto_raise_init_state(
+    *,
+    mysql_cfg: dict | None,
+    user_id: int | None,
+    workspace_id: int | None,
+) -> AutoRaiseState:
+    state = AutoRaiseState()
+    log_auto_raise(
+        mysql_cfg,
+        user_id=user_id,
+        workspace_id=workspace_id,
+        level="info",
+        message="Цикл автоподнятия лотов запущен (это не значит, что автоподнятие лотов включено).",
+    )
+    return state
+
+
+def auto_raise_step(
+    *,
+    account,
+    state: AutoRaiseState,
+    mysql_cfg: dict | None,
+    user_id: int | None,
+    workspace_id: int | None,
+    enabled_fn,
+    profile_sync_seconds: int,
+) -> float:
+    settings_sync_seconds = 30
+    workspaces_sync_seconds = 60
+    manual_check_interval = 30
+
+    process_manual_raise_requests(
+        account=account,
+        state=state,
+        mysql_cfg=mysql_cfg,
+        user_id=user_id,
+        workspace_id=workspace_id,
+        profile_sync_seconds=profile_sync_seconds,
+    )
+    if not enabled_fn():
+        return 10.0
+
+    settings = state.settings
+    now = time.time()
+    if mysql_cfg and user_id is not None:
+        if settings is None or (now - state.settings_updated_at) >= settings_sync_seconds:
+            try:
+                settings = load_auto_raise_settings(mysql_cfg, int(user_id))
+            except Exception:
+                settings = _default_auto_raise_settings()
+            state.settings = settings
+            state.settings_updated_at = now
+    if not settings:
+        settings = _default_auto_raise_settings()
+
+    if not settings.get("enabled", False):
+        return 10.0
+    if workspace_id is not None and not settings.get("all_workspaces", True):
+        if not settings.get("workspaces", {}).get(int(workspace_id), True):
+            return 10.0
+
+    if not mysql_cfg or user_id is None or workspace_id is None:
+        next_time = raise_lots_once(
+            account=account,
+            state=state,
+            mysql_cfg=mysql_cfg,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            profile_sync_seconds=profile_sync_seconds,
+        )
+        delay = next_time - int(time.time())
+        return float(min(delay, manual_check_interval)) if delay > 0 else 1.0
+
+    if (now - state.workspaces_updated_at) >= workspaces_sync_seconds or not state.enabled_workspaces:
+        try:
+            state.enabled_workspaces = load_enabled_workspace_ids(mysql_cfg, int(user_id), settings)
+        except Exception:
+            state.enabled_workspaces = []
+        state.workspaces_updated_at = now
+
+    if state.enabled_workspaces and int(workspace_id) not in state.enabled_workspaces:
+        return 10.0
+
+    ensure_auto_raise_state(mysql_cfg, int(user_id))
+    ensure_auto_raise_global_state(mysql_cfg, int(user_id))
+    interval_seconds = int(settings.get("interval_minutes", 120)) * 60
+    allow_same = len(state.enabled_workspaces) <= 1
+    has_global_state = state.global_state_available
+    if has_global_state is None or (now - state.global_state_checked_at) >= 60:
+        has_global_state = False
+        try:
+            conn = mysql.connector.connect(**mysql_cfg)
+            try:
+                cursor = conn.cursor()
+                has_global_state = table_exists(cursor, "auto_raise_global_state")
+            finally:
+                conn.close()
+        except Exception:
+            has_global_state = False
+        state.global_state_available = has_global_state
+        state.global_state_checked_at = now
+
+    if has_global_state:
+        claimed = claim_auto_raise_global_slot(
+            mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=int(workspace_id),
+            interval_seconds=interval_seconds,
+            allow_same=allow_same,
+        )
+    else:
+        claimed = claim_auto_raise_slot(
+            mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=int(workspace_id),
+            interval_seconds=interval_seconds,
+            allow_same=allow_same,
+        )
+    if not claimed:
+        next_run = get_auto_raise_global_next_run(mysql_cfg, int(user_id)) if has_global_state else None
+        if next_run is None:
+            next_run = get_auto_raise_next_run(mysql_cfg, int(user_id))
+        if next_run:
+            delay = max(1, int(next_run - time.time()))
+            return float(min(delay, manual_check_interval))
+        return float(manual_check_interval)
+
+    raise_lots_once(
+        account=account,
+        state=state,
+        mysql_cfg=mysql_cfg,
+        user_id=user_id,
+        workspace_id=workspace_id,
+        profile_sync_seconds=profile_sync_seconds,
+    )
+    return float(min(10, manual_check_interval))
+
+
 def auto_raise_loop(
     *,
     account,
@@ -650,128 +790,15 @@ def auto_raise_loop(
     stop_event,
     profile_sync_seconds: int,
 ) -> None:
-    state = AutoRaiseState()
-    settings_sync_seconds = 30
-    workspaces_sync_seconds = 60
-    manual_check_interval = 30
-    log_auto_raise(
-        mysql_cfg,
-        user_id=user_id,
-        workspace_id=workspace_id,
-        level="info",
-        message="Цикл автоподнятия лотов запущен (это не значит, что автоподнятие лотов включено).",
-    )
+    state = auto_raise_init_state(mysql_cfg=mysql_cfg, user_id=user_id, workspace_id=workspace_id)
     while not stop_event.is_set():
-        process_manual_raise_requests(
+        delay = auto_raise_step(
             account=account,
             state=state,
             mysql_cfg=mysql_cfg,
             user_id=user_id,
             workspace_id=workspace_id,
+            enabled_fn=enabled_fn,
             profile_sync_seconds=profile_sync_seconds,
         )
-        if not enabled_fn():
-            stop_event.wait(10)
-            continue
-
-        settings = state.settings
-        now = time.time()
-        if mysql_cfg and user_id is not None:
-            if settings is None or (now - state.settings_updated_at) >= settings_sync_seconds:
-                try:
-                    settings = load_auto_raise_settings(mysql_cfg, int(user_id))
-                except Exception:
-                    settings = _default_auto_raise_settings()
-                state.settings = settings
-                state.settings_updated_at = now
-        if not settings:
-            settings = _default_auto_raise_settings()
-
-        if not settings.get("enabled", False):
-            stop_event.wait(10)
-            continue
-        if workspace_id is not None and not settings.get("all_workspaces", True):
-            if not settings.get("workspaces", {}).get(int(workspace_id), True):
-                stop_event.wait(10)
-                continue
-
-        if not mysql_cfg or user_id is None or workspace_id is None:
-            next_time = raise_lots_once(
-                account=account,
-                state=state,
-                mysql_cfg=mysql_cfg,
-                user_id=user_id,
-                workspace_id=workspace_id,
-                profile_sync_seconds=profile_sync_seconds,
-            )
-            delay = next_time - int(time.time())
-            if delay > 0:
-                stop_event.wait(min(delay, manual_check_interval))
-            continue
-
-        if (now - state.workspaces_updated_at) >= workspaces_sync_seconds or not state.enabled_workspaces:
-            try:
-                state.enabled_workspaces = load_enabled_workspace_ids(mysql_cfg, int(user_id), settings)
-            except Exception:
-                state.enabled_workspaces = []
-            state.workspaces_updated_at = now
-
-        if state.enabled_workspaces and int(workspace_id) not in state.enabled_workspaces:
-            stop_event.wait(10)
-            continue
-
-        ensure_auto_raise_state(mysql_cfg, int(user_id))
-        ensure_auto_raise_global_state(mysql_cfg, int(user_id))
-        interval_seconds = int(settings.get("interval_minutes", 120)) * 60
-        allow_same = len(state.enabled_workspaces) <= 1
-        has_global_state = state.global_state_available
-        if has_global_state is None or (now - state.global_state_checked_at) >= 60:
-            has_global_state = False
-            try:
-                conn = mysql.connector.connect(**mysql_cfg)
-                try:
-                    cursor = conn.cursor()
-                    has_global_state = table_exists(cursor, "auto_raise_global_state")
-                finally:
-                    conn.close()
-            except Exception:
-                has_global_state = False
-            state.global_state_available = has_global_state
-            state.global_state_checked_at = now
-
-        if has_global_state:
-            claimed = claim_auto_raise_global_slot(
-                mysql_cfg,
-                user_id=int(user_id),
-                workspace_id=int(workspace_id),
-                interval_seconds=interval_seconds,
-                allow_same=allow_same,
-            )
-        else:
-            claimed = claim_auto_raise_slot(
-                mysql_cfg,
-                user_id=int(user_id),
-                workspace_id=int(workspace_id),
-                interval_seconds=interval_seconds,
-                allow_same=allow_same,
-            )
-        if not claimed:
-            next_run = get_auto_raise_global_next_run(mysql_cfg, int(user_id)) if has_global_state else None
-            if next_run is None:
-                next_run = get_auto_raise_next_run(mysql_cfg, int(user_id))
-            if next_run:
-                delay = max(1, int(next_run - time.time()))
-                stop_event.wait(min(delay, manual_check_interval))
-            else:
-                stop_event.wait(manual_check_interval)
-            continue
-
-        raise_lots_once(
-            account=account,
-            state=state,
-            mysql_cfg=mysql_cfg,
-            user_id=user_id,
-            workspace_id=workspace_id,
-            profile_sync_seconds=profile_sync_seconds,
-        )
-        stop_event.wait(min(10, manual_check_interval))
+        stop_event.wait(max(0.2, float(delay)))
