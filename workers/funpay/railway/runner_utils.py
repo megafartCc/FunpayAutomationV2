@@ -137,7 +137,7 @@ from .presence_utils import clear_lot_cache_on_start
 
 from .proxy_utils import ensure_proxy_isolated, fetch_workspaces, normalize_proxy_url
 
-from .raise_utils import auto_raise_loop, sync_raise_categories
+from .raise_utils import auto_raise_init_state, auto_raise_step, sync_raise_categories
 
 from .rental_utils import process_rental_monitor, release_account_in_db
 
@@ -3386,46 +3386,17 @@ def run_single_user(logger: logging.Logger) -> None:
     mysql_cfg_last_refresh = time.time()
     user_id_last_refresh = time.time()
 
-    threading.Thread(target=refresh_session_loop, args=(account, 3600, None), daemon=True).start()
-
-    threading.Thread(
-
-        target=auto_raise_loop,
-
-        args=(),
-
-        kwargs={
-
-            "account": account,
-
-            "mysql_cfg": mysql_cfg,
-
-            "user_id": user_id,
-
-            "workspace_id": None,
-
-            "enabled_fn": auto_raise_enabled,
-
-            "stop_event": stop_event,
-
-            "profile_sync_seconds": raise_profile_sync,
-
-        },
-
-        daemon=True,
-
-    ).start()
-
-
-
     logger.info("Chat polling is disabled; running control loops only.")
 
     state = RentalMonitorState()
+    auto_raise_state = auto_raise_init_state(mysql_cfg=mysql_cfg, user_id=user_id, workspace_id=None)
     rental_interval = max(5, env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30))
     next_mysql_cfg_refresh = 0.0
     next_user_id_refresh = 0.0
     next_rental_check = 0.0
     next_raise_sync = 0.0
+    next_session_refresh = time.time() + 3600
+    next_auto_raise_run = 0.0
 
     while True:
 
@@ -3473,7 +3444,35 @@ def run_single_user(logger: logging.Logger) -> None:
 
             next_raise_sync = now + max(30, raise_sync_interval)
 
-        next_due = min(next_mysql_cfg_refresh, next_user_id_refresh, next_rental_check, next_raise_sync)
+        if now >= next_session_refresh:
+            try:
+                account.get()
+                logger.info("Session refreshed.")
+                next_session_refresh = now + 3600
+            except Exception:
+                logger.exception("Session refresh failed. Retrying in 60s.")
+                next_session_refresh = now + 60
+
+        if now >= next_auto_raise_run:
+            delay = auto_raise_step(
+                account=account,
+                state=auto_raise_state,
+                mysql_cfg=mysql_cfg,
+                user_id=user_id,
+                workspace_id=None,
+                enabled_fn=auto_raise_enabled,
+                profile_sync_seconds=raise_profile_sync,
+            )
+            next_auto_raise_run = now + max(1.0, float(delay))
+
+        next_due = min(
+            next_mysql_cfg_refresh,
+            next_user_id_refresh,
+            next_rental_check,
+            next_raise_sync,
+            next_session_refresh,
+            next_auto_raise_run,
+        )
         sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
         time.sleep(sleep_for)
 
@@ -3631,47 +3630,11 @@ def workspace_worker_loop(
 
 
 
-            threading.Thread(
-
-                target=auto_raise_loop,
-
-                args=(),
-
-                kwargs={
-
-                    "account": account,
-
-                    "mysql_cfg": mysql_cfg,
-
-                    "user_id": int(user_id) if user_id is not None else None,
-
-                    "workspace_id": int(workspace_id) if workspace_id is not None else None,
-
-                    "enabled_fn": auto_raise_enabled,
-
-                    "stop_event": stop_event,
-
-                    "profile_sync_seconds": raise_profile_sync,
-
-                },
-
-                daemon=True,
-
-            ).start()
-
-
-
-            threading.Thread(
-
-                target=refresh_session_loop,
-
-                args=(account, 3600, label),
-
-                daemon=True,
-
-            ).start()
-
-
+            auto_raise_state = auto_raise_init_state(
+                mysql_cfg=mysql_cfg,
+                user_id=int(user_id) if user_id is not None else None,
+                workspace_id=int(workspace_id) if workspace_id is not None else None,
+            )
 
             rental_interval = max(5, env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30))
             status_ping_interval = 60
@@ -3679,6 +3642,8 @@ def workspace_worker_loop(
             next_rental_check = 0.0
             next_raise_sync = 0.0
             next_status_ping = 0.0
+            next_session_refresh = time.time() + 3600
+            next_auto_raise_run = 0.0
 
             while not stop_event.is_set():
 
@@ -3746,7 +3711,35 @@ def workspace_worker_loop(
 
                     next_status_ping = now + status_ping_interval
 
-                next_due = min(next_mysql_cfg_refresh, next_rental_check, next_raise_sync, next_status_ping)
+                if now >= next_session_refresh:
+                    try:
+                        account.get()
+                        logger.info("%s Session refreshed.", label)
+                        next_session_refresh = now + 3600
+                    except Exception:
+                        logger.exception("%s Session refresh failed. Retrying in 60s.", label)
+                        next_session_refresh = now + 60
+
+                if now >= next_auto_raise_run:
+                    delay = auto_raise_step(
+                        account=account,
+                        state=auto_raise_state,
+                        mysql_cfg=mysql_cfg,
+                        user_id=int(user_id) if user_id is not None else None,
+                        workspace_id=int(workspace_id) if workspace_id is not None else None,
+                        enabled_fn=auto_raise_enabled,
+                        profile_sync_seconds=raise_profile_sync,
+                    )
+                    next_auto_raise_run = now + max(1.0, float(delay))
+
+                next_due = min(
+                    next_mysql_cfg_refresh,
+                    next_rental_check,
+                    next_raise_sync,
+                    next_status_ping,
+                    next_session_refresh,
+                    next_auto_raise_run,
+                )
                 sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
                 stop_event.wait(sleep_for)
 
