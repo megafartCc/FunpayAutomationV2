@@ -93,7 +93,7 @@ def _load_mysql_settings() -> dict[str, str | int]:
 
 def get_base_connection() -> mysql.connector.MySQLConnection:
     settings = _load_mysql_settings()
-    timeout = _get_env_float("MYSQL_CONNECT_TIMEOUT", 5.0)
+    timeout = max(1, int(round(_get_env_float("MYSQL_CONNECT_TIMEOUT", 5.0))))
     attempts = _get_env_int("MYSQL_CONNECT_RETRY_ATTEMPTS", 3)
     delay = _get_env_float("MYSQL_CONNECT_RETRY_DELAY", 0.5)
     backoff = _get_env_float("MYSQL_CONNECT_RETRY_BACKOFF", 2.0)

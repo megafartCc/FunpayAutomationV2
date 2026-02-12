@@ -275,7 +275,7 @@ def _should_delay_expire(
         _clear_expire_delay_state(state, account_id)
         return False
 
-    state.expire_delay_next_check[account_id] = now + timedelta(minutes=1)
+    state.expire_delay_next_check[account_id] = now + timedelta(seconds=60)
     if account_id not in state.expire_delay_notified:
         extra = ""
         display = presence.get("presence_display") or presence.get("presence_state")
@@ -303,6 +303,7 @@ def process_rental_monitor(
     site_user_id: int | None,
     workspace_id: int | None,
     state: RentalMonitorState,
+    mysql_cfg: dict | None = None,
 ) -> None:
     interval = env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30)
     now_ts = time.time()
@@ -310,10 +311,11 @@ def process_rental_monitor(
         return
     state.last_check_ts = now_ts
 
-    try:
-        mysql_cfg = get_mysql_config()
-    except RuntimeError:
-        return
+    if mysql_cfg is None:
+        try:
+            mysql_cfg = get_mysql_config()
+        except RuntimeError:
+            return
 
     user_id = site_user_id
     if user_id is None and site_username:
