@@ -3346,7 +3346,6 @@ def run_single_user(logger: logging.Logger) -> None:
 
     auto_raise_enabled = lambda: True
 
-    raise_sync_last = 0.0
     mysql_cfg_refresh_seconds = env_int("FUNPAY_DB_CONFIG_REFRESH_SECONDS", 300)
     user_id_refresh_seconds = env_int("FUNPAY_USER_ID_REFRESH_SECONDS", 300)
 
@@ -3422,47 +3421,61 @@ def run_single_user(logger: logging.Logger) -> None:
     logger.info("Chat polling is disabled; running control loops only.")
 
     state = RentalMonitorState()
+    rental_interval = max(5, env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30))
+    next_mysql_cfg_refresh = 0.0
+    next_user_id_refresh = 0.0
+    next_rental_check = 0.0
+    next_raise_sync = 0.0
 
     while True:
 
-        mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
-            mysql_cfg,
-            mysql_cfg_last_refresh,
-            mysql_cfg_refresh_seconds,
-        )
-        user_id, user_id_last_refresh = _maybe_refresh_user_id(
-            mysql_cfg,
-            account.username,
-            user_id,
-            user_id_last_refresh,
-            user_id_refresh_seconds,
-        )
+        now = time.time()
 
-        process_rental_monitor(
-            logger,
-            account,
-            account.username,
-            user_id,
-            None,
-            state,
-            mysql_cfg=mysql_cfg,
-        )
+        if now >= next_mysql_cfg_refresh:
+            mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+                mysql_cfg,
+                mysql_cfg_last_refresh,
+                mysql_cfg_refresh_seconds,
+            )
+            next_mysql_cfg_refresh = now + max(5, mysql_cfg_refresh_seconds)
 
-        if mysql_cfg and user_id is not None:
+        if now >= next_user_id_refresh:
+            user_id, user_id_last_refresh = _maybe_refresh_user_id(
+                mysql_cfg,
+                account.username,
+                user_id,
+                user_id_last_refresh,
+                user_id_refresh_seconds,
+            )
+            next_user_id_refresh = now + max(5, user_id_refresh_seconds)
 
-            if time.time() - raise_sync_last >= raise_sync_interval:
+        if now >= next_rental_check:
+            process_rental_monitor(
+                logger,
+                account,
+                account.username,
+                user_id,
+                None,
+                state,
+                mysql_cfg=mysql_cfg,
+            )
+            next_rental_check = now + rental_interval
 
-                try:
+        if mysql_cfg and user_id is not None and now >= next_raise_sync:
 
-                    sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
+            try:
 
-                except Exception:
+                sync_raise_categories(mysql_cfg, account=account, user_id=int(user_id), workspace_id=None)
 
-                    logger.debug("Raise categories sync failed.", exc_info=True)
+            except Exception:
 
-                raise_sync_last = time.time()
+                logger.debug("Raise categories sync failed.", exc_info=True)
 
-        time.sleep(poll_seconds)
+            next_raise_sync = now + max(30, raise_sync_interval)
+
+        next_due = min(next_mysql_cfg_refresh, next_user_id_refresh, next_rental_check, next_raise_sync)
+        sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
+        time.sleep(sleep_for)
 
 
 
@@ -3502,7 +3515,6 @@ def workspace_worker_loop(
 
     raise_sync_interval = env_int("RAISE_CATEGORIES_SYNC_SECONDS", 6 * 3600)
 
-    raise_sync_last = 0.0
 
     try:
 
@@ -3513,7 +3525,6 @@ def workspace_worker_loop(
         mysql_cfg = None
 
     mysql_cfg_last_refresh = time.time()
-    last_status_ping = 0.0
 
     status_platform = (workspace.get("platform") or "funpay").lower()
 
@@ -3600,8 +3611,6 @@ def workspace_worker_loop(
 
                 )
 
-                last_status_ping = time.time()
-
                 try:
 
                     sync_raise_categories(
@@ -3615,8 +3624,6 @@ def workspace_worker_loop(
                         workspace_id=int(workspace_id) if workspace_id is not None else None,
 
                     )
-
-                    raise_sync_last = time.time()
 
                 except Exception:
 
@@ -3666,69 +3673,82 @@ def workspace_worker_loop(
 
 
 
+            rental_interval = max(5, env_int("FUNPAY_RENTAL_CHECK_SECONDS", 30))
+            status_ping_interval = 60
+            next_mysql_cfg_refresh = 0.0
+            next_rental_check = 0.0
+            next_raise_sync = 0.0
+            next_status_ping = 0.0
+
             while not stop_event.is_set():
 
-                mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
-                    mysql_cfg,
-                    mysql_cfg_last_refresh,
-                    mysql_cfg_refresh_seconds,
-                )
+                now = time.time()
 
-                process_rental_monitor(
-                    logger,
-                    account,
-                    site_username,
-                    user_id,
-                    workspace_id,
-                    state,
-                    mysql_cfg=mysql_cfg,
-                )
+                if now >= next_mysql_cfg_refresh:
+                    mysql_cfg, mysql_cfg_last_refresh = _maybe_refresh_mysql_cfg(
+                        mysql_cfg,
+                        mysql_cfg_last_refresh,
+                        mysql_cfg_refresh_seconds,
+                    )
+                    next_mysql_cfg_refresh = now + max(5, mysql_cfg_refresh_seconds)
 
-                if mysql_cfg and user_id is not None:
+                if now >= next_rental_check:
+                    process_rental_monitor(
+                        logger,
+                        account,
+                        site_username,
+                        user_id,
+                        workspace_id,
+                        state,
+                        mysql_cfg=mysql_cfg,
+                    )
+                    next_rental_check = now + rental_interval
 
-                    if time.time() - raise_sync_last >= raise_sync_interval:
+                if mysql_cfg and user_id is not None and now >= next_raise_sync:
 
-                        try:
+                    try:
 
-                            sync_raise_categories(
-
-                                mysql_cfg,
-
-                                account=account,
-
-                                user_id=int(user_id),
-
-                                workspace_id=int(workspace_id) if workspace_id is not None else None,
-
-                            )
-
-                            raise_sync_last = time.time()
-
-                        except Exception:
-
-                            logger.debug("%s Raise categories sync failed.", label, exc_info=True)
-
-                    if time.time() - last_status_ping >= 60:
-
-                        upsert_workspace_status(
+                        sync_raise_categories(
 
                             mysql_cfg,
+
+                            account=account,
 
                             user_id=int(user_id),
 
                             workspace_id=int(workspace_id) if workspace_id is not None else None,
 
-                            platform=status_platform,
-
-                            status="ok",
-
-                            message="Connected to FunPay.",
-
                         )
 
-                        last_status_ping = time.time()
+                    except Exception:
 
-                time.sleep(poll_seconds)
+                        logger.debug("%s Raise categories sync failed.", label, exc_info=True)
+
+                    next_raise_sync = now + max(30, raise_sync_interval)
+
+                if mysql_cfg and user_id is not None and now >= next_status_ping:
+
+                    upsert_workspace_status(
+
+                        mysql_cfg,
+
+                        user_id=int(user_id),
+
+                        workspace_id=int(workspace_id) if workspace_id is not None else None,
+
+                        platform=status_platform,
+
+                        status="ok",
+
+                        message="Connected to FunPay.",
+
+                    )
+
+                    next_status_ping = now + status_ping_interval
+
+                next_due = min(next_mysql_cfg_refresh, next_rental_check, next_raise_sync, next_status_ping)
+                sleep_for = max(0.2, min(float(poll_seconds), next_due - time.time()))
+                stop_event.wait(sleep_for)
 
         except Exception as exc:
 
