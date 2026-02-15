@@ -189,8 +189,11 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
         )
         started_at = _parse_datetime(record.rental_start)
         if _is_rental_expired(started_at, total_minutes) and not int(record.rental_frozen or 0):
-            if record.workspace_id is not None:
-                accounts_repo.release_account(record.id, user_id, int(record.workspace_id))
+            # Important: don't mutate DB state from a read endpoint.
+            #
+            # Auto-release here races the FunPay worker's rental monitor, which is responsible
+            # for sending the "rental expired" chat message and (optionally) deauthorizing
+            # Steam sessions before releasing the account.
             continue
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
         steam_id = _steam_id_from_mafile(record.mafile_json)
