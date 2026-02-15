@@ -134,19 +134,27 @@ async def _deauthorize_via_twofactor_manage_action(steam: CustomSteam) -> bool:
         return False
 
 
-async def _ensure_playwright_chromium_installed() -> bool:
+async def _ensure_playwright_chromium_installed(*, with_deps: bool = False) -> bool:
     """
-    Installs Playwright's Chromium browser at runtime (needed on Railway/Docker).
+    Installs Playwright's Chromium browser at runtime.
+
+    If `with_deps=True`, Playwright will also attempt to install OS-level browser
+    dependencies (works on Debian/Ubuntu images where `apt-get` is available).
     """
     if not _PLAYWRIGHT_AVAILABLE or async_playwright is None:
         return False
     try:
-        proc = await asyncio.create_subprocess_exec(
+        args = [
             sys.executable,
             "-m",
             "playwright",
             "install",
-            "chromium",
+        ]
+        if with_deps:
+            args.append("--with-deps")
+        args.append("chromium")
+        proc = await asyncio.create_subprocess_exec(
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -154,11 +162,14 @@ async def _ensure_playwright_chromium_installed() -> bool:
         if proc.returncode != 0:
             out = (stdout or b"")[-1500:].decode("utf-8", errors="ignore")
             err = (stderr or b"")[-1500:].decode("utf-8", errors="ignore")
-            logger.warning(f"playwright install chromium failed (code={proc.returncode}). stdout={out} stderr={err}")
+            logger.warning(
+                f"playwright install{' --with-deps' if with_deps else ''} chromium failed (code={proc.returncode}). "
+                f"stdout={out} stderr={err}"
+            )
             return False
         return True
     except Exception as exc:
-        logger.warning(f"playwright install chromium failed: {exc}")
+        logger.warning(f"playwright install{' --with-deps' if with_deps else ''} chromium failed: {exc}")
         return False
 
 
@@ -182,11 +193,34 @@ async def _logout_all_steam_sessions_playwright(steam: CustomSteam) -> bool:
             browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         except Exception as exc:
             msg = str(exc)
-            if "Executable doesn't exist" in msg or "playwright install" in msg:
-                if await _ensure_playwright_chromium_installed():
+            if "Host system is missing dependencies" in msg or "Missing libraries:" in msg:
+                logger.warning(
+                    "Playwright can't launch Chromium because OS browser dependencies are missing. "
+                    "On Debian/Ubuntu: `python -m playwright install --with-deps chromium`."
+                )
+                if not await _ensure_playwright_chromium_installed(with_deps=True):
+                    return False
+                try:
                     browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-                else:
-                    raise
+                except Exception as exc2:
+                    msg2 = str(exc2)
+                    if "Host system is missing dependencies" in msg2 or "Missing libraries:" in msg2:
+                        logger.warning("Playwright launch still failing after `install --with-deps` (missing OS deps).")
+                    else:
+                        logger.warning(f"Playwright launch still failing after `install --with-deps`: {exc2}")
+                    return False
+            elif "Executable doesn't exist" in msg or "playwright install" in msg:
+                if not await _ensure_playwright_chromium_installed(with_deps=False):
+                    return False
+                try:
+                    browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                except Exception as exc2:
+                    msg2 = str(exc2)
+                    if "Host system is missing dependencies" in msg2 or "Missing libraries:" in msg2:
+                        logger.warning("Playwright launch still failing after `install chromium` (missing OS deps).")
+                    else:
+                        logger.warning(f"Playwright launch still failing after `install chromium`: {exc2}")
+                    return False
             else:
                 raise
         context = await browser.new_context(user_agent=_BROWSER_UA, locale="ru-RU", timezone_id="Europe/Moscow")

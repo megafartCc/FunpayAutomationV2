@@ -46,9 +46,16 @@ class BaseRequestStrategy(RequestStrategyAbstract):
     def cookies(self, domain: str = 'steamcommunity.com') -> Mapping[str, str]:
         if self._session is None:
             raise RuntimeError('Session is not initialized')
+        want = (domain or '').lstrip('.').lower()
         cookies = {}
         for cookie in self._session.cookie_jar:
-            if cookie['domain'] == domain:
+            cookie_domain = (cookie['domain'] or '').lstrip('.').lower()
+            if not cookie_domain:
+                continue
+
+            # aiohttp may store cookies for parent domains like ".steampowered.com";
+            # include those when requesting "store.steampowered.com".
+            if want == cookie_domain or want.endswith("." + cookie_domain):
                 cookies[cookie.key] = cookie.value
         return cookies
 
