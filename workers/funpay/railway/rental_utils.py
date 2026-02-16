@@ -248,6 +248,31 @@ def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> Non
     state.expire_delay_notified.discard(account_id)
 
 
+def _set_owner_chat_id(
+    mysql_cfg: dict,
+    *,
+    account_id: int,
+    user_id: int,
+    workspace_id: int | None,
+    chat_id: int,
+) -> None:
+    if chat_id <= 0:
+        return
+    cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
+    conn = mysql.connector.connect(**cfg)
+    try:
+        cursor = conn.cursor()
+        if not column_exists(cursor, "accounts", "owner_chat_id"):
+            return
+        cursor.execute(
+            "UPDATE accounts SET owner_chat_id = %s WHERE id = %s AND user_id = %s",
+            (int(chat_id), int(account_id), int(user_id)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _send_owner_message(
     logger: logging.Logger,
     account: Account,
@@ -258,6 +283,7 @@ def _send_owner_message(
     mysql_cfg: dict,
     user_id: int,
     workspace_id: int | None,
+    order_id: str | None = None,
 ) -> bool:
     chat_id = account_row.get("owner_chat_id")
     if chat_id is not None:
@@ -269,15 +295,127 @@ def _send_owner_message(
             if send_chat_message(logger, account, chat_id_int, text):
                 return True
     if not owner:
-        return False
-    return send_message_by_owner(
+        sent = False
+    else:
+        sent = send_message_by_owner(
+            logger,
+            account,
+            owner,
+            text,
+            mysql_cfg=mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+    if sent:
+        return True
+    if order_id:
+        try:
+            order = account.get_order(str(order_id).lstrip("#"))
+            order_chat_id = getattr(order, "chat_id", None)
+            if isinstance(order_chat_id, str) and order_chat_id.isdigit():
+                order_chat_id = int(order_chat_id)
+            if order_chat_id is not None:
+                order_chat_id_int = int(order_chat_id)
+                if order_chat_id_int > 0 and send_chat_message(logger, account, order_chat_id_int, text):
+                    try:
+                        _set_owner_chat_id(
+                            mysql_cfg,
+                            account_id=int(account_row.get("id") or 0),
+                            user_id=int(user_id),
+                            workspace_id=workspace_id,
+                            chat_id=order_chat_id_int,
+                        )
+                    except Exception:
+                        pass
+                    return True
+        except Exception as exc:
+            logger.warning("Failed to resolve order chat for %s: %s", order_id, exc)
+    return False
+
+
+def _resolve_order_id(
+    *,
+    mysql_cfg: dict,
+    account: Account,
+    account_id: int,
+    owner: str,
+    user_id: int,
+    workspace_id: int | None,
+    lot_number: object | None,
+    account_name: str | None,
+    login: str | None,
+) -> str | None:
+    order_id = fetch_latest_order_id_for_account(
+        mysql_cfg,
+        account_id=account_id,
+        owner=owner,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+    )
+    if not order_id and lot_number is not None:
+        try:
+            lot_number_int = int(lot_number)
+        except Exception:
+            lot_number_int = None
+        if lot_number_int is not None:
+            order_id = fetch_latest_order_id_for_owner_lot(
+                mysql_cfg,
+                owner=owner,
+                lot_number=lot_number_int,
+                user_id=int(user_id),
+                workspace_id=workspace_id,
+            )
+    if not order_id:
+        order_id = resolve_order_id_from_funpay(
+            account,
+            owner=owner,
+            lot_number=lot_number,
+            account_name=account_name or login,
+        )
+    if order_id:
+        return str(order_id).lstrip("#")
+    return None
+
+
+def _send_expired_notice(
+    logger: logging.Logger,
+    account: Account,
+    *,
+    row: dict,
+    owner: str,
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+) -> bool:
+    order_id = _resolve_order_id(
+        mysql_cfg=mysql_cfg,
+        account=account,
+        account_id=int(row.get("id") or 0),
+        owner=owner,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+        lot_number=row.get("lot_number"),
+        account_name=row.get("account_name"),
+        login=row.get("login"),
+    )
+    confirm_url = f"https://funpay.com/orders/{order_id}/" if order_id else None
+    confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
+    if confirm_url:
+        confirm_message = (
+            f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
+            f"\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u0442\u0443\u0442 -> {confirm_url}"
+        )
+    full_message = f"{RENTAL_EXPIRED_MESSAGE}\n\n{confirm_message}"
+    return _send_owner_message(
         logger,
         account,
-        owner,
-        text,
+        account_row=row,
+        owner=owner,
+        text=full_message,
         mysql_cfg=mysql_cfg,
         user_id=int(user_id),
         workspace_id=workspace_id,
+        order_id=order_id,
     )
 
 
@@ -295,7 +433,7 @@ def _is_match_active(presence: dict) -> bool:
         str(presence.get(key) or "")
         for key in ("presence_state", "presence_display", "status", "state")
     ).lower()
-    return any(token in status_bits for token in ("match", "матч", "game", "dota"))
+    return any(token in status_bits for token in ("match", "\u043c\u0430\u0442\u0447", "game", "dota"))
 
 
 def _should_delay_expire(
@@ -309,7 +447,7 @@ def _should_delay_expire(
     state: RentalMonitorState,
     now: datetime,
 ) -> bool:
-    if not env_bool("DOTA_MATCH_DELAY_EXPIRE", True):
+    if not env_bool("DOTA_MATCH_DELAY_EXPIRE", False):
         return False
     account_id = int(account_row.get("id"))
     next_check = state.expire_delay_next_check.get(account_id)
@@ -339,9 +477,12 @@ def _should_delay_expire(
         extra = ""
         display = presence.get("presence_display") or presence.get("presence_state")
         if display:
-            extra = f"\nСтатус: {display}"
+            extra = f"\n\u0421\u0442\u0430\u0442\u0443\u0441: {display}"
         lot_url = account_row.get("lot_url") or ""
-        lot_line = f"\nЕсли хотите продлить - оплатите лот: {lot_url}" if lot_url else ""
+        lot_line = (
+            f"\n\u0415\u0441\u043b\u0438 \u0445\u043e\u0442\u0438\u0442\u0435 \u043f\u0440\u043e\u0434\u043b\u0438\u0442\u044c - "
+            f"\u043e\u043f\u043b\u0430\u0442\u0438\u0442\u0435 \u043b\u043e\u0442: {lot_url}"
+        ) if lot_url else ""
         sent = _send_owner_message(
             logger,
             account,
@@ -582,58 +723,28 @@ def process_rental_monitor(
             workspace_id=workspace_id,
         )
 
-        if released:
-            order_id = fetch_latest_order_id_for_account(
+        sent = _send_expired_notice(
+            logger,
+            account,
+            row=row,
+            owner=owner,
+            mysql_cfg=mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+        if not sent:
+            log_notification_event(
                 mysql_cfg,
+                event_type="rental_expired_message",
+                status="failed",
+                title="Rental expired message failed",
+                message="Failed to send expiration message to buyer.",
+                owner=owner,
+                account_name=row.get("account_name") or row.get("login"),
                 account_id=account_id,
-                owner=owner,
                 user_id=int(user_id),
                 workspace_id=workspace_id,
             )
-            if not order_id and row.get("lot_number") is not None:
-                order_id = fetch_latest_order_id_for_owner_lot(
-                    mysql_cfg,
-                    owner=owner,
-                    lot_number=int(row.get("lot_number")),
-                    user_id=int(user_id),
-                    workspace_id=workspace_id,
-                )
-            if not order_id:
-                order_id = resolve_order_id_from_funpay(
-                    account,
-                    owner=owner,
-                    lot_number=row.get("lot_number"),
-                    account_name=row.get("account_name") or row.get("login"),
-                )
-            confirm_url = f"https://funpay.com/orders/{order_id}/" if order_id else None
-            confirm_message = RENTAL_EXPIRED_CONFIRM_MESSAGE
-            if confirm_url:
-                confirm_message = (
-                    f"{RENTAL_EXPIRED_CONFIRM_MESSAGE}\n\n"
-                    f"Подтвердите тут -> {confirm_url}"
-                )
-            full_message = f"{RENTAL_EXPIRED_MESSAGE}\n\n{confirm_message}"
-            sent = _send_owner_message(
-                logger,
-                account,
-                account_row=row,
-                owner=owner,
-                text=full_message,
-                mysql_cfg=mysql_cfg,
-                user_id=int(user_id),
-                workspace_id=workspace_id,
-            )
-            if not sent:
-                log_notification_event(
-                    mysql_cfg,
-                    event_type="rental_expired_message",
-                    status="failed",
-                    title="Rental expired message failed",
-                    message="Failed to send expiration message to buyer.",
-                    owner=owner,
-                    account_name=row.get("account_name") or row.get("login"),
-                    account_id=account_id,
-                    user_id=int(user_id),
-                    workspace_id=workspace_id,
-                )
+
         _clear_expire_delay_state(state, account_id)
+
