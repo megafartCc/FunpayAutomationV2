@@ -143,7 +143,7 @@ def release_account_in_db(
     cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
     conn = mysql.connector.connect(**cfg)
     try:
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
         if has_frozen_at:
@@ -158,7 +158,17 @@ def release_account_in_db(
             tuple(params),
         )
         conn.commit()
-        return cursor.rowcount > 0
+        if cursor.rowcount > 0:
+            return True
+        # MySQL returns 0 affected rows when values are already set (e.g. owner already NULL).
+        # Treat that as success so expiry messaging/deauth isn't skipped due to a harmless race.
+        cursor.execute(
+            "SELECT owner FROM accounts WHERE id = %s AND user_id = %s LIMIT 1",
+            (int(account_id), int(user_id)),
+        )
+        row = cursor.fetchone() or {}
+        owner = row.get("owner") if isinstance(row, dict) else None
+        return owner is None or str(owner).strip() == ""
     finally:
         conn.close()
 
