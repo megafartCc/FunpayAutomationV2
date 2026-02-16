@@ -363,6 +363,7 @@ def assign_account_to_buyer(
     buyer: str,
     units: int,
     total_minutes: int,
+    chat_id: int | None = None,
     workspace_id: int | None = None,
 ) -> bool:
     cfg = resolve_workspace_mysql_cfg(mysql_cfg, workspace_id)
@@ -375,13 +376,20 @@ def assign_account_to_buyer(
         has_last_rented_workspace = column_exists(cursor, "accounts", "last_rented_workspace_id")
         has_assigned_at = column_exists(cursor, "accounts", "rental_assigned_at")
         has_last_code_at = column_exists(cursor, "accounts", "last_code_at")
-        updates = [
-            "owner = %s",
-            "rental_duration = %s",
-            "rental_duration_minutes = %s",
-            "rental_start = NULL",
-        ]
-        params: list = [owner_value, int(units), int(total_minutes)]
+        has_owner_chat_id = column_exists(cursor, "accounts", "owner_chat_id")
+        updates = ["owner = %s"]
+        params: list = [owner_value]
+        if has_owner_chat_id:
+            updates.append("owner_chat_id = %s")
+            params.append(int(chat_id) if chat_id is not None else None)
+        updates.extend(
+            [
+                "rental_duration = %s",
+                "rental_duration_minutes = %s",
+                "rental_start = NULL",
+            ]
+        )
+        params.extend([int(units), int(total_minutes)])
         if has_assigned_at:
             updates.append("rental_assigned_at = UTC_TIMESTAMP()")
         if has_last_code_at:

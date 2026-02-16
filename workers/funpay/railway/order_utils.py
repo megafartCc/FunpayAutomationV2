@@ -961,6 +961,7 @@ def handle_order_purchased(
                 buyer=buyer,
                 units=amount,
                 total_minutes=total_minutes,
+                chat_id=int(chat_id),
                 workspace_id=workspace_id,
             )
             log_order_history(
@@ -1042,6 +1043,7 @@ def handle_order_purchased(
                 buyer=buyer,
                 units=amount,
                 total_minutes=total_minutes,
+                chat_id=int(chat_id),
                 workspace_id=workspace_id,
             )
             log_order_history(
@@ -1111,6 +1113,7 @@ def handle_order_purchased(
             buyer=buyer,
             units=amount,
             total_minutes=total_minutes,
+            chat_id=int(chat_id),
             workspace_id=workspace_id,
         )
         updated_account = dict(mapping)

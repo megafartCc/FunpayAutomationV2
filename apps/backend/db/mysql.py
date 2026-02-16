@@ -212,6 +212,7 @@ def ensure_schema() -> None:
                 rental_duration INT NOT NULL DEFAULT 1,
                 rental_duration_minutes INT NULL,
                 owner VARCHAR(255) DEFAULT NULL,
+                owner_chat_id BIGINT NULL,
                 rental_start DATETIME DEFAULT NULL,
                 rental_assigned_at DATETIME DEFAULT NULL,
                 last_code_at DATETIME DEFAULT NULL,
@@ -247,6 +248,15 @@ def ensure_schema() -> None:
         )
         if cursor.fetchone() is None:
             cursor.execute("ALTER TABLE accounts ADD COLUMN rental_assigned_at DATETIME NULL AFTER rental_start")
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = 'owner_chat_id'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN owner_chat_id BIGINT NULL AFTER owner")
         cursor.execute(
             """
             SELECT 1 FROM information_schema.columns

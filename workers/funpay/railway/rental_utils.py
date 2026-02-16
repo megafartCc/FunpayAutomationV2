@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import mysql.connector
 from FunPayAPI.account import Account
 
-from .chat_utils import send_message_by_owner
+from .chat_utils import send_chat_message, send_message_by_owner
 from .constants import (
     RENTAL_EXPIRE_DELAY_MESSAGE,
     RENTAL_EXPIRED_CONFIRM_MESSAGE,
@@ -99,6 +99,7 @@ def fetch_active_rentals_for_monitor(
         has_lots = table_exists(cursor, "lots")
         has_display_name = has_lots and column_exists(cursor, "lots", "display_name")
         has_workspace = column_exists(cursor, "accounts", "workspace_id")
+        has_owner_chat_id = column_exists(cursor, "accounts", "owner_chat_id")
         has_rental_frozen = column_exists(cursor, "accounts", "rental_frozen")
         has_rental_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         has_account_frozen = column_exists(cursor, "accounts", "account_frozen")
@@ -115,6 +116,7 @@ def fetch_active_rentals_for_monitor(
         cursor.execute(
             f"""
             SELECT a.id, a.account_name, a.login, a.password, a.mafile_json, a.owner,
+                   {'a.owner_chat_id' if has_owner_chat_id else 'NULL AS owner_chat_id'},
                    a.rental_start, a.rental_duration, a.rental_duration_minutes,
                    {'a.rental_assigned_at' if has_rental_assigned_at else 'NULL AS rental_assigned_at'},
                    {'a.account_frozen' if has_account_frozen else '0 AS account_frozen'},
@@ -146,6 +148,8 @@ def release_account_in_db(
         cursor = conn.cursor(dictionary=True)
         has_frozen_at = column_exists(cursor, "accounts", "rental_frozen_at")
         updates = ["owner = NULL", "rental_start = NULL", "rental_frozen = 0"]
+        if column_exists(cursor, "accounts", "owner_chat_id"):
+            updates.append("owner_chat_id = NULL")
         if has_frozen_at:
             updates.append("rental_frozen_at = NULL")
         if column_exists(cursor, "accounts", "rental_assigned_at"):
@@ -244,6 +248,39 @@ def _clear_expire_delay_state(state: RentalMonitorState, account_id: int) -> Non
     state.expire_delay_notified.discard(account_id)
 
 
+def _send_owner_message(
+    logger: logging.Logger,
+    account: Account,
+    *,
+    account_row: dict,
+    owner: str | None,
+    text: str,
+    mysql_cfg: dict,
+    user_id: int,
+    workspace_id: int | None,
+) -> bool:
+    chat_id = account_row.get("owner_chat_id")
+    if chat_id is not None:
+        try:
+            chat_id_int = int(chat_id)
+        except Exception:
+            chat_id_int = 0
+        if chat_id_int > 0:
+            if send_chat_message(logger, account, chat_id_int, text):
+                return True
+    if not owner:
+        return False
+    return send_message_by_owner(
+        logger,
+        account,
+        owner,
+        text,
+        mysql_cfg=mysql_cfg,
+        user_id=int(user_id),
+        workspace_id=workspace_id,
+    )
+
+
 def _is_match_active(presence: dict) -> bool:
     if not presence or not isinstance(presence, dict):
         return False
@@ -305,12 +342,25 @@ def _should_delay_expire(
             extra = f"\nСтатус: {display}"
         lot_url = account_row.get("lot_url") or ""
         lot_line = f"\nЕсли хотите продлить - оплатите лот: {lot_url}" if lot_url else ""
-        send_message_by_owner(
+        sent = _send_owner_message(
             logger,
             account,
-            owner,
-            f"{RENTAL_EXPIRE_DELAY_MESSAGE}{lot_line}{extra}",
+            account_row=account_row,
+            owner=owner,
+            text=f"{RENTAL_EXPIRE_DELAY_MESSAGE}{lot_line}{extra}",
             mysql_cfg=mysql_cfg,
+            user_id=int(user_id),
+            workspace_id=workspace_id,
+        )
+        log_notification_event(
+            mysql_cfg,
+            event_type="rental_expire_delay",
+            status="ok" if sent else "failed",
+            title="Rental expiry delayed",
+            message="Rental expired but buyer appears to be in a match; delaying release.",
+            owner=owner,
+            account_name=account_row.get("account_name") or account_row.get("login"),
+            account_id=account_id,
             user_id=int(user_id),
             workspace_id=workspace_id,
         )
@@ -485,16 +535,18 @@ def process_rental_monitor(
                 if 0 < seconds_left <= remind_minutes * 60:
                     if state.expire_soon_notified.get(account_id) != expiry_ts:
                         message = build_expire_soon_message(row, seconds_left)
-                        send_message_by_owner(
+                        sent = _send_owner_message(
                             logger,
                             account,
-                            owner,
-                            message,
+                            account_row=row,
+                            owner=owner,
+                            text=message,
                             mysql_cfg=mysql_cfg,
                             user_id=int(user_id),
                             workspace_id=workspace_id,
                         )
-                        state.expire_soon_notified[account_id] = expiry_ts
+                        if sent:
+                            state.expire_soon_notified[account_id] = expiry_ts
                 else:
                     state.expire_soon_notified.pop(account_id, None)
             continue
@@ -561,11 +613,12 @@ def process_rental_monitor(
                     f"Подтвердите тут -> {confirm_url}"
                 )
             full_message = f"{RENTAL_EXPIRED_MESSAGE}\n\n{confirm_message}"
-            sent = send_message_by_owner(
+            sent = _send_owner_message(
                 logger,
                 account,
-                owner,
-                full_message,
+                account_row=row,
+                owner=owner,
+                text=full_message,
                 mysql_cfg=mysql_cfg,
                 user_id=int(user_id),
                 workspace_id=workspace_id,
