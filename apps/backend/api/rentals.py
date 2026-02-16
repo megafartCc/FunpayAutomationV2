@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, ActiveRentalRecord
 from db.notifications_repo import MySQLNotificationsRepo
+from db.steam_bridge_repo import MySQLSteamBridgeRepo
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.rentals_cache import RentalsCache
 from services.presence_service import fetch_presence, presence_status_label
@@ -21,6 +22,7 @@ accounts_repo = MySQLAccountRepo()
 rentals_cache = RentalsCache()
 workspace_repo = MySQLWorkspaceRepo()
 notifications_repo = MySQLNotificationsRepo()
+bridge_repo = MySQLSteamBridgeRepo()
 
 
 class ActiveRentalItem(BaseModel):
@@ -142,6 +144,11 @@ def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
 @router.get("/rentals/active", response_model=ActiveRentalResponse)
 def list_active_rentals(workspace_id: int | None = None, user=Depends(get_current_user)) -> ActiveRentalResponse:
     user_id = int(user.id)
+    default_bridge_id = None
+    try:
+        default_bridge_id = bridge_repo.get_default_id(user_id)
+    except Exception:
+        default_bridge_id = None
     workspace = None
     if workspace_id is not None:
         workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
@@ -176,7 +183,7 @@ def list_active_rentals(workspace_id: int | None = None, user=Depends(get_curren
             continue
         started_label, time_left_label = _format_time_left(started_at, total_minutes)
         steam_id = _steam_id_from_mafile(record.mafile_json)
-        presence = fetch_presence(steam_id, user_id=user_id)
+        presence = fetch_presence(steam_id, user_id=user_id, bridge_id=default_bridge_id)
         status = "Frozen" if int(getattr(record, "rental_frozen", 0) or 0) else presence_status_label(presence)
         hero = ""
         match_time = ""

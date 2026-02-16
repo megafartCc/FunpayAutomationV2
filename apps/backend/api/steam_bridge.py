@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -11,6 +10,7 @@ from db.account_repo import MySQLAccountRepo
 from db.steam_bridge_repo import MySQLSteamBridgeRepo, SteamBridgeAccountRecord
 from services.crypto_service import CryptoError, decrypt_secret, encrypt_secret
 from services.presence_service import fetch_presence, presence_status_label
+from services.steam_id import extract_steam_id
 from services.steam_bridge_service import (
     SteamBridgeError,
     connect_bridge_account,
@@ -116,33 +116,6 @@ def _to_item(record: SteamBridgeAccountRecord) -> SteamBridgeAccountItem:
         created_at=created_at,
         updated_at=updated_at,
     )
-
-
-def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
-    if not mafile_json:
-        return None
-    try:
-        data = json.loads(mafile_json) if isinstance(mafile_json, str) else mafile_json
-    except Exception:
-        return None
-    if isinstance(data, dict):
-        session = data.get("Session")
-        steam_value = None
-        if isinstance(session, dict):
-            steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
-        if steam_value is None:
-            steam_value = (
-                data.get("steamid")
-                or data.get("SteamID")
-                or data.get("steam_id")
-                or data.get("steamId")
-                or data.get("steamid64")
-                or data.get("SteamID64")
-            )
-        if steam_value is not None:
-            return str(int(steam_value))
-    return None
-
 
 def _parse_last_seen(value: object) -> datetime | None:
     if value is None:
@@ -354,14 +327,19 @@ def list_presence_accounts(
     user=Depends(get_current_user),
 ) -> SteamPresenceAccountList:
     user_id = int(user.id)
+    default_bridge_id = None
+    try:
+        default_bridge_id = bridge_repo.get_default_id(user_id)
+    except Exception:
+        default_bridge_id = None
     if workspace_id is None:
         accounts = accounts_repo.list_by_user(user_id)
     else:
         accounts = accounts_repo.list_by_workspace(user_id, int(workspace_id))
     items: list[SteamPresenceAccountItem] = []
     for account in accounts:
-        steam_id = _steam_id_from_mafile(account.mafile_json)
-        presence = fetch_presence(steam_id, user_id=user_id)
+        steam_id = extract_steam_id(account.mafile_json)
+        presence = fetch_presence(steam_id, user_id=user_id, bridge_id=default_bridge_id)
         status = presence_status_label(presence) if presence else ""
         derived = presence.get("derived") if isinstance(presence, dict) and isinstance(presence.get("derived"), dict) else {}
         hero = str(

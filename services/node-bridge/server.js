@@ -21,12 +21,38 @@ app.use(express.json());
 
 const MATCH_GRACE_MS = 5 * 60 * 1000;
 const BOT_PATTERN = /\bbot\b|\bbots\b|bot[_\s-]?match/;
+const PRESENCE_STALE_SECONDS = Number(process.env.PRESENCE_STALE_SECONDS || "120");
+const PRESENCE_STALE_MS = Math.max(10, Number.isFinite(PRESENCE_STALE_SECONDS) ? PRESENCE_STALE_SECONDS : 120) * 1000;
 
 const sessions = new Map(); // bridgeId -> session
 const defaultBridgeByUser = new Map(); // userId -> bridgeId
 
 function normalizeKey(key) {
   return String(key || "").toLowerCase();
+}
+
+function isPresenceStale(data) {
+  if (!data) return true;
+  const updatedAt = Number(data.last_updated || 0);
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return true;
+  return Date.now() - updatedAt > PRESENCE_STALE_MS;
+}
+
+function clearSessionPresence(session, reason) {
+  if (!session) return;
+  try {
+    session.presence.clear();
+  } catch (_) {
+    // ignore
+  }
+  try {
+    session.matchStart.clear();
+  } catch (_) {
+    // ignore
+  }
+  if (reason) {
+    console.warn(`[bridge] cleared presence (bridge=${session.bridgeId}) reason=${reason}`);
+  }
 }
 
 function getAuthToken(req) {
@@ -480,11 +506,13 @@ function createSession({ bridgeId, userId, login, password, sharedSecret, isDefa
   client.on("error", (err) => {
     session.loggedOn = false;
     session.lastError = String(err?.message || err);
+    clearSessionPresence(session, "error");
     console.error(`[bridge] Steam error (bridge=${session.bridgeId})`, err);
   });
 
   client.on("disconnected", () => {
     session.loggedOn = false;
+    clearSessionPresence(session, "disconnected");
     console.warn(`[bridge] Steam disconnected (bridge=${session.bridgeId})`);
   });
 
@@ -521,6 +549,12 @@ function createSession({ bridgeId, userId, login, password, sharedSecret, isDefa
 
   session.refreshTimer = setInterval(() => {
     if (!session.loggedOn) return;
+    for (const [id64, data] of session.presence.entries()) {
+      if (isPresenceStale(data)) {
+        session.presence.delete(id64);
+        session.matchStart.delete(id64);
+      }
+    }
     const ids = Object.keys(client.myFriends || {});
     if (ids.length) {
       client.getPersonas(ids);
@@ -658,8 +692,14 @@ app.get("/presence/:steamid", (req, res) => {
   const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
   const session = getSessionFor(userId, bridgeId);
   if (!session) return res.status(404).json({ error: "bridge_not_found" });
+  if (!session.loggedOn) return res.status(503).json({ error: "bridge_offline", ...statusForSession(session) });
   const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
+  if (isPresenceStale(data)) {
+    session.presence.delete(sid);
+    session.matchStart.delete(sid);
+    return res.status(404).json({ error: "stale" });
+  }
 
   const derived = derivePresence(data, session.matchStart);
 
@@ -693,10 +733,16 @@ app.get("/presencefull/:steamid", (req, res) => {
   const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
   const session = getSessionFor(userId, bridgeId);
   if (!session) return res.status(404).json({ error: "bridge_not_found" });
+  if (!session.loggedOn) return res.status(503).json({ error: "bridge_offline", ...statusForSession(session) });
 
   const sid = req.params.steamid;
   const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
+  if (isPresenceStale(data)) {
+    session.presence.delete(sid);
+    session.matchStart.delete(sid);
+    return res.status(404).json({ error: "stale" });
+  }
 
   const derived = derivePresence(data, session.matchStart);
 
@@ -726,9 +772,11 @@ app.get("/debug/presence/:steamid", requireDebugToken, (req, res) => {
   const bridgeId = req.query.bridge_id ? String(req.query.bridge_id) : null;
   const session = getSessionFor(userId, bridgeId);
   if (!session) return res.status(404).json({ error: "bridge_not_found" });
+  if (!session.loggedOn) return res.status(503).json({ error: "bridge_offline", ...statusForSession(session) });
   const sid = req.params.steamid;
   const data = session.presence.get(sid);
   if (!data) return res.status(404).json({ error: "not_found" });
+  if (isPresenceStale(data)) return res.status(404).json({ error: "stale" });
 
   res.json(buildDebugView(data, session.matchStart));
 });

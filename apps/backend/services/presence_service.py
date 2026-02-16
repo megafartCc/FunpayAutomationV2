@@ -55,10 +55,22 @@ def fetch_presence(
 ) -> dict[str, Any] | None:
     if not steam_id:
         return None
+    base = _presence_base_url()
+    if not base:
+        return None
+    base = base.rstrip("/")
+
+    resolved_bridge_id = bridge_id
+    if resolved_bridge_id is None and user_id is not None:
+        try:
+            resolved_bridge_id = _bridge_repo.get_default_id(int(user_id))
+        except Exception:
+            resolved_bridge_id = None
+
     cache = _get_redis()
     if cache:
         try:
-            cached_raw = cache.get(_cache_key(steam_id, user_id, bridge_id))
+            cached_raw = cache.get(_cache_key(steam_id, user_id, resolved_bridge_id))
         except Exception:
             cached_raw = None
         if cached_raw is not None:
@@ -67,15 +79,6 @@ def fetch_presence(
             except Exception:
                 cached = None
             return cached if isinstance(cached, dict) else None
-    base = _presence_base_url()
-    if not base:
-        return None
-    base = base.rstrip("/")
-    if bridge_id is None and user_id is not None:
-        try:
-            bridge_id = _bridge_repo.get_default_id(int(user_id))
-        except Exception:
-            bridge_id = None
     if base.endswith("/presence"):
         url = f"{base}/{steam_id}"
     else:
@@ -83,8 +86,8 @@ def fetch_presence(
     params = {}
     if user_id is not None:
         params["user_id"] = str(int(user_id))
-    if bridge_id is not None:
-        params["bridge_id"] = str(int(bridge_id))
+    if resolved_bridge_id is not None:
+        params["bridge_id"] = str(int(resolved_bridge_id))
     headers = {}
     token = os.getenv("STEAM_BRIDGE_INTERNAL_TOKEN", "").strip()
     if token:
@@ -96,7 +99,11 @@ def fetch_presence(
     if not resp.ok:
         if cache:
             try:
-                cache.set(_cache_key(steam_id, user_id, bridge_id), "null", ex=_cache_empty_ttl_seconds())
+                cache.set(
+                    _cache_key(steam_id, user_id, resolved_bridge_id),
+                    "null",
+                    ex=_cache_empty_ttl_seconds(),
+                )
             except Exception:
                 pass
         return None
@@ -106,7 +113,7 @@ def fetch_presence(
         if cache:
             try:
                 cache.set(
-                    _cache_key(steam_id, user_id, bridge_id),
+                    _cache_key(steam_id, user_id, resolved_bridge_id),
                     "null",
                     ex=_cache_empty_ttl_seconds(),
                 )
@@ -116,14 +123,18 @@ def fetch_presence(
     if not isinstance(data, dict):
         if cache:
             try:
-                cache.set(_cache_key(steam_id, user_id, bridge_id), "null", ex=_cache_empty_ttl_seconds())
+                cache.set(
+                    _cache_key(steam_id, user_id, resolved_bridge_id),
+                    "null",
+                    ex=_cache_empty_ttl_seconds(),
+                )
             except Exception:
                 pass
         return None
     if cache:
         try:
             cache.set(
-                _cache_key(steam_id, user_id, bridge_id),
+                _cache_key(steam_id, user_id, resolved_bridge_id),
                 json.dumps(data, ensure_ascii=False),
                 ex=_cache_ttl_seconds(),
             )
