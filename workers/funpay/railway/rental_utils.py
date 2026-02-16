@@ -447,7 +447,7 @@ def _should_delay_expire(
     state: RentalMonitorState,
     now: datetime,
 ) -> bool:
-    if not env_bool("DOTA_MATCH_DELAY_EXPIRE", False):
+    if not env_bool("DOTA_MATCH_DELAY_EXPIRE", True):
         return False
     account_id = int(account_row.get("id"))
     next_check = state.expire_delay_next_check.get(account_id)
