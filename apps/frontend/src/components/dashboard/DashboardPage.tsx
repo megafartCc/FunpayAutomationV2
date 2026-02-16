@@ -142,8 +142,6 @@ type RentalRow = {
   started: string;
   timeLeft: string;
   matchTime: string;
-  matchTimeSeconds?: number | null;
-  matchTimeObservedAt?: number | null;
   hero: string;
   status: string;
 };
@@ -168,40 +166,15 @@ const mapAccount = (item: AccountItem): AccountRow => ({
   mmr: item.mmr ?? "-",
   owner: item.owner ?? null,
   rentalStart: item.rental_start ?? null,
-  rentalДлительность: item.rental_duration ?? 0,
+  rentalDuration: item.rental_duration ?? 0,
   rentalDurationMinutes: item.rental_duration_minutes ?? null,
   accountFrozen: !!item.account_frozen,
   rentalFrozen: !!item.rental_frozen,
   lowPriority: !!item.low_priority,
 });
 
-const parseMatchTimeSeconds = (value?: string | null) => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "-") return null;
-  if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
-  if (!trimmed.includes(":")) return null;
-  const parts = trimmed.split(":").map((part) => Number.parseInt(part, 10));
-  if (parts.some((part) => Number.isNaN(part))) return null;
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return null;
-};
-
-const formatMatchTime = (seconds: number) => {
-  const safe = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const secs = safe % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(secs).padStart(2, "0")}`;
-};
-
-const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
+const mapRental = (item: ActiveRentalItem): RentalRow => {
   const rawMatch = item.match_time || "-";
-  const matchSeconds = parseMatchTimeSeconds(rawMatch);
   return {
     id: item.id,
     rowKey: makeRowKey("rent", item.workspace_id ?? null, item.id),
@@ -213,8 +186,6 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
     started: item.started,
     timeLeft: item.time_left,
     matchTime: rawMatch,
-    matchTimeSeconds: matchSeconds,
-    matchTimeObservedAt: matchSeconds !== null ? observedAt : null,
     hero: item.hero || "-",
     status: item.status || "",
   };
@@ -261,16 +232,8 @@ const getCountdownLabel = (
   return `${hours} \u0447 ${minutesLeft} \u043c\u0438\u043d ${seconds} \u0441\u0435\u043a`;
 };
 
-const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => {
-  if (!row) return "-";
-  if (row.matchTimeSeconds === null || row.matchTimeSeconds === undefined) {
-    return row.matchTime || "-";
-  }
-  if (!row.matchTimeObservedAt) {
-    return formatMatchTime(row.matchTimeSeconds);
-  }
-  const elapsed = Math.max(0, Math.floor((nowMs - row.matchTimeObservedAt) / 1000));
-  return formatMatchTime(row.matchTimeSeconds + elapsed);
+const getMatchTimeLabel = (row: RentalRow | null | undefined, _nowMs: number) => {
+  return row?.matchTime || "-";
 };
 
 const resolveWorkspaceName = (
@@ -306,7 +269,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [loadingRentals, setLoadingRentals] = useState(true);
-  const [now, setNow] = useState(Date.now());
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [assignHours, setAssignHours] = useState("");
@@ -354,12 +316,13 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
   }, [filteredAccounts, selectedRental, accountById, selectedRowKey]);
 
   const statCards = useMemo<StatCardProps[]>(() => {
+    const nowMs = Date.now();
     const totalAccounts = filteredAccounts.length;
     const activeRentals = filteredRentals.length;
     const freeAccounts = filteredAccounts.filter((acc) => !acc.owner && !acc.accountFrozen && !acc.lowPriority).length;
     const past24h = filteredAccounts.filter((acc) => {
       const startMs = parseUtcMs(acc.rentalStart ?? null);
-      return startMs !== null && now - startMs <= 24 * 60 * 60 * 1000;
+      return startMs !== null && nowMs - startMs <= 24 * 60 * 60 * 1000;
     }).length;
     return [
       { label: "Всего аккаунтов", value: totalAccounts, icon: <CardUsersIcon /> },
@@ -367,7 +330,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
       { label: "Свободные аккаунты", value: freeAccounts, icon: <CardCloudCheckIcon /> },
       { label: "За 24 часа", value: past24h, icon: <CardBarsIcon /> },
     ];
-  }, [filteredAccounts, filteredRentals, now]);
+  }, [filteredAccounts, filteredRentals]);
 
   const loadAccounts = async (silent = false) => {
     if (!silent) setLoadingAccounts(true);
@@ -386,14 +349,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     try {
       if (selectedWorkspaceId === "all") {
         const res = await api.listActiveRentals();
-        const observedAt = Date.now();
-        setRentals(res.items.map((item) => mapRental(item, observedAt)));
+        setRentals(res.items.map(mapRental));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
       const res = await api.listActiveRentals(workspaceId);
-      const observedAt = Date.now();
-      setRentals(res.items.map((item) => mapRental(item, observedAt)));
+      setRentals(res.items.map(mapRental));
     } catch {
       setRentals([]);
     } finally {
@@ -413,11 +374,6 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
     }, 30_000);
     return () => window.clearInterval(id);
   }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (
@@ -1024,15 +980,9 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                     </span>
                     <span>
                       Осталось:{" "}
-                      {selectedRental
-                        ? getCountdownLabel(
-                            accountById.get(selectedRental.id),
-                            selectedRental.timeLeft,
-                            now,
-                          )
-                        : "-"}
+                      {selectedRental?.timeLeft || "-"}
                     </span>
-                    <span>Время матча: {getMatchTimeLabel(selectedRental, now)}</span>
+                    <span>Время матча: {selectedRental?.matchTime || "-"}</span>
                     <span>Герой: {selectedRental.hero || "-"}</span>
                     <span>Рабочее пространство: {workspaceDisplay}</span>
                     <span>Начало: {selectedRental.started || "-"}</span>
@@ -1352,10 +1302,10 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ onToast }) => {
                       </button>
                       <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
-                        {getCountdownLabel(accountById.get(row.id), row.timeLeft, now)}
+                        {row.timeLeft}
                       </span>
                       <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
-                        {getMatchTimeLabel(row, now)}
+                        {row.matchTime}
                       </span>
                       <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
                       <div className="flex items-center justify-center">

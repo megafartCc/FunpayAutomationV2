@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,6 +11,7 @@ from db.notifications_repo import MySQLNotificationsRepo
 from db.workspace_repo import MySQLWorkspaceRepo
 from services.rentals_cache import RentalsCache
 from services.presence_service import fetch_presence, presence_status_label
+from services.steam_id import extract_steam_id
 from services.steam_service import deauthorize_sessions, SteamWorkerError
 from services.chat_notify import notify_owner
 
@@ -136,28 +136,7 @@ def _account_label(record: ActiveRentalRecord) -> str:
 
 
 def _steam_id_from_mafile(mafile_json: str | None) -> str | None:
-    if not mafile_json:
-        return None
-    try:
-        data = json.loads(mafile_json) if isinstance(mafile_json, str) else mafile_json
-        session = (data or {}).get("Session") if isinstance(data, dict) else None
-        steam_value = None
-        if isinstance(session, dict):
-            steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
-        if steam_value is None and isinstance(data, dict):
-            steam_value = (
-                data.get("steamid")
-                or data.get("SteamID")
-                or data.get("steam_id")
-                or data.get("steamId")
-                or data.get("steamid64")
-                or data.get("SteamID64")
-            )
-        if steam_value is not None:
-            return str(int(steam_value))
-    except Exception:
-        return None
-    return None
+    return extract_steam_id(mafile_json)
 
 
 @router.get("/rentals/active", response_model=ActiveRentalResponse)

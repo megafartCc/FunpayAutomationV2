@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -10,6 +9,8 @@ from api.deps import get_current_user
 from db.account_repo import MySQLAccountRepo, AccountRecord
 from db.workspace_repo import MySQLWorkspaceRepo
 from db.notifications_repo import MySQLNotificationsRepo
+from services.accounts_cache import AccountsCache
+from services.steam_id import extract_steam_id
 from services.steam_service import deauthorize_sessions, SteamWorkerError
 from services.chat_notify import notify_owner
 
@@ -18,6 +19,7 @@ router = APIRouter()
 accounts_repo = MySQLAccountRepo()
 workspace_repo = MySQLWorkspaceRepo()
 notifications_repo = MySQLNotificationsRepo()
+accounts_cache = AccountsCache()
 
 
 class AccountCreate(BaseModel):
@@ -97,27 +99,7 @@ def _to_item(record: AccountRecord) -> AccountItem:
         state = "Rented"
     else:
         state = "Available"
-    steam_id = None
-    if record.mafile_json:
-        try:
-            data = json.loads(record.mafile_json) if isinstance(record.mafile_json, str) else record.mafile_json
-            session = (data or {}).get("Session") if isinstance(data, dict) else None
-            steam_value = None
-            if isinstance(session, dict):
-                steam_value = session.get("SteamID") or session.get("steamid") or session.get("SteamID64")
-            if steam_value is None and isinstance(data, dict):
-                steam_value = (
-                    data.get("steamid")
-                    or data.get("SteamID")
-                    or data.get("steam_id")
-                    or data.get("steamId")
-                    or data.get("steamid64")
-                    or data.get("SteamID64")
-                )
-            if steam_value is not None:
-                steam_id = str(int(steam_value))
-        except Exception:
-            steam_id = None
+    steam_id = extract_steam_id(record.mafile_json)
     rental_start = record.rental_start
     if isinstance(rental_start, datetime):
         rental_start = rental_start.isoformat()
@@ -159,20 +141,18 @@ def _ensure_workspace(workspace_id: int | None, user_id: int) -> None:
 @router.get("/accounts", response_model=AccountListResponse)
 def list_accounts(workspace_id: int | None = None, user=Depends(get_current_user)) -> AccountListResponse:
     user_id = int(user.id)
-    if workspace_id is None:
-        items = accounts_repo.list_by_user(user_id)
-        workspaces = workspace_repo.list_by_user(user_id)
-        name_map = {ws.id: ws.name for ws in workspaces}
-        for item in items:
-            item.workspace_name = name_map.get(item.workspace_id)
-        return AccountListResponse(items=[_to_item(item) for item in items])
-    _ensure_workspace(workspace_id, user_id)
-    items = accounts_repo.list_by_workspace(user_id, int(workspace_id))
-    workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
-    if workspace:
-        for item in items:
-            item.workspace_name = workspace.name
-    return AccountListResponse(items=[_to_item(item) for item in items])
+    ws_id = int(workspace_id) if workspace_id is not None else None
+    if ws_id is not None:
+        _ensure_workspace(ws_id, user_id)
+
+    cached_items = accounts_cache.get_list(user_id, ws_id, low_priority=False)
+    if cached_items is not None:
+        return AccountListResponse(items=[AccountItem(**item) for item in cached_items])
+
+    records = accounts_repo.list_by_workspace(user_id, ws_id) if ws_id is not None else accounts_repo.list_by_user(user_id)
+    items = [_to_item(item) for item in records]
+    accounts_cache.set_list(user_id, ws_id, [item.model_dump() for item in items], low_priority=False)
+    return AccountListResponse(items=items)
 
 
 @router.get("/accounts/low-priority", response_model=AccountListResponse)
@@ -181,20 +161,18 @@ def list_low_priority_accounts(
     user=Depends(get_current_user),
 ) -> AccountListResponse:
     user_id = int(user.id)
-    if workspace_id is not None:
-        _ensure_workspace(workspace_id, user_id)
-    items = accounts_repo.list_low_priority(user_id, workspace_id)
-    if workspace_id is None:
-        workspaces = workspace_repo.list_by_user(user_id)
-        name_map = {ws.id: ws.name for ws in workspaces}
-        for item in items:
-            item.workspace_name = name_map.get(item.workspace_id)
-    else:
-        workspace = workspace_repo.get_by_id(int(workspace_id), user_id)
-        if workspace:
-            for item in items:
-                item.workspace_name = workspace.name
-    return AccountListResponse(items=[_to_item(item) for item in items])
+    ws_id = int(workspace_id) if workspace_id is not None else None
+    if ws_id is not None:
+        _ensure_workspace(ws_id, user_id)
+
+    cached_items = accounts_cache.get_list(user_id, ws_id, low_priority=True)
+    if cached_items is not None:
+        return AccountListResponse(items=[AccountItem(**item) for item in cached_items])
+
+    records = accounts_repo.list_low_priority(user_id, ws_id)
+    items = [_to_item(item) for item in records]
+    accounts_cache.set_list(user_id, ws_id, [item.model_dump() for item in items], low_priority=True)
+    return AccountListResponse(items=items)
 
 
 @router.post("/accounts", response_model=AccountItem, status_code=status.HTTP_201_CREATED)
@@ -223,6 +201,7 @@ def create_account(payload: AccountCreate, user=Depends(get_current_user)) -> Ac
             status_code=status.HTTP_409_CONFLICT,
             detail="Account already exists",
         )
+    accounts_cache.clear_user(int(user.id))
     return _to_item(created)
 
 
@@ -281,6 +260,7 @@ def update_account(
     updated = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if not updated:
         raise HTTPException(status_code=404, detail="Account not found")
+    accounts_cache.clear_user(int(user.id))
     return _to_item(AccountRecord(
         id=int(updated["id"]),
         user_id=int(updated["user_id"]),
@@ -310,6 +290,7 @@ def delete_account(account_id: int, workspace_id: int | None = None, user=Depend
     success = accounts_repo.delete_account_by_id(account_id, int(user.id), int(workspace_id))
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
+    accounts_cache.clear_user(int(user.id))
     return {"status": "ok"}
 
 
@@ -337,6 +318,7 @@ def assign_account(
     )
     if not success:
         raise HTTPException(status_code=400, detail="Account already assigned")
+    accounts_cache.clear_user(int(user.id))
     return {"status": "ok"}
 
 
@@ -350,6 +332,7 @@ def release_account(account_id: int, workspace_id: int | None = None, user=Depen
     success = accounts_repo.release_account(account_id, int(user.id), int(workspace_id))
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
+    accounts_cache.clear_user(int(user.id))
 
     deauth_status = "skipped"
     login = account.get("login") or account.get("account_name")
@@ -407,6 +390,7 @@ def extend_account(
     )
     if not success:
         raise HTTPException(status_code=400, detail="Failed to extend rental")
+    accounts_cache.clear_user(int(user.id))
     account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if account and account.get("owner"):
         minutes_total = payload.hours * 60 + payload.minutes
@@ -439,6 +423,7 @@ def freeze_account(
     success = accounts_repo.set_account_frozen(account_id, int(user.id), int(workspace_id), payload.frozen)
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
+    accounts_cache.clear_user(int(user.id))
     account = accounts_repo.get_by_id(account_id, int(user.id), int(workspace_id))
     if account and account.get("owner"):
         notify_owner(
@@ -466,6 +451,7 @@ def set_low_priority(
     success = accounts_repo.set_low_priority(account_id, int(user.id), int(workspace_id), payload.low_priority)
     if not success:
         raise HTTPException(status_code=404, detail="Account not found")
+    accounts_cache.clear_user(int(user.id))
     return {"success": True, "low_priority": payload.low_priority}
 
 

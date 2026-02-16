@@ -16,8 +16,6 @@ type RentalRow = {
   started: string;
   timeLeft: string;
   matchTime: string;
-  matchTimeSeconds?: number | null;
-  matchTimeObservedAt?: number | null;
   hero: string;
   status: string;
 };
@@ -66,33 +64,8 @@ const makeAccountKey = (workspaceId: number | null | undefined, id: number) =>
 const makeRowKey = (_prefix: "acc" | "rent", workspaceId: number | null | undefined, id: number) =>
   makeAccountKey(workspaceId, id);
 
-const parseMatchTimeSeconds = (value?: string | null) => {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "-") return null;
-  if (/^\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
-  if (!trimmed.includes(":")) return null;
-  const parts = trimmed.split(":").map((part) => Number.parseInt(part, 10));
-  if (parts.some((part) => Number.isNaN(part))) return null;
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return null;
-};
-
-const formatMatchTime = (seconds: number) => {
-  const safe = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(safe / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const secs = safe % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(secs).padStart(2, "0")}`;
-};
-
-const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
+const mapRental = (item: ActiveRentalItem): RentalRow => {
   const rawMatch = item.match_time || "-";
-  const matchSeconds = parseMatchTimeSeconds(rawMatch);
   return {
     id: item.id,
     rowKey: makeRowKey("rent", item.workspace_id ?? null, item.id),
@@ -104,8 +77,6 @@ const mapRental = (item: ActiveRentalItem, observedAt: number): RentalRow => {
     started: item.started,
     timeLeft: item.time_left,
     matchTime: rawMatch,
-    matchTimeSeconds: matchSeconds,
-    matchTimeObservedAt: matchSeconds !== null ? observedAt : null,
     hero: item.hero || "-",
     status: item.status || "",
   };
@@ -175,16 +146,8 @@ const getCountdownLabel = (
   return `${hours} \u0447 ${minutesLeft} \u043c\u0438\u043d ${seconds} \u0441\u0435\u043a`;
 };
 
-const getMatchTimeLabel = (row: RentalRow | null | undefined, nowMs: number) => {
-  if (!row) return "-";
-  if (row.matchTimeSeconds === null || row.matchTimeSeconds === undefined) {
-    return row.matchTime || "-";
-  }
-  if (!row.matchTimeObservedAt) {
-    return formatMatchTime(row.matchTimeSeconds);
-  }
-  const elapsed = Math.max(0, Math.floor((nowMs - row.matchTimeObservedAt) / 1000));
-  return formatMatchTime(row.matchTimeSeconds + elapsed);
+const getMatchTimeLabel = (row: RentalRow | null | undefined, _nowMs: number) => {
+  return row?.matchTime || "-";
 };
 
 const resolveWorkspaceName = (
@@ -209,7 +172,6 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [now, setNow] = useState(Date.now());
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [assignOwner, setAssignOwner] = useState("");
   const [accountEditName, setAccountEditName] = useState("");
@@ -249,15 +211,14 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
   const loadRentals = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const observedAt = Date.now();
       if (selectedWorkspaceId === "all") {
         const res = await api.listActiveRentals();
-        setRentals(res.items.map((item) => mapRental(item, observedAt)));
+        setRentals(res.items.map(mapRental));
         return;
       }
       const workspaceId = selectedWorkspaceId as number;
       const res = await api.listActiveRentals(workspaceId);
-      setRentals(res.items.map((item) => mapRental(item, observedAt)));
+      setRentals(res.items.map(mapRental));
     } catch {
       setRentals([]);
     } finally {
@@ -297,11 +258,6 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
     }, 30_000);
     return () => window.clearInterval(id);
   }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (selectedRowKey && !rentals.some((row) => row.rowKey === selectedRowKey)) {
@@ -776,15 +732,9 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                     </span>
                   <span>
                     Осталось:{" "}
-                    {selectedRental
-                      ? getCountdownLabel(
-                          accountByKey.get(selectedRental.accountKey),
-                          selectedRental.timeLeft,
-                          now,
-                        )
-                      : "-"}
+                    {selectedRental?.timeLeft || "-"}
                   </span>
-                    <span>Время матча: {getMatchTimeLabel(selectedRental, now)}</span>
+                    <span>Время матча: {selectedRental?.matchTime || "-"}</span>
                     <span>Герой: {selectedRental.hero || "-"}</span>
                     <span>Рабочее пространство: {workspaceDisplay}</span>
                     <span>Начато: {selectedRental.started || "-"}</span>
@@ -970,18 +920,18 @@ const ActiveRentalsPage: React.FC<ActiveRentalsPageProps> = ({ onToast }) => {
                       }}
                     >
                       {row.buyer || "-"}
-                    </button>
-                    <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
-                    <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
-                      {getCountdownLabel(account, row.timeLeft, now)}
-                    </span>
-                    <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
-                      {getMatchTimeLabel(row, now)}
-                    </span>
-                    <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
-                    <div className="flex items-center justify-center">
-                      <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
-                        {pill.label}
+                      </button>
+                      <span className="min-w-0 truncate text-neutral-600">{row.started}</span>
+                      <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
+                      {row.timeLeft}
+                      </span>
+                      <span className="min-w-0 truncate font-mono tabular-nums text-neutral-900">
+                      {row.matchTime}
+                      </span>
+                      <span className="min-w-0 truncate text-neutral-700">{row.hero}</span>
+                      <div className="flex items-center justify-center">
+                        <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${pill.className}`}>
+                          {pill.label}
                       </span>
                     </div>
                   </motion.div>
